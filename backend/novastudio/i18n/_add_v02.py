@@ -109,6 +109,7 @@ NEW = {
     "err.need_two_bodies": ("熱連成には、流体と固体の2つ以上のボディを含むファイルが必要です（例: 冷却板と流路の水）。",
                             "Conjugate heat transfer needs a file with two or more bodies, e.g. a cold plate and the water in its channel.",
                             "流固耦合传热需要包含两个以上物体的文件（例：冷板与流道中的水）。"),
+    "job.iterating_n": ("反復計算中（{it} / {end} 回）", "Iterating ({it} / {end})", "迭代计算中（{it} / {end} 次）"),
     "card.flow_rate": ("流量", "Flow rate", "流量"), "card.dp": ("圧力損失", "Pressure drop", "压力损失"),
     "qty.p": ("圧力（壁面）", "Pressure (walls)", "压力（壁面）"),
 }

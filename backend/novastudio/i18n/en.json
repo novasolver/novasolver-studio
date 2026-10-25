@@ -215,5 +215,6 @@
   "card.t_outlet": "Outlet water temperature",
   "card.q_water": "Heat carried by the water",
   "check.need_fluid_and_solid": "At least one fluid body and one solid body are needed. Set the role of each body.",
-  "err.need_two_bodies": "Conjugate heat transfer needs a file with two or more bodies, e.g. a cold plate and the water in its channel."
+  "err.need_two_bodies": "Conjugate heat transfer needs a file with two or more bodies, e.g. a cold plate and the water in its channel.",
+  "job.iterating_n": "Iterating ({it} / {end})"
 }

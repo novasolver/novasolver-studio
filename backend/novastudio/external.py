@@ -58,11 +58,38 @@ def _proc(argv: list[str], cwd: Path, log: Path, jd: Path, env: dict | None = No
     return rc
 
 
+SOLVER_LOGS = ("log.simpleFoam", "log.cht", "log.solver")
+
+
+def _solver_progress(log: Path, cwd: Path, jd: Path) -> None:
+    """Map the iteration count in a solver log to job progress 0.15 .. 0.90 (GUI/AI see a moving bar and ETA)."""
+    try:
+        import re as _re
+        from .jobs import update
+        cd = (cwd / "system" / "controlDict").read_text(encoding="utf-8", errors="replace")
+        end = float(_re.search(r"endTime\s+([0-9.eE+-]+)", cd).group(1))
+        with open(log, "rb") as fh:
+            fh.seek(0, 2); size = fh.tell(); fh.seek(max(0, size - 20000))
+            tail = fh.read().decode("utf-8", errors="replace")
+        times = _re.findall(r"^Time = ([0-9.eE+-]+)", tail, _re.M)
+        if times and end > 0:
+            frac = min(float(times[-1]) / end, 1.0)
+            update(jd, state="running", progress=round(0.15 + 0.75 * frac, 3), message_key="job.iterating_n",
+                   message_args={"it": int(float(times[-1])), "end": int(end)})
+    except Exception:
+        pass
+
+
 def _proc_once(argv: list[str], cwd: Path, log: Path, jd: Path, env: dict | None = None) -> int:
+    import time as _time
     with open(log, "w", encoding="utf-8", errors="replace") as fh:
         p = subprocess.Popen(argv, cwd=str(cwd), stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                              creationflags=NO_WINDOW, env=env)
+        last = 0.0
         while p.poll() is None:
+            if log.name in SOLVER_LOGS and _time.time() - last > 3:
+                last = _time.time()
+                _solver_progress(log, cwd, jd)
             if (jd / "STOP").exists():
                 p.terminate()
                 break

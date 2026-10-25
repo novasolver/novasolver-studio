@@ -751,6 +751,8 @@ export async function loadField(quantity: string, reset = true) {
       ...(reset ? { range: null, colormap: kind === "diverging" ? "coolwarm" : "viridis" } : {}),
     });
   } catch (e) {
+    // keep the choice visible in the quantity menu even when the field could not be loaded
+    setState({ quantity, field: null });
     log("error", t("log.error", { message: errMsg(e) }));
   }
 }

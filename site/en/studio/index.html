@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovaSolver Studio — Free, Open-Source Structural, Thermal and CFD Simulation (AI-ready)</title>
+<meta name="description" content="Free open-source simulation software: import CAD and solve structural, thermal and flow problems. Every result is graded ran, converged or verified against textbook solutions. Operable from AI assistants via MCP.">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://novasolver.jp/en/studio/">
+<link rel="alternate" hreflang="ja" href="https://novasolver.jp/studio/">
+<link rel="alternate" hreflang="en" href="https://novasolver.jp/en/studio/">
+<link rel="alternate" hreflang="zh-Hans" href="https://novasolver.jp/zh/studio/">
+<link rel="alternate" hreflang="x-default" href="https://novasolver.jp/en/studio/">
+<meta property="og:title" content="NovaSolver Studio — free, open-source structural, thermal and CFD simulation">
+<meta property="og:description" content="Import CAD, solve structural, thermal and flow problems, and check the answer all the way to verified. Works with AI assistants (MCP).">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NovaSolver">
+<meta property="og:locale" content="en_US">
+<meta property="og:url" content="https://novasolver.jp/en/studio/">
+<meta property="og:image" content="https://novasolver.jp/studio/img/results-cantilever-en.webp">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NovaSolver Studio — free, open-source simulation">
+<meta name="twitter:description" content="Solve structural, thermal and flow problems and verify the answer automatically. MCP-ready for AI assistants.">
+<meta name="twitter:image" content="https://novasolver.jp/studio/img/results-cantilever-en.webp">
+<link rel="icon" href="/favicon.ico"><link rel="icon" type="image/png" href="/favicon.png">
+<link rel="stylesheet" href="/studio/studio.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RSYX6L0L61"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-RSYX6L0L61');</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"NovaSolver Studio","applicationCategory":"EngineeringApplication",
+ "operatingSystem":"Windows 10, Windows 11","inLanguage":"en","url":"https://novasolver.jp/en/studio/",
+ "description":"Free open-source simulation software that imports CAD, solves structural, thermal and flow problems, verifies results against references or by mesh convergence, and can be operated from AI assistants via MCP.",
+ "license":"https://www.gnu.org/licenses/gpl-3.0.html","isAccessibleForFree":true,
+ "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
+ "downloadUrl":"https://github.com/novasolver/novasolver-studio/releases/latest",
+ "author":{"@type":"Organization","name":"NovaSolver","url":"https://novasolver.jp/en/"}}
+</script>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="/en/"><b>◆</b> NovaSolver</a>
+  <span class="note">Studio</span>
+  <nav class="lang"><a href="/studio/">日本語</a><a class="on" href="/en/studio/">English</a><a href="/zh/studio/">中文</a></nav>
+</div></header>
+
+<main>
+<div class="wrap hero">
+  <span class="badge">Preview v0.1 · Free · Open source (GPL-3.0)</span>
+  <h1>Import CAD. Solve structures, heat and flow.<br>Then check that the answer is right — automatically.</h1>
+  <p class="lead">NovaSolver Studio is simulation software that runs on your own PC. Start from a template or a CAD file and solve in a few clicks. Every result is graded "ran → converged → verified", and you can let your AI assistant do the setup for you.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases/latest">Download for Windows</a>
+    <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">Source on GitHub</a>
+  </div>
+  <div class="shot"><img src="/studio/img/results-cantilever-en.webp" width="1280" height="800" alt="Cantilever results: verified against beam theory, with a warning that the stress exceeds the yield strength"></div>
+</div>
+
+<section><div class="wrap">
+  <h2>Not just "it ran" — verified</h2>
+  <p class="sub">Simulation answers go wrong easily with a coarse mesh or a wrong boundary condition. Studio grades every result in three steps.</p>
+  <div class="gates"><span class="gate ok">✓ Ran</span>→<span class="gate ok">✓ Converged</span>→<span class="gate ok">✓ Verified</span></div>
+  <div class="grid">
+    <div class="card"><h3>Compared with textbook answers</h3><p>Beam deflection, stress concentration, fin heat loss, pipe flow and sphere drag are checked against analytic or published values.</p></div>
+    <div class="card"><h3>Your own shapes: mesh convergence</h3><p>Shapes without an analytic answer are solved on three meshes, and the discretisation uncertainty (GCI) must be 5% or less.</p></div>
+    <div class="card"><h3>Warnings that matter</h3><p>For example, if the stress exceeds the yield strength, Studio tells you the linear result no longer holds.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What you can solve</h2>
+  <p class="sub">Import CAD (STEP, IGES, BREP) and click faces to set the conditions.</p>
+  <table>
+    <thead><tr><th>Analysis</th><th>Typical use</th><th>Solver</th></tr></thead>
+    <tbody>
+      <tr><td>Structural (linear static)</td><td>Bracket strength, deflection, stress concentration</td><td>Built-in FEM (seconds) · CalculiX</td></tr>
+      <tr><td>Thermal (steady conduction)</td><td>Heat sinks, insulation, fins</td><td>Built-in FEM · CalculiX</td></tr>
+      <tr><td>Internal flow</td><td>Pipe pressure drop and flow rate</td><td>OpenFOAM®</td></tr>
+      <tr><td>Flow around a body</td><td>Drag and lift, wind or water loads</td><td>OpenFOAM® (mesh with wall layers)</td></tr>
+      <tr><td>Water cooling (conjugate heat transfer)</td><td>Cold plates, liquid-cooled parts</td><td>OpenFOAM® (fluid and solid solved together)</td></tr>
+    </tbody>
+  </table>
+  <div class="two" style="margin-top:28px">
+    <img src="/studio/img/heatsink-boundaries.webp" width="1280" height="800" loading="lazy" alt="Setting 27 heat-sink faces to convection at once">
+    <img src="/studio/img/elbow-flow.webp" width="1280" height="800" loading="lazy" alt="Velocity in a 90-degree pipe elbow: the flow shifts to the outer wall after the bend">
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Checked on standard problems</h2>
+  <p class="sub">Already in the preview, these problems are compared with reference solutions.</p>
+  <table>
+    <thead><tr><th>Problem</th><th>Reference</th><th>Studio</th><th>Difference</th></tr></thead>
+    <tbody>
+      <tr><td>Cantilever tip deflection</td><td>Beam theory with shear correction</td><td class="num">0.9748 mm</td><td class="num ok">−0.85%</td></tr>
+      <tr><td>Plate with a hole (stress concentration)</td><td>Heywood, Kt = 2.512</td><td class="num">2.527</td><td class="num ok">+0.6%</td></tr>
+      <tr><td>Heat flow through a block</td><td>Fourier's law, 40 W</td><td class="num">40.000 W</td><td class="num ok">0.00%</td></tr>
+      <tr><td>Cooling fin heat loss</td><td>Fin theory, 5.066 W</td><td class="num">5.064 W</td><td class="num ok">−0.05%</td></tr>
+      <tr><td>Lid-driven cavity (Re = 100)</td><td>Ghia et al. (1982)</td><td class="num">mean centreline-u difference</td><td class="num ok">0.12%</td></tr>
+      <tr><td>Flow between plates</td><td>Poiseuille flow</td><td class="num">outlet centre velocity</td><td class="num ok">−0.23%</td></tr>
+      <tr><td>Sphere drag (Re = 100)</td><td>Schiller–Naumann, Cd = 1.092</td><td class="num">1.095</td><td class="num ok">+0.3%</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<section><div class="wrap two">
+  <div>
+    <h2>Ask your AI assistant to solve it</h2>
+    <p class="sub">Studio speaks MCP (Model Context Protocol). Ask Claude or another assistant: "Fix the bottom face of this part, push 500 N on the top, and tell me whether it is verified." The assistant sets up and runs the case and reports back. Its edits appear live in the GUI, so you can review them.</p>
+    <p class="note">There is no general shell or code-execution tool. The AI never writes solver files directly; it fills in checked input fields only.</p>
+  </div>
+  <img src="/studio/img/results-cantilever.webp" width="1280" height="800" loading="lazy" alt="Results screen with the ran, converged and verified gates">
+</div></section>
+
+<section><div class="wrap">
+  <h2>Getting started (Windows)</h2>
+  <ol class="steps">
+    <li>Download the zip from <a href="https://github.com/novasolver/novasolver-studio/releases/latest">GitHub Releases</a> and unpack it (no installation).</li>
+    <li>Double-click <code>NovaSolverStudio.exe</code>. The app opens in your browser.</li>
+    <li>Structural and thermal analyses work right away (built-in solvers and CalculiX are included).</li>
+    <li>For flow, install OpenFOAM® (ESI Windows package, about 200 MB) to <code>%LOCALAPPDATA%\NovaSolverStudio\solvers\openfoam</code>. No admin rights needed.</li>
+  </ol>
+  <p class="note">The preview is not code-signed yet. If Windows shows a warning, choose "More info → Run anyway". The zip's SHA-256 is listed on the Releases page.</p>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <p>NovaSolver Studio is released under GPL-3.0. The solvers it calls (OpenFOAM®, CalculiX, Gmsh) keep their own licenses.</p>
+  <p>This offering is not approved or endorsed by OpenCFD Limited, producer and distributor of the OpenFOAM software via www.openfoam.com, and owner of the OPENFOAM® and OpenCFD® trade marks.</p>
+  <p><a href="/en/">NovaSolver home</a> · <a href="/en/1d/">NovaSolver 1D</a> · <a href="/en/tools/">All simulators</a></p>
+</div></footer>
+</body>
+</html>

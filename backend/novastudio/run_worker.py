@@ -278,17 +278,26 @@ def gci(levels: list[dict], fs: float = 1.25) -> dict:
     r21, r32 = h1 / h2, h2 / h3
     e21, e32 = f2 - f1, f3 - f2
     monotone = e21 * e32 > 0 and abs(e32) > 0
+    asymptotic = False
     if monotone:
         r = math.sqrt(r21 * r32)
         p = math.log(abs(e21 / e32)) / math.log(r)
-        p = min(max(p, 0.5), 4.0)
+        asymptotic = p >= 1.0
+        if not asymptotic:
+            # error is not shrinking as the mesh refines: not in the asymptotic range. Use p = 1 with the
+            # conservative safety factor and do not trust Richardson extrapolation.
+            p, fs = 1.0, 3.0
+        p = min(p, 4.0)
     else:
         p, fs = 2.0, 3.0                         # oscillatory or exact: conservative safety factor
     denom = r32 ** p - 1
     rel = abs(e32 / f3) if f3 else 0.0
     gci_fine = fs * rel / denom * 100 if denom > 0 else rel * 100
     f_ext = f3 + e32 / denom if denom > 0 else f3
-    return {"p": p, "monotone": monotone, "gci_pct": gci_fine, "f_ext": f_ext, "rel_change_pct": rel * 100,
+    if not asymptotic:
+        f_ext = None
+    return {"p": p, "monotone": monotone, "asymptotic": asymptotic, "gci_pct": gci_fine, "f_ext": f_ext,
+            "rel_change_pct": rel * 100,
             "r21": r21, "r32": r32, "safety_factor": fs}
 
 
@@ -330,7 +339,8 @@ def run_study(req: dict, jd: Path, prog) -> dict:
     fine["convergence"] = conv
     if not (fine.get("reference") or {}).get("applicable"):
         # no analytic reference: the mesh study is the verification (solution verification, Roache/ASME V&V 20)
-        fine["reference"] = {"applicable": True, "kind": "convergence", "quantity": name, "reference": g["f_ext"],
+        fine["reference"] = {"applicable": True, "kind": "convergence", "quantity": name,
+                             "reference": g["f_ext"] if g["f_ext"] is not None else levels[-1]["value"],
                              "computed": levels[-1]["value"], "unit": unit, "error_pct": g["gci_pct"],
                              "tolerance_pct": tol, "pass": passed, "metric": "GCI (fine mesh)"}
     return fine
@@ -405,7 +415,10 @@ def main(job_dir: str) -> None:
     except Exception as exc:  # report the first useful line to the user/model
         tb = traceback.format_exc()
         (jd / "error.txt").write_text(tb, encoding="utf-8")
-        update(jd, state="failed", message_key="err.solver", message_args={"detail": f"{type(exc).__name__}: {exc}"})
+        if (jd / "STOP").exists():                 # stopped by the user (while waiting or running): not a failure
+            update(jd, state="stopped", message_key="job.stopped", message_args={})
+        else:
+            update(jd, state="failed", message_key="err.solver", message_args={"detail": f"{type(exc).__name__}: {exc}"})
     finally:
         if lock is not None:
             _release_solver_slot(lock)

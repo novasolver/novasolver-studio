@@ -215,5 +215,6 @@
   "card.t_outlet": "出口水温",
   "card.q_water": "水带走的热量",
   "check.need_fluid_and_solid": "至少需要一个流体和一个固体。请设定各个物体的角色。",
-  "err.need_two_bodies": "流固耦合传热需要包含两个以上物体的文件（例：冷板与流道中的水）。"
+  "err.need_two_bodies": "流固耦合传热需要包含两个以上物体的文件（例：冷板与流道中的水）。",
+  "job.iterating_n": "迭代计算中（{it} / {end} 次）"
 }

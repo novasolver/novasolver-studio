@@ -124,7 +124,8 @@ def _conv_view(c, lang):
     scale, unit = (1e3, "mm") if c["unit"] == "m" else (1.0, c["unit"])
     return {"quantity": c["quantity"], "label": t(f"qty.study.{c['quantity']}", lang), "unit": unit,
             "levels": [{"size": l["size"], "elements": l["elements"], "value": l["value"] * scale} for l in c["levels"]],
-            "extrapolated": c["f_ext"] * scale, "gci_pct": c["gci_pct"], "observed_order": c["p"],
+            "extrapolated": c["f_ext"] * scale if c.get("f_ext") is not None else None, "gci_pct": c["gci_pct"],
+            "observed_order": c["p"], "asymptotic": c.get("asymptotic", True),
             "monotone": c["monotone"], "rel_change_pct": c["rel_change_pct"], "tolerance_pct": c["tolerance_pct"],
             "pass": c["pass"]}
 
