@@ -111,6 +111,9 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
         sy_pa = units.to_si(sy)
         if m["max_vm_pa"] > sy_pa:
             warnings.append({"code": "yield", "message": t("result.yield", lang, vm=m["max_vm_pa"] / 1e6, sy=sy_pa / 1e6)})
+    if (r.get("convergence") or {}).get("refined") is False:
+        n = [l["elements"] for l in r["convergence"]["levels"]]
+        warnings.append({"code": "not_refined", "message": t("result.not_refined", lang, a=n[0], b=n[1], c=n[2])})
     ps = (r.get("convergence") or {}).get("peak_stress") or {}
     if ps.get("singular"):
         a, b, c = (v / 1e6 for v in ps["levels_pa"])

@@ -16,10 +16,11 @@ DIRECT_LIMIT = 30000          # unknowns; above this the AMG-CG iterative solver
 DIRECT_FALLBACK_LIMIT = 250000   # unknowns; direct solve when AMG-CG does not converge (about 2-4 GB at this size)
 
 
-def _amg_cg(A, b, B=None, tol=1e-10):
+def _amg_cg(A, b, B=None, tol=1e-8):
     """Smoothed-aggregation AMG preconditioned CG. Strongly graded meshes (thin-wall and load refinement next to
     coarse regions) can make the default set-up stall, so a sturdier set-up with symmetric Gauss-Seidel smoothing
-    is tried before giving up."""
+    is tried before giving up. tol 1e-8: on stiff, graded meshes CG reaches ~1e-9 and then drifts with round-off,
+    so asking for 1e-10 made it run past the answer."""
     import pyamg
     setups = [
         dict(strength=("symmetric", {"theta": 0.0}), max_coarse=500),

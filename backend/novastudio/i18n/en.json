@@ -109,6 +109,7 @@
   "err.mesh": "Mesh generation failed: {detail}",
   "err.solver": "The solver failed: {detail}",
   "result.stress_singular": "The peak stress keeps rising as the mesh is refined ({a:.0f} → {b:.0f} → {c:.0f} MPa). It is probably at a sharp corner or at the edge of a rigid support, where the stress is theoretically infinite. The displacement can be trusted, this peak value cannot: model the real fillet, or judge by the stress a little away from that spot.",
+  "result.not_refined": "The three meshes have almost the same number of elements ({a} → {b} → {c}). Refinement did not really change the mesh, so the answer cannot be verified this way. The file's triangles may be too fine, or remeshing the surface may have failed.",
   "result.yield": "Max von Mises stress {vm:.0f} MPa exceeds the typical yield strength {sy:.0f} MPa. The part would deform plastically, so this linear elastic result does not hold.",
   "err.range": "{path} must be between {lo} and {hi}.",
   "pos.left": "left",

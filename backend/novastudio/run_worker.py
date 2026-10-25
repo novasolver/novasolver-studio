@@ -331,12 +331,15 @@ def run_study(req: dict, jd: Path, prog) -> dict:
         _write_json(sub / "results.json", res)
     g = gci(levels)
     tol = 5.0
-    passed = all(l["converged"] for l in levels) and g["gci_pct"] <= tol
+    # a study only means something if the mesh really got finer; identical meshes would "agree" perfectly
+    refined = all(b["elements"] >= 1.3 * a["elements"] for a, b in zip(levels, levels[1:]))
+    passed = all(l["converged"] for l in levels) and g["gci_pct"] <= tol and refined
     fine = json.loads((jd / "levels" / "fine" / "results.json").read_text(encoding="utf-8"))
     for f in ("results.npz", "mesh.npz"):
         if (jd / "levels" / "fine" / f).is_file():
             shutil.copyfile(jd / "levels" / "fine" / f, jd / f)
-    conv = {"quantity": name, "unit": unit, "levels": levels, **g, "tolerance_pct": tol, "pass": passed}
+    conv = {"quantity": name, "unit": unit, "levels": levels, **g, "tolerance_pct": tol, "pass": passed,
+            "refined": refined}
     peaks = [l.get("peak_vm_pa") for l in levels]
     if all(peaks):
         # a peak that keeps rising with every refinement is a stress singularity (sharp re-entrant corner, edge of a

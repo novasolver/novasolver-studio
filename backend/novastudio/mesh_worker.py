@@ -348,6 +348,25 @@ def thin_wall_sizes(gmsh, h: float, n_through: float, flip: set | None = None):
     return S[keep], size[keep]
 
 
+def entity_size_caps(gmsh) -> dict:
+    """Largest sensible element size per discrete curve and surface of a remeshed STL: a short curve gets at least two
+    segments, a narrow face (a 0.5 mm chamfer strip next to a fin) elements no wider than itself. Without this,
+    remeshing tiny faces at the general size makes their new boundaries cross ("overlapping facets")."""
+    caps, length = {}, {}
+    for _, c in gmsh.model.getEntities(1):
+        xyz = np.asarray(gmsh.model.mesh.getNodes(1, c, includeBoundary=True)[1]).reshape(-1, 3)
+        if len(xyz) < 2:
+            continue
+        length[c] = float(np.linalg.norm(np.ptp(xyz, axis=0)))
+        caps[(1, c)] = max(length[c] / 2, 1e-9)
+    for _, s in gmsh.model.getEntities(2):
+        area, _ = face_area_centroid(gmsh, s, True)
+        per = sum(length.get(abs(c), 0.0) for _, c in gmsh.model.getBoundary([(2, s)], oriented=False))
+        if area > 0 and per > 0:
+            caps[(2, s)] = 2 * area / per
+    return caps
+
+
 def cad_inward_faces(gmsh) -> set:
     """Surface-mesh a CAD model and return the faces whose triangles point into the solid (gmsh meshes OCC faces
     along their own parametrisation, not necessarily outward): probe a point just off one triangle of each face."""
@@ -587,6 +606,7 @@ def mesh_job(job: dict) -> None:
             thin = thin_wall_sizes(gmsh, h, float(job["thin_n"]), flip)
             if flip is not None:
                 gmsh.model.mesh.clear()
+            tree = None
             if thin is not None:
                 from scipy.spatial import cKDTree
                 pts, sz = thin
@@ -594,10 +614,20 @@ def mesh_job(job: dict) -> None:
                 kk = min(8, len(pts))
                 job["thin_min_mm"] = float(sz.min() * 1e3)
                 gmsh.option.setNumber("Mesh.MeshSizeMin", min(gmsh.option.getNumber("Mesh.MeshSizeMin"), float(sz.min()) * 0.5))
+            # a faceted STL surface remeshed much coarser than its features gives crossing patch boundaries
+            # ("overlapping facets"): cap the surface size per level; the interior may still be coarse
+            surf_cap = job.get("surf_cap") if job["file"].lower().endswith(".stl") and not job.get("stl_keep_surface") else None
+            caps = entity_size_caps(gmsh) if surf_cap else {}
 
-                def size_cb(dim, tag, x, y, z, lc):
+            def size_cb(dim, tag, x, y, z, lc):
+                s = lc
+                if tree is not None:
                     d, j = tree.query((x, y, z), k=kk)
-                    return float(min(lc, np.min(sz[j] + 0.5 * d)))   # grows by half the distance away from the wall
+                    s = min(s, float(np.min(sz[j] + 0.5 * d)))   # grows by half the distance away from the wall
+                if surf_cap and dim <= 2:
+                    s = min(s, surf_cap, caps.get((dim, tag), surf_cap))
+                return float(s)
+            if tree is not None or surf_cap:
                 gmsh.model.mesh.setSizeCallback(size_cb)
         if job.get("volume"):
             gmsh.model.mesh.generate(3)
