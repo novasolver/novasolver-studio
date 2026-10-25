@@ -120,7 +120,7 @@ async def create_case(template: str, changes: dict[str, Any] | None = None, lang
 
 @mcp.tool(annotations=WRITE)
 async def import_geometry(path: str, physics: Literal["structural", "thermal"], language: Lang = "ja") -> CallToolResult:
-    """Create a case from a CAD file on this computer (STEP .step/.stp, IGES .iges/.igs, BREP .brep), units read from the
+    """Create a case from a CAD file on this computer (STEP .step/.stp, IGES .iges/.igs, BREP .brep, STL .stl in mm), units read from the
     file. Returns the faces with number, surface type, area and centroid so you can pick which faces to fix, load,
     heat or cool (by position: e.g. the face with the lowest centroid z is the bottom). Then set roles with update_case
     using paths like boundaries.f12.role. Structural roles: free, fixed, load (force + direction), pressure.

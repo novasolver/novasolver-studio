@@ -33,7 +33,7 @@ def dims(case: dict) -> list[float]:
     raise ValueError(kind)
 
 
-MESHER_VERSION = 5          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
+MESHER_VERSION = 6          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
 
 
 def _canon(o):
@@ -57,6 +57,8 @@ def mesh_key(case: dict) -> str:
         extra = {"domain": external_domain(case)}
     if case.get("bodies"):
         extra["bodies"] = {b: i["role"] for b, i in case["bodies"].items()}
+    if case["template"] == "import-structural":       # the loaded faces decide where the mesh is fine
+        extra["refine"] = sorted(k for k, b in case.get("boundaries", {}).items() if b.get("role") in LOAD_ROLES)
     src = json.dumps(_canon({"g": case["geometry"], "m": case["mesh"], "x": extra, "v": MESHER_VERSION}), sort_keys=True)
     return hashlib.sha256(src.encode()).hexdigest()[:16]
 
@@ -128,6 +130,24 @@ def mesh_dir(case: dict) -> Path:
     return Path(case["_mesh_dir"]) if case.get("_mesh_dir") else case_dir(case["case_id"]) / "mesh"
 
 
+LOAD_ROLES = ("load", "pressure")
+REFINE_DIVS = {"coarse": 60, "normal": 100, "fine": 160}     # element size near loaded faces = diagonal / this
+
+
+def structural_refinement(case: dict) -> dict:
+    """Imported parts under load: stress peaks next to where the load goes in (a gear tooth root under its tip load,
+    a bracket corner under its bolt). Mesh fine around the loaded faces, coarse far away; the three sizes keep a
+    ratio of about 1.6 so the convergence study still sees a clean refinement sequence."""
+    if case["template"] != "import-structural":
+        return {}
+    faces = sorted(k for k, b in case.get("boundaries", {}).items() if b.get("role") in LOAD_ROLES)
+    if not faces:
+        return {}
+    diag = float(sum(d * d for d in dims(case)) ** 0.5)
+    return {"refine_faces": faces, "h": diag / REFINE_DIVS[case["mesh"]["size"]],
+            "refine_dist": [0.08 * diag, 0.3 * diag]}
+
+
 def generate_mesh(case: dict) -> dict:
     if case["mesh"]["method"] == "structured":
         return mesh_state(case)["stats"]
@@ -143,6 +163,7 @@ def generate_mesh(case: dict) -> dict:
         fluid = {b for b, i in case["bodies"].items() if i["role"] == "fluid"}
         near = [f["key"] for f in case["geometry"]["faces"] if set(f.get("bodies", [])) & fluid]
         kw = {"msh": True, "h": mesh_size(case), "refine_faces": near}   # fine around the water, coarse elsewhere
+    kw.update(structural_refinement(case))
     _run_worker(worker_job(case, size=case["mesh"]["size"], volume=True, order=case["mesh"].get("order", 2),
                            out=str(meshdir), **kw), timeout=900)
     (meshdir / "key.txt").write_text(mesh_key(case))

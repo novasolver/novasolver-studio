@@ -13,7 +13,7 @@ from .i18n import lang_of, t
 from .store import StudioError, case_dir
 
 QUANTITIES = {
-    "structural": [("disp", "mm", "sequential"), ("vm", "MPa", "sequential"), ("uz", "mm", "diverging")],
+    "structural": [("vm", "MPa", "sequential"), ("disp", "mm", "sequential"), ("uz", "mm", "diverging")],   # stress first: what decides failure
     "thermal": [("temp", "°C", "sequential")],
     "conjugate": [("temp", "°C", "sequential"), ("speed", "m/s", "sequential")],
     "flow3d": [("speed", "m/s", "sequential"), ("p", "Pa", "sequential")],

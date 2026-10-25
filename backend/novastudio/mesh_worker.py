@@ -8,6 +8,7 @@ Faces are identified by bounding box position (x0 ... z1), never by Gmsh's inter
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -93,6 +94,264 @@ def build_external_domain(gmsh, job, bmin, bmax, keys) -> float:
     return h_far, h_body
 
 
+def import_stl(gmsh, path: str, scale: float) -> list[list[int]]:
+    """Triangulated surface (e.g. exported from Blender) -> solid: split into faces by feature angle,
+    rebuild a geometry that can be remeshed, and close it into one volume. scale converts file units to metres.
+    Returns the surfaces of each user-visible face."""
+    gmsh.merge(path)
+    if scale != 1.0:
+        gmsh.model.mesh.affineTransform([scale, 0, 0, 0, 0, scale, 0, 0, 0, 0, scale, 0])
+    gmsh.model.mesh.removeDuplicateNodes()
+    xyz = np.asarray(gmsh.model.mesh.getNodes()[1]).reshape(-1, 3)
+    remesh_flat_regions(gmsh, max_edge=0.01 * float(np.linalg.norm(np.ptp(xyz, axis=0))))
+    gmsh.model.mesh.classifySurfaces(40 * math.pi / 180, True, True, math.pi)
+    gmsh.model.mesh.createGeometry()
+    surfs = [t for _, t in gmsh.model.getEntities(2)]
+    if not surfs:
+        raise RuntimeError("NO_SOLID: the STL contains no surface")
+    groups = stl_face_groups(gmsh, surfs)
+    loop = gmsh.model.geo.addSurfaceLoop([s for g in groups for s in g])
+    gmsh.model.geo.addVolume([loop])
+    gmsh.model.geo.synchronize()
+    return groups
+
+
+def weld_vertices(xyz: np.ndarray, tris: np.ndarray, tol: float):
+    """Exporters leave vertices a fraction of a micrometre apart (the STL of a gear had 2,560 edges under 1 um).
+    The mesher then splits those needle triangles forever. Merge vertices closer than tol and drop the triangles
+    that collapse."""
+    from scipy.spatial import cKDTree
+    pairs = cKDTree(xyz).query_pairs(tol, output_type="ndarray")
+    parent = np.arange(len(xyz))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for a, b in pairs:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+    root = np.array([find(i) for i in range(len(xyz))])
+    tris = root[tris]
+    tris = tris[(tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 2] != tris[:, 0])]
+    _, first = np.unique(np.sort(tris, axis=1), axis=0, return_index=True)    # a collapse can leave twins
+    tris = tris[np.sort(first)]
+    used, tris = np.unique(tris, return_inverse=True)
+    return xyz[used], tris.reshape(-1, 3)
+
+def remesh_flat_regions(gmsh, max_edge: float, interior: float | None = None) -> None:
+    """CAD and Blender exporters triangulate flat faces into long slivers (a gear side becomes fans of near-collinear
+    triangles from the bore to the teeth). Re-parametrising those for remeshing cuts them into hundreds of thin
+    patches whose new meshes overlap. So every large flat region is re-triangulated here first, in a scratch model,
+    as a plane surface whose outline keeps the original vertices: the shape and its seams stay exactly the same."""
+    ent = gmsh.model.getEntities(2)
+    ntags, coords, _ = gmsh.model.mesh.getNodes()
+    xyz = np.asarray(coords).reshape(-1, 3)
+    idx = {int(t): i for i, t in enumerate(ntags)}
+    tris = np.concatenate([np.array([idx[int(n)] for n in nodes], dtype=np.int64).reshape(-1, 3)
+                           for _, s in ent for et, nodes in zip(*gmsh.model.mesh.getElements(2, s)[::2]) if et == 2])
+    xyz, tris = weld_vertices(xyz, tris, 1e-5 * float(np.linalg.norm(np.ptp(xyz, axis=0))))
+    ntags = np.arange(1, len(xyz) + 1)
+    nrm = np.cross(xyz[tris[:, 1]] - xyz[tris[:, 0]], xyz[tris[:, 2]] - xyz[tris[:, 0]])
+    area = 0.5 * np.linalg.norm(nrm, axis=1)
+    unit = nrm / np.maximum(2 * area, 1e-300)[:, None]
+    key = lambda p, q: (p, q) if p < q else (q, p)
+    owner = {}
+    for t, (a, b, c) in enumerate(tris):
+        for p, q in ((a, b), (b, c), (c, a)):
+            owner.setdefault(key(int(p), int(q)), []).append(t)
+    parent = list(range(len(tris)))
+
+    def find(t):
+        while parent[t] != t:
+            parent[t] = parent[parent[t]]
+            t = parent[t]
+        return t
+    # STL coordinates are float32, so the normals of slivers are noisy. Two neighbours are coplanar when the far
+    # vertex of the worse-shaped one lies on the plane of the better-shaped one (float32 noise is ~1e-8 of the size,
+    # the step between facets of a curved face is far larger than the 1e-6 tolerance).
+    l2 = sum(np.sum((xyz[tris[:, i]] - xyz[tris[:, (i + 1) % 3]]) ** 2, axis=1) for i in range(3))
+    quality = 4 * np.sqrt(3) * area / np.maximum(l2, 1e-300)
+    tol = 1e-6 * float(np.linalg.norm(np.ptp(xyz, axis=0)))
+    cos1 = math.cos(math.radians(1))
+    for (p, q), ts in owner.items():
+        if len(ts) != 2:
+            continue
+        a, b = sorted(ts, key=lambda t: -quality[t])        # a = better shaped
+        far = [x for x in tris[b] if x != p and x != q][0]
+        # a folded sliver (normal flipped: the exporter's triangulation overlaps itself) still belongs to the
+        # flat face; the re-triangulation below removes the fold
+        if abs(np.dot(xyz[far] - xyz[p], unit[a])) < tol and (abs(np.dot(unit[a], unit[b])) > cos1 and (np.dot(unit[a], unit[b]) > 0 or quality[b] < 0.05)):
+            parent[find(a)] = find(b)
+    regions = {}
+    for t in range(len(tris)):
+        regions.setdefault(find(t), []).append(t)
+    new_xyz = [p for p in xyz]
+    keep = np.ones(len(tris), bool)
+    added = []
+    big = [m for m in regions.values() if area[m].sum() > 50 * max_edge ** 2]
+    for members in big:
+        n = unit[max(members, key=lambda t: area[t])]
+        folded = bool(np.any(unit[members] @ n < 0))
+        if not folded and float(np.median(quality[members])) >= 0.2:
+            continue                                     # already well shaped: leave the exporter's triangles alone
+        mset = set(members)
+        # outline = edges used once inside the region, oriented as in the region's triangles
+        nxt = {}
+        for t in members:
+            a, b, c = (int(x) for x in tris[t])
+            for p, q in ((a, b), (b, c), (c, a)):
+                if sum(1 for o in owner[key(p, q)] if o in mset) == 1:
+                    nxt[p] = q
+        loops, seen = [], set()
+        for s0 in nxt:
+            if s0 in seen:
+                continue
+            loop, v = [], s0
+            while v not in seen:
+                seen.add(v); loop.append(v); v = nxt.get(v, s0)
+            loops.append(loop)
+        e1 = np.cross(n, [1, 0, 0] if abs(n[0]) < 0.9 else [0, 1, 0]); e1 /= np.linalg.norm(e1)
+        e2 = np.cross(n, e1)
+        o = xyz[loops[0][0]]
+        uv = lambda i: (float(np.dot(xyz[i] - o, e1)), float(np.dot(xyz[i] - o, e2)))
+
+        def signed_area(loop):
+            p = np.array([uv(i) for i in loop])
+            return 0.5 * float(np.sum(p[:, 0] * np.roll(p[:, 1], -1) - np.roll(p[:, 0], -1) * p[:, 1]))
+        loops.sort(key=lambda l: -abs(signed_area(l)))
+        cur = gmsh.model.getCurrent()
+        gmsh.model.add("_flat")
+        try:
+            ptag, curve_loops = {}, []
+            for loop in loops:
+                for i in loop:
+                    ptag[i] = gmsh.model.geo.addPoint(*uv(i), 0)
+                lines = [gmsh.model.geo.addLine(ptag[loop[k]], ptag[loop[(k + 1) % len(loop)]]) for k in range(len(loop))]
+                curve_loops.append(gmsh.model.geo.addCurveLoop(lines))
+            surf = gmsh.model.geo.addPlaneSurface(curve_loops)
+            gmsh.model.geo.synchronize()
+            for _, c in gmsh.model.getEntities(1):
+                gmsh.model.mesh.setTransfiniteCurve(c, 2)      # keep the outline vertices exactly
+            saved = {name: gmsh.option.getNumber(name) for name in ("Mesh.MeshSizeMax", "Mesh.MeshSizeMin",
+                                                          "Mesh.MeshSizeExtendFromBoundary", "Mesh.MeshSizeFromPoints")}
+            # interior at max_edge: do not let the fine outline spacing spread inwards
+            gmsh.option.setNumber("Mesh.MeshSizeMax", interior or max_edge)
+            gmsh.option.setNumber("Mesh.MeshSizeMin", 0)
+            gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+            gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+            try:
+                gmsh.model.mesh.generate(2)
+            finally:
+                for name, val in saved.items():
+                    gmsh.option.setNumber(name, val)
+            back = {}
+            for i, pt in ptag.items():
+                back[int(gmsh.model.mesh.getNodes(0, pt)[0][0])] = i
+            tn, tc, _ = gmsh.model.mesh.getNodes(2, surf)
+            for k, t_ in enumerate(tn):
+                u_, v_ = tc[3 * k], tc[3 * k + 1]
+                back[int(t_)] = len(new_xyz)
+                new_xyz.append(o + u_ * e1 + v_ * e2)
+            _, _, enodes = gmsh.model.mesh.getElements(2, surf)
+            if not enodes:
+                raise RuntimeError(f"flat face remesh failed: {len(members)} triangles, loops {[len(l) for l in loops]}, area {area[members].sum():.3g}")
+            ft = np.array([back[int(x)] for x in enodes[0]], dtype=np.int64).reshape(-1, 3)
+        finally:
+            gmsh.model.remove()
+            gmsh.model.setCurrent(cur)
+        pts = np.array(new_xyz)
+        fn = np.cross(pts[ft[:, 1]] - pts[ft[:, 0]], pts[ft[:, 2]] - pts[ft[:, 0]])
+        flip = fn @ n < 0
+        ft[flip] = ft[flip][:, ::-1]
+        keep[members] = False
+        added.append(ft)
+    tris = np.concatenate([tris[keep]] + added)
+    used, tris = np.unique(tris, return_inverse=True)          # drop vertices no triangle uses any more
+    allp = np.array(new_xyz)[used]
+    gmsh.model.removeEntities(ent)
+    s = gmsh.model.addDiscreteEntity(2)
+    gmsh.model.mesh.addNodes(2, s, list(range(1, len(allp) + 1)), allp.ravel().tolist())
+    gmsh.model.mesh.addElementsByType(s, 2, [], (tris.ravel() + 1).tolist())
+
+def surface_triangles(gmsh, tag: int):
+    """Node tags (sorted), their coordinates and the triangles (as indices into them) of one surface's mesh."""
+    ntags, coords, _ = gmsh.model.mesh.getNodes(2, tag, includeBoundary=True)
+    ntags = np.asarray(ntags, dtype=np.int64)
+    xyz = np.asarray(coords).reshape(-1, 3)
+    order = np.argsort(ntags)
+    ntags, xyz = ntags[order], xyz[order]
+    tris = []
+    for et, nodes in zip(*gmsh.model.mesh.getElements(2, tag)[::2]):
+        npe = gmsh.model.mesh.getElementProperties(et)[3]
+        tris.append(np.asarray(nodes, dtype=np.int64).reshape(-1, npe)[:, :3])
+    tri = np.searchsorted(ntags, np.concatenate(tris)) if tris else np.zeros((0, 3), np.int64)
+    return ntags, xyz, tri
+
+
+def stl_face_groups(gmsh, surfs: list[int]) -> list[list[int]]:
+    """classifySurfaces also cuts smooth regions into patches (a face with holes is not a disk). Join patches whose
+    shared curve is flat (normals within 15 deg) so the user sees one face per CAD-like face."""
+    normal = {}                                   # surface -> (sorted node tags, summed triangle normal per node)
+    for s in surfs:
+        ntags, xyz, tri = surface_triangles(gmsh, s)
+        nv = np.cross(xyz[tri[:, 1]] - xyz[tri[:, 0]], xyz[tri[:, 2]] - xyz[tri[:, 0]])
+        acc = np.zeros_like(xyz)
+        for k in range(3):
+            np.add.at(acc, tri[:, k], nv)
+        normal[s] = (ntags, acc)
+
+    def summed(s, nodes):
+        ntags, acc = normal[s]
+        i = np.clip(np.searchsorted(ntags, nodes), 0, len(ntags) - 1)
+        return acc[i[ntags[i] == nodes]].sum(0)
+    parent = {s: s for s in surfs}
+
+    def find(s):
+        while parent[s] != s:
+            parent[s] = parent[parent[s]]
+            s = parent[s]
+        return s
+    for _, c in gmsh.model.getEntities(1):
+        up, _ = gmsh.model.getAdjacencies(1, c)
+        up = [int(u) for u in up if int(u) in normal]
+        if len(up) != 2:
+            continue
+        cn = np.asarray(gmsh.model.mesh.getNodes(1, c, includeBoundary=True)[0], dtype=np.int64)
+        na, nb = summed(up[0], cn), summed(up[1], cn)
+        la, lb = np.linalg.norm(na), np.linalg.norm(nb)
+        if la and lb and np.dot(na, nb) / la / lb > np.cos(np.radians(15)):
+            parent[find(up[0])] = find(up[1])
+    groups = {}
+    for s in surfs:
+        groups.setdefault(find(s), []).append(s)
+    return sorted((sorted(g) for g in groups.values()), key=lambda g: g[0])
+
+def face_area_centroid(gmsh, tag: int, discrete: bool):
+    """Area [m2] and centroid of a face: exact from the CAD kernel, or from its triangles for STL input."""
+    if not discrete:
+        return gmsh.model.occ.getMass(2, tag), list(gmsh.model.occ.getCenterOfMass(2, tag))
+    _, xyz, tri = surface_triangles(gmsh, tag)
+    a, b, c = xyz[tri[:, 0]], xyz[tri[:, 1]], xyz[tri[:, 2]]
+    ar = 0.5 * np.linalg.norm(np.cross(b - a, c - a), axis=1)
+    area = float(ar.sum())
+    return area, ((ar[:, None] * (a + b + c) / 3).sum(0) / area).tolist() if area > 0 else [0.0, 0.0, 0.0]
+
+def body_volume_centroid(gmsh, tag: int, discrete: bool):
+    """Volume [m3] and centroid of a body; for STL input from its closed surface (divergence theorem)."""
+    if not discrete:
+        return gmsh.model.occ.getMass(3, tag), list(gmsh.model.occ.getCenterOfMass(3, tag))
+    vol, acc = 0.0, np.zeros(3)
+    for _, s in gmsh.model.getBoundary([(3, tag)], oriented=True):
+        _, xyz, tri = surface_triangles(gmsh, abs(s))
+        a, b, c = xyz[tri[:, 0]], xyz[tri[:, 1]], xyz[tri[:, 2]]
+        v = np.einsum("ij,ij->i", a, np.cross(b, c)) / 6 * (1 if s > 0 else -1)
+        vol += float(v.sum())
+        acc += (v[:, None] * (a + b + c) / 4).sum(0)
+    return float(abs(vol)), (acc / vol).tolist() if vol else [0.0, 0.0, 0.0]
+
 def main(job_path: str) -> None:
     import gmsh
 
@@ -106,41 +365,55 @@ def main(job_path: str) -> None:
         keys = {}
         face_info = []
         if job["kind"] == "import":
-            gmsh.option.setString("Geometry.OCCTargetUnit", "M")     # CAD units -> metres
-            gmsh.model.occ.importShapes(job["file"])
-            n_before = len(gmsh.model.occ.getEntities(3))
-            gmsh.model.occ.healShapes()
-            if len(gmsh.model.occ.getEntities(3)) < n_before:
-                # healing can destroy valid single-face solids (e.g. a sphere): fall back to the raw import
-                gmsh.model.occ.remove(gmsh.model.occ.getEntities(), recursive=True)
+            stl = job["file"].lower().endswith(".stl")
+            if stl:
+                groups = import_stl(gmsh, job["file"], float(job.get("stl_scale", 1e-3)))
+            else:
+                gmsh.option.setString("Geometry.OCCTargetUnit", "M")     # CAD units -> metres
                 gmsh.model.occ.importShapes(job["file"])
-            vols = gmsh.model.occ.getEntities(3)
-            if not vols:
-                raise RuntimeError("NO_SOLID: the file contains no closed solid body")
-            if len(vols) > 1:
-                gmsh.model.occ.fragment(vols[:1], vols[1:])          # conformal interfaces between bodies
-            gmsh.model.occ.synchronize()
+                n_before = len(gmsh.model.occ.getEntities(3))
+                gmsh.model.occ.healShapes()
+                if len(gmsh.model.occ.getEntities(3)) < n_before:
+                    # healing can destroy valid single-face solids (e.g. a sphere): fall back to the raw import
+                    gmsh.model.occ.remove(gmsh.model.occ.getEntities(), recursive=True)
+                    gmsh.model.occ.importShapes(job["file"])
+                vols = gmsh.model.occ.getEntities(3)
+                if not vols:
+                    raise RuntimeError("NO_SOLID: the file contains no closed solid body")
+                if len(vols) > 1:
+                    gmsh.model.occ.fragment(vols[:1], vols[1:])          # conformal interfaces between bodies
+                gmsh.model.occ.synchronize()
             xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(-1, -1)
             lx, ly, lz = xmax - xmin, ymax - ymin, zmax - zmin
             if job.get("domain"):
                 h, job["_hmin"] = build_external_domain(gmsh, job, np.array([xmin, ymin, zmin]), np.array([xmax, ymax, zmax]), keys)
                 bbox = [[xmin, ymin, zmin], [xmax, ymax, zmax]]
-            for n, (dim, tag) in enumerate(sorted(gmsh.model.getEntities(2), key=lambda e: e[1]), start=1):
+            if not stl:
+                groups = [[tag] for _, tag in sorted(gmsh.model.getEntities(2), key=lambda e: e[1])]
+            for n, group in enumerate(groups, start=1):
                 if job.get("domain"):
                     break
+                tag = group[0]
                 k = f"f{tag}"
-                keys[tag] = k
-                gmsh.model.addPhysicalGroup(2, [tag], tag=tag, name=k)
+                for g in group:
+                    keys[g] = k
+                gmsh.model.addPhysicalGroup(2, group, tag=tag, name=k)
                 up, _ = gmsh.model.getAdjacencies(2, tag)
-                face_info.append({"key": k, "n": n, "area": gmsh.model.occ.getMass(2, tag),
-                                  "centroid": list(gmsh.model.occ.getCenterOfMass(2, tag)),
-                                  "type": gmsh.model.getType(2, tag),
+                parts = [face_area_centroid(gmsh, g, stl) for g in group]
+                area = sum(a for a, _ in parts)
+                cen = (sum(a * np.array(c) for a, c in parts) / area).tolist() if area else parts[0][1]
+                face_info.append({"key": k, "n": n, "area": area, "centroid": cen,
+                                  "type": "Discrete" if stl else gmsh.model.getType(2, tag),
                                   "bodies": [f"b{int(v)}" for v in up], "interface": len(up) > 1})
             diag = float(np.linalg.norm([lx, ly, lz]))
             if not job.get("domain"):
-                h = diag / {"coarse": 10, "normal": 18, "fine": 30}[job.get("size", "normal")] if job.get("volume") else diag / 25
+                h = diag / {"coarse": 10, "normal": 18, "fine": 30}[job.get("size", "normal")] if job.get("volume") \
+                    else diag / (70 if stl else 25)   # STL: no curvature sizing, so the display mesh must be finer
                 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 12)
             gmsh.option.setNumber("Mesh.SecondOrderLinear", 1)   # midside nodes on straight edges (solver matches them geometrically)
+            if stl:
+                # sizing from the curvature of a discrete surface follows its facets, not the shape: very slow, no gain
+                gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
             bbox = [[xmin, ymin, zmin], [xmax, ymax, zmax]]
         else:
             lx, ly, lz = job["dims"]
@@ -186,8 +459,9 @@ def main(job_path: str) -> None:
             gmsh.model.mesh.field.setNumber(ft, "InField", fd)
             gmsh.model.mesh.field.setNumber(ft, "SizeMin", job["h"])
             gmsh.model.mesh.field.setNumber(ft, "SizeMax", h)
-            gmsh.model.mesh.field.setNumber(ft, "DistMin", job["h"] * 2)
-            gmsh.model.mesh.field.setNumber(ft, "DistMax", job["h"] * 12)
+            dmin, dmax = job.get("refine_dist") or (job["h"] * 2, job["h"] * 12)
+            gmsh.model.mesh.field.setNumber(ft, "DistMin", dmin)
+            gmsh.model.mesh.field.setNumber(ft, "DistMax", dmax)
             gmsh.model.mesh.field.setAsBackgroundMesh(ft)
             gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
             gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
@@ -198,8 +472,8 @@ def main(job_path: str) -> None:
             # one physical volume per body: gmshToFoam turns them into cellZones (b<tag>) for multi-region solvers
             for _, vt in gmsh.model.getEntities(3):
                 gmsh.model.addPhysicalGroup(3, [vt], tag=100000 + vt, name=f"b{vt}")
-            body_info = [{"key": f"b{vt}", "volume": gmsh.model.occ.getMass(3, vt),
-                          "centroid": list(gmsh.model.occ.getCenterOfMass(3, vt))} for _, vt in gmsh.model.getEntities(3)]
+            body_info = [{"key": f"b{vt}", **dict(zip(("volume", "centroid"), body_volume_centroid(gmsh, vt, stl)))}
+                         for _, vt in gmsh.model.getEntities(3)]
         else:
             gmsh.model.addPhysicalGroup(3, [t for _, t in gmsh.model.getEntities(3)], tag=100000, name="solid")
             body_info = []
@@ -210,8 +484,8 @@ def main(job_path: str) -> None:
             gmsh.model.mesh.generate(3)
             if job.get("order", 2) == 2:
                 gmsh.model.mesh.setOrder(2)
-        else:
-            gmsh.model.mesh.generate(2)
+        elif not (job["kind"] == "import" and job["file"].lower().endswith(".stl")):
+            gmsh.model.mesh.generate(2)       # an STL is shown with its own (classified) triangles: exact and instant
         if job.get("stl"):                      # body surface for snappyHexMesh (metres)
             gmsh.option.setNumber("Mesh.StlOneSolidPerSurface", 0)
             gmsh.write(job["stl"])

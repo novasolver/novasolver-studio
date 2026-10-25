@@ -127,9 +127,34 @@ def test_import_bracket_and_cross_check():
         assert abs(da - db) / db < 1e-3                                # built-in and CalculiX agree
 
 
+def test_import_stl_matches_step(tmp_path):
+    """A triangulated STL in mm (e.g. from Blender) gives the same faces and answer as the STEP it came from."""
+    import gmsh
+    stl = str(tmp_path / "bracket.stl")
+    gmsh.initialize(); gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.option.setString("Geometry.OCCTargetUnit", "MM")
+    gmsh.model.occ.importShapes(os.path.join(SAMPLES, "l_bracket.step")); gmsh.model.occ.synchronize()
+    gmsh.option.setNumber("Mesh.MeshSizeMax", 1.0)
+    gmsh.model.mesh.generate(2); gmsh.write(stl); gmsh.finalize()
+    disp = []
+    for name, path in (("l_bracket.step", os.path.join(SAMPLES, "l_bracket.step")), ("bracket.stl", stl)):
+        p = C.import_geometry("structural", name, path=path)
+        faces = p["case"]["geometry"]["faces"]
+        assert len(faces) == 9
+        bottom = min(faces, key=lambda f: f["centroid"][2]); top = max(faces, key=lambda f: f["centroid"][2])
+        assert bottom["area"] == pytest.approx(3.1215e-3, rel=1e-3)
+        C.update_case(p["case"]["case_id"], p["case"]["revision"], {f"boundaries.{bottom['key']}.role": "fixed",
+                                                                    f"boundaries.{top['key']}.role": "load",
+                                                                    f"boundaries.{top['key']}.force": "500 N",
+                                                                    f"boundaries.{top['key']}.direction": "-x"})
+        r = C.run_simulation(p["case"]["case_id"], "preview", wait_s=300)["results"]
+        disp.append({c["key"]: c["value"] for c in r["cards"]}["max_disp"])
+    assert abs(disp[1] - disp[0]) / disp[0] < 0.01
+
+
 def test_import_rejects_bad_type():
     with pytest.raises(StudioError) as e:
-        C.import_geometry("structural", "x.stl", data=b"solid x")
+        C.import_geometry("structural", "x.obj", data=b"o x")
     assert e.value.key == "err.cad_type"
 
 

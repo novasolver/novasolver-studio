@@ -327,7 +327,7 @@ export async function createSample(id: string, physics: string) {
   }
 }
 
-export const CAD_EXTENSIONS = [".step", ".stp", ".iges", ".igs", ".brep"];
+export const CAD_EXTENSIONS = [".step", ".stp", ".iges", ".igs", ".brep", ".stl"];
 
 /** Import a CAD file (raw body upload) as a new case. */
 export async function importFile(file: File, physics: "structural" | "thermal" | "flow" | "external") {

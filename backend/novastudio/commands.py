@@ -150,7 +150,7 @@ def create_case(template: str, params: dict | None = None, lang: str = "ja") -> 
     return case_payload(case["case_id"], lang)
 
 
-CAD_EXT = {".step": "step", ".stp": "step", ".iges": "iges", ".igs": "iges", ".brep": "brep", ".brp": "brep"}
+CAD_EXT = {".step": "step", ".stp": "step", ".iges": "iges", ".igs": "iges", ".brep": "brep", ".brp": "brep", ".stl": "stl"}
 MAX_CAD_BYTES = 200 * 1024 * 1024
 PHYSICS = ("structural", "thermal", "flow", "external", "conjugate")
 
