@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovaSolver Studio — 無料・オープンソースの構造・熱・流体解析ソフト（AI操作対応）</title>
+<meta name="description" content="CADを読み込んで構造・熱・流れを解く無料のオープンソース解析ソフト。結果には「実行できた・収束した・検証済み」の判定がつき、教科書の解や文献値と自動で比べます。AIアシスタント（MCP）からも操作でき、日本語・英語・中国語に対応しています。">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://novasolver.jp/studio/">
+<link rel="alternate" hreflang="ja" href="https://novasolver.jp/studio/">
+<link rel="alternate" hreflang="en" href="https://novasolver.jp/en/studio/">
+<link rel="alternate" hreflang="zh-Hans" href="https://novasolver.jp/zh/studio/">
+<link rel="alternate" hreflang="x-default" href="https://novasolver.jp/en/studio/">
+<meta property="og:title" content="NovaSolver Studio — 無料・オープンソースの構造・熱・流体解析ソフト">
+<meta property="og:description" content="CADを読み込んで構造・熱・流れを解く。結果は「検証済み」まで自動で確かめ、AIアシスタントからも操作できます。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NovaSolver">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://novasolver.jp/studio/">
+<meta property="og:image" content="https://novasolver.jp/studio/img/results-cantilever.webp">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NovaSolver Studio — 無料・オープンソースの解析ソフト">
+<meta name="twitter:description" content="構造・熱・流れを解き、結果を「検証済み」まで自動で確かめる。AIアシスタント（MCP）対応。">
+<meta name="twitter:image" content="https://novasolver.jp/studio/img/results-cantilever.webp">
+<link rel="icon" href="/favicon.ico"><link rel="icon" type="image/png" href="/favicon.png">
+<link rel="stylesheet" href="/studio/studio.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RSYX6L0L61"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-RSYX6L0L61');</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"NovaSolver Studio","applicationCategory":"EngineeringApplication",
+ "operatingSystem":"Windows 10, Windows 11","inLanguage":"ja","url":"https://novasolver.jp/studio/",
+ "description":"CADを読み込んで構造・熱・流れを解く無料のオープンソース解析ソフト。結果を参照解やメッシュ収束で自動検証し、AIアシスタント（MCP）からも操作できる。",
+ "license":"https://www.gnu.org/licenses/gpl-3.0.html","isAccessibleForFree":true,
+ "offers":{"@type":"Offer","price":"0","priceCurrency":"JPY"},
+ "downloadUrl":"https://github.com/novasolver/novasolver-studio/releases/latest",
+ "author":{"@type":"Organization","name":"NovaSolver","url":"https://novasolver.jp/"}}
+</script>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="/"><b>◆</b> NovaSolver</a>
+  <span class="note">Studio</span>
+  <nav class="lang"><a class="on" href="/studio/">日本語</a><a href="/en/studio/">English</a><a href="/zh/studio/">中文</a></nav>
+</div></header>
+
+<main>
+<div class="wrap hero">
+  <span class="badge">プレビュー版 v0.1 ・ 無料 ・ オープンソース（GPL-3.0）</span>
+  <h1>CADを読み込んで、構造・熱・流れを解く。<br>答えが正しいかまで、自動で確かめる。</h1>
+  <p class="lead">NovaSolver Studio は、パソコンの中で動く解析ソフトです。テンプレートかCADファイルから始めて、数クリックで解けます。結果には「実行できた → 収束した → 検証済み」の判定がつき、AIアシスタントに頼んで操作することもできます。</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases/latest">Windows版をダウンロード</a>
+    <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">GitHubでソースを見る</a>
+  </div>
+  <div class="shot"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" alt="片持ち梁の解析結果。先端たわみ0.9748 mm、手計算0.9831 mmとの差−0.8%で検証済み"></div>
+</div>
+
+<section><div class="wrap">
+  <h2>「動いた」ではなく「検証済み」まで</h2>
+  <p class="sub">解析ソフトの答えは、メッシュや条件しだいで簡単に間違います。Studio は結果ごとに3段階で判定します。</p>
+  <div class="gates"><span class="gate ok">✓ 実行できた</span>→<span class="gate ok">✓ 収束した</span>→<span class="gate ok">✓ 検証済み</span></div>
+  <div class="grid">
+    <div class="card"><h3>教科書の解と自動で比較</h3><p>梁のたわみ、応力集中、フィンの放熱、管内流れ、球の抗力などを、解析解や文献値と比べます。</p></div>
+    <div class="card"><h3>自分の形状はメッシュ収束で確認</h3><p>理論解のない形状は、メッシュを3段階に変えて解き、答えの不確かさ（GCI）が5%以下かを確かめます。</p></div>
+    <div class="card"><h3>危ない結果には警告</h3><p>たとえば材料の降伏応力を超えたら「この線形解析の結果は成り立たない」と知らせます。</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>解けるもの</h2>
+  <p class="sub">CADファイル（STEP・IGES・BREP）を読み込み、面をクリックして条件を決めます。</p>
+  <table>
+    <thead><tr><th>解析</th><th>使い道の例</th><th>使うソルバ</th></tr></thead>
+    <tbody>
+      <tr><td>構造（静解析）</td><td>ブラケットの強度、たわみ、応力集中</td><td>内蔵FEM（数秒）・CalculiX</td></tr>
+      <tr><td>熱（定常熱伝導）</td><td>ヒートシンク、断熱、フィン</td><td>内蔵FEM・CalculiX</td></tr>
+      <tr><td>流れ（内部流れ）</td><td>配管の圧力損失、流量</td><td>OpenFOAM®</td></tr>
+      <tr><td>物体まわりの流れ</td><td>抗力・揚力、風・水の当たり方</td><td>OpenFOAM®（壁面層つきメッシュ）</td></tr>
+      <tr><td>水冷（熱連成）</td><td>冷却板、水路で冷やす部品の温度</td><td>OpenFOAM®（流体と固体を同時に解く）</td></tr>
+    </tbody>
+  </table>
+  <div class="two" style="margin-top:28px">
+    <img src="/studio/img/heatsink-boundaries.webp" width="1280" height="800" loading="lazy" alt="ヒートシンクの27面をまとめて熱伝達に設定している画面">
+    <img src="/studio/img/elbow-flow.webp" width="1280" height="800" loading="lazy" alt="90度エルボ管の流速分布。曲がりの後で流れが外側に寄る">
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>標準問題で答え合わせ済み</h2>
+  <p class="sub">プレビュー版の時点で、次の問題を参照解と比べて確認しています。</p>
+  <table>
+    <thead><tr><th>問題</th><th>参照解</th><th>Studio の答え</th><th>差</th></tr></thead>
+    <tbody>
+      <tr><td>片持ち梁の先端たわみ</td><td>梁理論（せん断補正つき）</td><td class="num">0.9748 mm</td><td class="num ok">−0.85%</td></tr>
+      <tr><td>穴あき板の応力集中</td><td>Heywood の式 Kt = 2.512</td><td class="num">2.527</td><td class="num ok">+0.6%</td></tr>
+      <tr><td>熱伝導ブロックの熱量</td><td>フーリエの法則 40 W</td><td class="num">40.000 W</td><td class="num ok">0.00%</td></tr>
+      <tr><td>冷却フィンの放熱量</td><td>フィン理論 5.066 W</td><td class="num">5.064 W</td><td class="num ok">−0.05%</td></tr>
+      <tr><td>キャビティ流れ（Re=100）</td><td>Ghia ら（1982）</td><td class="num">中心線 u の平均差</td><td class="num ok">0.12%</td></tr>
+      <tr><td>平行平板の流れ</td><td>ポアズイユ流れ</td><td class="num">出口中央の流速</td><td class="num ok">−0.23%</td></tr>
+      <tr><td>球の抗力（Re=100）</td><td>Schiller–Naumann Cd = 1.092</td><td class="num">1.095</td><td class="num ok">+0.3%</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<section><div class="wrap two">
+  <div>
+    <h2>AIアシスタントに頼んで解く</h2>
+    <p class="sub">MCP（Model Context Protocol）に対応しています。Claude などに「この形状の底面を固定して、上面に500 Nかけて。検証済みかも教えて」と頼むと、AIが条件を設定して解き、結果を報告します。AIの操作は画面にもそのまま映るので、人が確認できます。</p>
+    <p class="note">汎用のコマンド実行ツールは持たせていません。AIはソルバの設定ファイルを直接書かず、確かめられた入力欄だけを埋めます。</p>
+  </div>
+  <img src="/studio/img/results-cantilever-en.webp" width="1280" height="800" loading="lazy" alt="英語表示の結果画面。検証済みでも降伏応力超えの警告を出している">
+</div></section>
+
+<section><div class="wrap">
+  <h2>はじめかた（Windows）</h2>
+  <ol class="steps">
+    <li><a href="https://github.com/novasolver/novasolver-studio/releases/latest">GitHub Releases</a> から zip をダウンロードして展開します（インストール不要）。</li>
+    <li><code>NovaSolverStudio.exe</code> をダブルクリックすると、ブラウザに画面が開きます。</li>
+    <li>構造と熱は、そのまま解けます（内蔵ソルバと CalculiX を同梱）。</li>
+    <li>流れの解析には OpenFOAM®（ESI版 Windows パッケージ、約200 MB）を <code>%LOCALAPPDATA%\NovaSolverStudio\solvers\openfoam</code> に入れます。管理者権限は不要です。</li>
+  </ol>
+  <p class="note">プレビュー版のためコード署名はまだありません。Windows の警告が出たら「詳細情報 → 実行」で起動できます。zip の SHA-256 は Releases ページに載せています。</p>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <p>NovaSolver Studio は GPL-3.0 で公開しています。呼び出すソルバ（OpenFOAM®・CalculiX・Gmsh）はそれぞれのライセンスに従います。</p>
+  <p>This offering is not approved or endorsed by OpenCFD Limited, producer and distributor of the OpenFOAM software via www.openfoam.com, and owner of the OPENFOAM® and OpenCFD® trade marks.</p>
+  <p><a href="/">NovaSolver トップ</a> ・ <a href="/1d/">NovaSolver 1D</a> ・ <a href="/tools/">シミュレーター一覧</a></p>
+</div></footer>
+</body>
+</html>

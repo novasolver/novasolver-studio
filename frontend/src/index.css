@@ -1,0 +1,441 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ==========================================================================
+   Design tokens — DESIGN.md §2.4 (v2, 2026-10-25).
+   Roles, not swatches. Neutrals are near-zero chroma (hue ≈ 264–286).
+   The accent (cyan) is reserved for focus, the current step number, viewport
+   selection/hover, slider fill, links and at most one primary action per view.
+   Status colours (green / orange / red) are for text, icons and tints only.
+   Every text tier passes 4.5:1 on its ground (see .claude/skills/studio-ui).
+   ========================================================================== */
+:root {
+  /* light (default) */
+  --bg: #f7f7f8; /* chrome: top bar, step list, properties panel, status bar */
+  --surface: #ffffff; /* resting cards, recent list */
+  --field: #ffffff; /* input fill */
+  --raised: #f0f0f2; /* segmented track, read-only value wells, kbd */
+  --sunken: #efeff1; /* illustration wells */
+  --overlay: #ffffff; /* menus, popovers, palette (the only surfaces with shadow) */
+  --thumb: #ffffff; /* segmented thumb */
+  --hover: rgba(24, 24, 27, 0.045);
+  --active: rgba(24, 24, 27, 0.07);
+  --line: #e4e4e7;
+  --line-strong: #d4d4d8;
+  --field-hover: #b4b4bb;
+  --text: #18181b;
+  --text-2: #55585f;
+  --text-3: #64676f;
+
+  --accent: #22d3ee; /* data / fills on dark grounds */
+  --accent-fill: #0891b2; /* graphical fills on light grounds (3:1) */
+  --accent-text: #0e7490; /* links / accent ink on light (5.36:1) */
+  --accent-soft: rgba(8, 145, 178, 0.1);
+  --focus: #0e7490;
+  --selection: rgba(8, 145, 178, 0.22);
+
+  --primary: #18181b;
+  --primary-ink: #ffffff;
+
+  --green: #047857;
+  --green-soft: #ecfdf3;
+  --green-line: #a7f3d0;
+  --orange: #b45309;
+  --orange-soft: #fffbeb;
+  --orange-line: #fde68a;
+  --orange-fill: #f59e0b; /* graphical marks only (dots, unassigned faces) */
+  --red: #c4242a;
+  --red-soft: #ffedea;
+  --red-line: #fecaca;
+
+  --shadow-float: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px -12px rgba(16, 24, 40, 0.18);
+  --shadow-overlay: 0 1px 2px rgba(16, 24, 40, 0.06), 0 12px 32px -8px rgba(16, 24, 40, 0.22), 0 0 0 1px rgba(16, 24, 40, 0.06);
+
+  /* viewport (theme-matched) + HUD floating on it */
+  --vp-top: #f4f5f7;
+  --vp-bottom: #e3e5e9;
+  --hud: rgba(255, 255, 255, 0.88);
+  --hud-ring: inset 0 0 0 1px rgba(24, 24, 27, 0.07);
+  --hud-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px -12px rgba(16, 24, 40, 0.18);
+  --hud-line: rgba(24, 24, 27, 0.09);
+
+  /* motion */
+  --dur-1: 100ms;
+  --dur-2: 160ms;
+  --dur-3: 220ms;
+  --dur-camera: 450ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark {
+  --bg: #111214;
+  --surface: #17181b;
+  --field: #17181b;
+  --raised: #17181b;
+  --sunken: #0c0d0f;
+  --overlay: #1d1e22;
+  --thumb: #26272c;
+  --hover: rgba(255, 255, 255, 0.04);
+  --active: rgba(255, 255, 255, 0.07);
+  --line: #222327;
+  --line-strong: #2e3035;
+  --field-hover: #43454c;
+  --text: #ececee;
+  --text-2: #a0a3ab;
+  --text-3: #868993;
+
+  --accent: #22d3ee;
+  --accent-fill: #22d3ee;
+  --accent-text: #67e8f9;
+  --accent-soft: rgba(34, 211, 238, 0.12);
+  --focus: #22d3ee;
+  --selection: rgba(34, 211, 238, 0.25);
+
+  --primary: #ececee;
+  --primary-ink: #111214;
+
+  --green: #3fc07a;
+  --green-soft: #172a1d;
+  --green-line: rgba(63, 192, 122, 0.25);
+  --orange: #f5a524;
+  --orange-soft: #2a2112;
+  --orange-line: rgba(245, 165, 36, 0.25);
+  --orange-fill: #f5a524;
+  --red: #e5566f;
+  --red-soft: #2c1a20;
+  --red-line: rgba(229, 86, 111, 0.28);
+
+  --shadow-float: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-overlay: 0 12px 32px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+
+  --vp-top: #1a1c20;
+  --vp-bottom: #0e0f11;
+  --hud: color-mix(in oklch, #17181b 88%, transparent);
+  --hud-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --hud-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --hud-line: rgba(255, 255, 255, 0.08);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-field: var(--field);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-overlay: var(--overlay);
+  --color-thumb: var(--thumb);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-hud-line: var(--hud-line);
+  --color-fg: var(--text);
+  --color-fg-2: var(--text-2);
+  --color-fg-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-red: var(--red);
+  --color-red-soft: var(--red-soft);
+  --color-red-line: var(--red-line);
+  --color-orange: var(--orange);
+  --color-orange-soft: var(--orange-soft);
+  --color-orange-line: var(--orange-line);
+  --color-orange-fill: var(--orange-fill);
+  --color-green: var(--green);
+  --color-green-soft: var(--green-soft);
+  --color-green-line: var(--green-line);
+  --shadow-float: var(--shadow-float);
+  --shadow-overlay: var(--shadow-overlay);
+  --font-sans: "Inter", "Noto Sans JP", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* Type scale: 11 / 12 / 13 / 14 / 16 / 20 / 24. Weights 400 / 500 / 600 only. */
+@theme {
+  --text-micro: 11px;
+  --text-micro--line-height: 16px;
+  --text-micro--letter-spacing: 0.005em;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-label--letter-spacing: 0em;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-body--letter-spacing: -0.003em;
+  --text-em: 14px;
+  --text-em--line-height: 20px;
+  --text-em--letter-spacing: -0.006em;
+  --text-kpi: 16px;
+  --text-kpi--line-height: 20px;
+  --text-kpi--letter-spacing: -0.011em;
+  --text-lead: 20px;
+  --text-lead--line-height: 24px;
+  --text-lead--letter-spacing: -0.017em;
+  --text-page: 24px;
+  --text-page--line-height: 32px;
+  --text-page--letter-spacing: -0.019em;
+}
+
+html:lang(zh-Hans) {
+  --font-sans: "Inter", "Noto Sans SC", "Noto Sans JP", system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  letter-spacing: -0.003em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01";
+  caret-color: var(--focus);
+  overflow: hidden;
+}
+
+html:lang(zh-Hans) body {
+  font-family: "Inter", "Noto Sans SC", "Noto Sans JP", system-ui, sans-serif;
+}
+
+/* ---- CJK typography -------------------------------------------------------
+   Never track CJK; 12 px is the floor; paragraphs get 1.65 line height. */
+:lang(ja),
+:lang(zh) {
+  letter-spacing: 0 !important;
+}
+:lang(ja) .text-micro,
+:lang(zh) .text-micro {
+  font-size: 12px;
+}
+:lang(ja) .text-page,
+:lang(ja) .text-em.font-semibold,
+:lang(ja) .text-lead {
+  font-feature-settings: "cv11", "ss01", "palt";
+}
+:lang(ja),
+:lang(zh) {
+  text-spacing-trim: normal;
+  text-autospace: normal;
+}
+
+/* multi-line prose (hints, descriptions, callout bodies) */
+.prose-ui {
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+:lang(ja) .prose-ui,
+:lang(zh) .prose-ui {
+  line-height: 1.65;
+}
+/* callout body: 12.5 / 1.55 (EN), 13 / 1.65 (JA, ZH) */
+.text-callout {
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+:lang(ja) .text-callout,
+:lang(zh) .text-callout {
+  font-size: 13px;
+  line-height: 1.65;
+}
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* lucide: one stroke weight across the app */
+svg.lucide {
+  stroke-width: 1.5px;
+}
+
+/* ---- browser surfaces from the palette ----------------------------------- */
+::selection {
+  background: var(--selection);
+}
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+input:focus-visible,
+textarea:focus-visible {
+  outline-offset: -1px;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- viewport ------------------------------------------------------------- */
+.viewer-bg {
+  background: linear-gradient(to bottom, var(--vp-top), var(--vp-bottom));
+}
+
+/* the one floating surface style on the viewport */
+.hud {
+  background: var(--hud);
+  box-shadow: var(--hud-ring), var(--hud-shadow);
+  color: var(--text);
+}
+.hud-blur {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* range input: 2 px track, 12 px thumb */
+.nss-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+}
+.nss-range::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(to right, var(--accent-fill) var(--fill, 0%), var(--line-strong) var(--fill, 0%));
+}
+.nss-range::-moz-range-track {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line-strong);
+}
+.nss-range::-moz-range-progress {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent-fill);
+}
+.nss-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(24, 24, 27, 0.25);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform var(--dur-1) var(--ease-out);
+}
+.nss-range:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.nss-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(24, 24, 27, 0.25);
+}
+
+/* ---- skeleton ------------------------------------------------------------- */
+.skeleton {
+  border-radius: 4px;
+  background: var(--active);
+}
+
+/* ---- motion: opacity (and at most 2 px) only, never `all` ----------------- */
+@keyframes nss-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.anim-in {
+  animation: nss-fade-in var(--dur-2) var(--ease-out);
+}
+@keyframes nss-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.anim-rise {
+  animation: nss-rise-in var(--dur-3) var(--ease-out);
+}
+@keyframes nss-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.anim-slide {
+  animation: nss-slide-in var(--dur-3) var(--ease-out);
+}
+@keyframes nss-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+.anim-pulse {
+  animation: nss-pulse 1.4s var(--ease-in-out) infinite;
+}
+@keyframes nss-shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.anim-shimmer {
+  animation: nss-shimmer 1.6s var(--ease-in-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-in,
+  .anim-rise,
+  .anim-slide,
+  .anim-pulse,
+  .anim-shimmer {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+  }
+}

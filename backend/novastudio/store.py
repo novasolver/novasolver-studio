@@ -1,0 +1,268 @@
+"""Case storage. case.json is the single source of truth; every change bumps revision and keeps the old copy."""
+from __future__ import annotations
+
+import copy
+import json
+import os
+import re
+import secrets
+import time
+from pathlib import Path
+
+from . import templates, units
+from .config import workspace
+
+
+class StudioError(Exception):
+    """Error with a message key so the caller can localize it and tell the model what to fix."""
+
+    def __init__(self, key: str, status: int = 400, **kw):
+        super().__init__(key)
+        self.key, self.status, self.kw = key, status, kw
+
+
+_ID = re.compile(r"^c_[0-9a-z_]{4,40}$")
+
+
+def cases_dir() -> Path:
+    return workspace() / "cases"
+
+
+def case_dir(case_id: str) -> Path:
+    if not _ID.match(case_id or ""):
+        raise StudioError("err.not_found", 404, case_id=case_id)
+    d = (cases_dir() / case_id).resolve()
+    if d.parent != cases_dir().resolve():          # path confinement
+        raise StudioError("err.not_found", 404, case_id=case_id)
+    if not (d / "case.json").is_file():
+        raise StudioError("err.not_found", 404, case_id=case_id)
+    return d
+
+
+def new_id() -> str:
+    return "c_" + time.strftime("%Y%m%d_%H%M%S") + "_" + secrets.token_hex(2)
+
+
+def _write_json(path: Path, data) -> None:
+    """Atomic write. On Windows the final rename fails while another process has the file open for reading
+    (GUI polling, MCP job_status), so retry briefly instead of failing the job."""
+    tmp = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    for attempt in range(60):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            time.sleep(0.05 * (1 + attempt % 5))
+    os.replace(tmp, path)
+
+
+def create(template_id: str) -> dict:
+    try:
+        templates.get(template_id)
+    except KeyError:
+        raise StudioError("err.path", 400, path=f"template={template_id}")
+    cid = new_id()
+    d = cases_dir() / cid
+    (d / "revisions").mkdir(parents=True)
+    case = templates.new_case(template_id, cid)
+    case["provenance"]["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    _write_json(d / "case.json", case)
+    return case
+
+
+def load(case_id: str) -> dict:
+    return json.loads((case_dir(case_id) / "case.json").read_text(encoding="utf-8"))
+
+
+def save(case: dict, bump: bool = True) -> dict:
+    d = case_dir(case["case_id"])
+    if bump:
+        old = load(case["case_id"])
+        _write_json(d / "revisions" / f"{old['revision']}.json", old)
+        case["revision"] = old["revision"] + 1
+    _write_json(d / "case.json", case)
+    return case
+
+
+def list_all() -> list[dict]:
+    out = []
+    for d in sorted(cases_dir().glob("c_*"), reverse=True):
+        f = d / "case.json"
+        if f.is_file():
+            c = json.loads(f.read_text(encoding="utf-8"))
+            tp = templates.TEMPLATES.get(c["template"], {})
+            out.append({"case_id": c["case_id"], "template": c["template"], "title": c["title"], "revision": c["revision"],
+                        "physics": tp.get("physics"), "source_file": c["geometry"].get("name")})
+    return out
+
+
+def delete(case_id: str) -> int:
+    import shutil
+    d = case_dir(case_id)
+    size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+    shutil.rmtree(d)
+    return size
+
+
+# ---------------------------------------------------------------- editing
+
+def editable_paths(case: dict) -> list[str]:
+    tp = templates.get(case["template"])
+    paths = [p for p, *_ in tp["params"]]
+    paths += ["mesh.size", "run.mode"]
+    if "flow" in case:
+        paths += ["flow.speed", "flow.direction"]
+    for b in case.get("bodies", {}):
+        paths += [f"bodies.{b}.role", f"bodies.{b}.material"]
+    mats = case["materials"]
+    if "solid" in mats:
+        paths += ["materials.solid.preset", "materials.solid.E", "materials.solid.nu", "materials.solid.sy",
+                  "materials.solid.k"]
+    if "fluid" in mats:
+        paths += ["materials.fluid.preset", "materials.fluid.nu"]
+    for face in templates.face_keys(case):
+        if face in tp["locked_faces"]:
+            continue
+        paths.append(f"boundaries.{face}.role")
+        paths += [f"boundaries.{face}.{k}" for k in templates.VALUE_FIELDS]
+    return sorted(set(paths))
+
+
+ENUMS = {
+    "mesh.size": ["coarse", "normal", "fine"],
+    "run.mode": ["preview", "final"],
+    "flow.direction": ["+x", "-x", "+y", "-y", "+z", "-z"],
+}
+
+GEOM_KEYS = ("geometry.", "mesh.")
+
+
+def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
+    """Apply {dotted.path: value}. Returns (new_case, diff). Raises StudioError with a fixable message."""
+    tp = templates.get(case["template"])
+    allowed = set(editable_paths(case))
+    new = copy.deepcopy(case)
+    diff = []
+    # roles first, so that values sent in the same call land on the new role
+    ordered = sorted(changes.items(), key=lambda kv: 0 if kv[0].endswith(".role") else 1)
+    for path, value in ordered:
+        if path not in allowed:
+            raise StudioError("err.path", 400, path=path)
+        parts = path.split(".")
+        parent = new
+        for p in parts[:-1]:
+            parent = parent.setdefault(p, {})
+        key = parts[-1]
+        old = parent.get(key)
+        if path in ENUMS:
+            if value not in ENUMS[path]:
+                raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(ENUMS[path])})")
+            nv = value
+        elif key == "role":
+            if value not in tp["roles"] or value == "plane2d":
+                raise StudioError("err.role", 400, role=value, roles=", ".join(r for r in tp["roles"] if r != "plane2d"))
+            nv = value
+        elif parts[0] == "bodies" and key == "role":
+            if value not in ("fluid", "solid"):
+                raise StudioError("err.path", 400, path=f"{path}={value} (allowed: fluid, solid)")
+            nv = value
+        elif parts[0] == "bodies" and key == "material":
+            allowed_m = list(templates.FLUID_PROPS) if new["bodies"][parts[1]]["role"] == "fluid" else list(templates.SOLID_PROPS)
+            if value not in allowed_m:
+                raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(allowed_m)})")
+            nv = value
+        elif key == "direction":
+            if value not in templates.DIRECTIONS:
+                raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(templates.DIRECTIONS)})")
+            nv = value
+        elif key == "preset":
+            presets = templates.MATERIALS_SOLID if parts[1] == "solid" else templates.MATERIALS_FLUID
+            if value != "custom" and value not in presets:
+                raise StudioError("err.path", 400, path=f"{path}={value} (allowed: custom, {', '.join(presets)})")
+            nv = value
+            if value != "custom":
+                for k, q in presets[value].items():
+                    parent[k] = copy.deepcopy(q)
+        else:
+            if parts[0] == "boundaries":
+                role = new["boundaries"].get(parts[1], {}).get("role")
+                if key not in templates.ROLE_FIELDS.get(role, {}):
+                    raise StudioError("err.path", 400, path=f"{path} (role '{role}' has no '{key}')")
+            ref_old = old if isinstance(old, dict) else _default_quantity(path)
+            try:
+                nv = units.normalize(value, ref_old)
+                si = units.to_si(nv)
+            except (units.UnitError, TypeError, ValueError) as e:
+                raise StudioError("err.unit", 400, msg=str(e))
+            bounds = templates.bounds_si(case["template"]).get(path)
+            if bounds and not isinstance(si, list):
+                lo, hi = bounds
+                if not (lo <= si <= hi):
+                    unit = nv["unit"]
+                    raise StudioError("err.range", 400, path=path, lo=f"{units.from_si(lo, unit):g} {unit}",
+                                      hi=f"{units.from_si(hi, unit):g} {unit}")
+            if path.startswith("materials.") and parts[1] in new["materials"]:
+                new["materials"][parts[1]]["preset"] = "custom"
+        parent[key] = nv
+        diff.append({"path": path, "old": old, "new": nv})
+    normalize_boundaries(new)
+    if new.get("bodies"):
+        normalize_conjugate(new)
+    if any(d["path"].startswith(GEOM_KEYS) for d in diff):
+        new.setdefault("provenance", {})["mesh_stale"] = True
+    return new, diff
+
+
+def body_of_face(case: dict) -> dict:
+    return {f["key"]: f.get("bodies", [None])[0] for f in case["geometry"].get("faces", []) if not f.get("interface")}
+
+
+def normalize_conjugate(case: dict) -> None:
+    """Face roles must match their body: water faces take water-* roles, solid faces take thermal roles.
+    A body switched between fluid and solid gets a valid material and default face roles."""
+    for b, info in case["bodies"].items():
+        if info["role"] == "fluid" and info.get("material") not in templates.FLUID_PROPS:
+            info["material"] = "water"
+        if info["role"] == "solid" and info.get("material") not in templates.SOLID_PROPS:
+            info["material"] = "aluminium"
+    for face, body in body_of_face(case).items():
+        role = case["boundaries"].setdefault(face, {"role": "insulated"}).get("role")
+        fluid = case["bodies"].get(body, {}).get("role") == "fluid"
+        if fluid and role not in templates.CONJUGATE_FLUID_ROLES:
+            case["boundaries"][face] = {"role": "water-wall"}
+        elif not fluid and role not in templates.CONJUGATE_SOLID_ROLES:
+            case["boundaries"][face] = {"role": "insulated"}
+    normalize_boundaries(case)
+
+
+def normalize_boundaries(case: dict) -> None:
+    """Each face carries exactly the value fields its role needs (defaults filled in, others dropped)."""
+    for face, b in case["boundaries"].items():
+        want = templates.ROLE_FIELDS.get(b.get("role"), {})
+        for k in list(b):
+            if k != "role" and k not in want:
+                b.pop(k)
+        for k, default in want.items():
+            if k not in b:
+                b[k] = copy.deepcopy(default)
+
+
+def _default_quantity(path: str) -> dict:
+    key = path.rsplit(".", 1)[-1]
+    for fields in templates.ROLE_FIELDS.values():
+        if key in fields and isinstance(fields[key], dict):
+            return copy.deepcopy(fields[key])
+    if path.endswith(".nu") and "fluid" in path:
+        return {"value": 1e-6, "unit": "m2/s"}
+    if path.endswith(".nu"):
+        return {"value": 0.3, "unit": "-"}
+    if path.endswith(".E"):
+        return {"value": 200, "unit": "GPa"}
+    if path == "flow.speed":
+        return {"value": 1, "unit": "m/s"}
+    if path.endswith(".k"):
+        return {"value": 50, "unit": "W/mK"}
+    if path.endswith(".sy"):
+        return {"value": 235, "unit": "MPa"}
+    return {"value": 0, "unit": "-"}

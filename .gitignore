@@ -1,0 +1,20 @@
+# environments and builds
+.venv/
+__pycache__/
+*.pyc
+frontend/node_modules/
+frontend/dist/
+build/
+release/
+
+# local data: cases, solver packs, downloads, screenshots used during development
+workspace/
+solvers/
+frontend/screenshots/
+*.log
+
+# editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
