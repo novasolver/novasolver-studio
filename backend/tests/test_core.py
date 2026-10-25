@@ -149,7 +149,8 @@ def test_import_stl_matches_step(tmp_path):
                                                                     f"boundaries.{top['key']}.direction": "-x"})
         r = C.run_simulation(p["case"]["case_id"], "preview", wait_s=300)["results"]
         disp.append({c["key"]: c["value"] for c in r["cards"]}["max_disp"])
-    assert abs(disp[1] - disp[0]) / disp[0] < 0.01
+    # two different meshes of the same part (faceted holes, other node layout): agree within discretisation error
+    assert abs(disp[1] - disp[0]) / disp[0] < 0.02
 
 
 def test_import_rejects_bad_type():

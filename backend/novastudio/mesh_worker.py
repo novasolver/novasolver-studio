@@ -291,6 +291,83 @@ def surface_triangles(gmsh, tag: int):
     return ntags, xyz, tri
 
 
+def thin_wall_sizes(gmsh, h: float, n_through: float, flip: set | None = None):
+    """Local wall thickness from the (outward-oriented) surface triangles: for each sampled triangle, the nearest
+    triangle on an opposite-facing wall straight behind it. Returns (points, sizes) where a thin wall needs a size
+    below h so that n_through elements fit across it (a 1.2 mm fin, a 5 mm spanner handle), or None."""
+    from scipy.spatial import cKDTree
+    ntags, coords, _ = gmsh.model.mesh.getNodes()
+    if len(ntags) == 0:
+        return None
+    xyz = np.asarray(coords).reshape(-1, 3)
+    order = np.argsort(ntags)
+    tags_sorted = np.asarray(ntags, dtype=np.int64)[order]
+    tris = []
+    for _, s in gmsh.model.getEntities(2):
+        for et, nodes in zip(*gmsh.model.mesh.getElements(2, s)[::2]):
+            npe = gmsh.model.mesh.getElementProperties(et)[3]
+            tt = np.asarray(nodes, dtype=np.int64).reshape(-1, npe)[:, :3]
+            tris.append(tt[:, ::-1] if flip and s in flip else tt)      # inward-meshed CAD faces turned outward
+    if not tris:
+        return None
+    tri = order[np.searchsorted(tags_sorted, np.concatenate(tris))]
+    a, b, c = xyz[tri[:, 0]], xyz[tri[:, 1]], xyz[tri[:, 2]]
+    nv = np.cross(b - a, c - a)
+    area = 0.5 * np.linalg.norm(nv, axis=1)
+    ok = area > 0
+    P, N = ((a + b + c) / 3)[ok], (nv[ok] / (2 * area[ok])[:, None])
+    step = max(1, len(P) // 40000)
+    S, SN = P[::step], N[::step]
+    thick = np.full(len(S), np.inf)
+    dirs = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]], float)
+    dirs = np.vstack([dirs, np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]) / np.sqrt(3)])
+    sbin = np.argmax(SN @ dirs.T, axis=1)
+    for k, d in enumerate(dirs):
+        mine = np.flatnonzero(sbin == k)
+        cand = np.flatnonzero(N @ d < -0.5)                # walls facing the other way
+        if len(mine) == 0 or len(cand) == 0:
+            continue
+        tree = cKDTree(P[cand])
+        dist, j = tree.query(S[mine], k=min(8, len(cand)))
+        dist, j = np.atleast_2d(dist.T).T, np.atleast_2d(j.T).T
+        q = P[cand][j]                                      # (m, k, 3)
+        v = q - S[mine][:, None, :]
+        along = -np.einsum("mkd,md->mk", v, SN[mine])       # depth behind the wall
+        lateral = np.linalg.norm(v + along[..., None] * SN[mine][:, None, :], axis=2)
+        good = (along > 0) & (lateral < 0.6 * along + 1e-12)
+        t = np.where(good, along, np.inf).min(axis=1)
+        thick[mine] = np.minimum(thick[mine], t)
+    size = np.clip(thick / n_through, h * 0.02, h)
+    keep = size < 0.9 * h
+    if keep.any():                             # edges and chamfers fake very thin "walls": floor at 0.4 x the 10th percentile
+        size = np.maximum(size, 0.4 * np.percentile(size[keep], 10))
+    if not keep.any():
+        return None
+    return S[keep], size[keep]
+
+
+def cad_inward_faces(gmsh) -> set:
+    """Surface-mesh a CAD model and return the faces whose triangles point into the solid (gmsh meshes OCC faces
+    along their own parametrisation, not necessarily outward): probe a point just off one triangle of each face."""
+    gmsh.model.mesh.generate(2)
+    xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(-1, -1)
+    eps = 1e-4 * float(np.linalg.norm([xmax - xmin, ymax - ymin, zmax - zmin]))
+    vols = [v for _, v in gmsh.model.getEntities(3)]
+    inward = set()
+    for _, s in gmsh.model.getEntities(2):
+        ntags, xyz, tri = surface_triangles(gmsh, s)
+        if len(tri) == 0:
+            continue
+        a, b, c = xyz[tri[0, 0]], xyz[tri[0, 1]], xyz[tri[0, 2]]
+        n = np.cross(b - a, c - a)
+        if not np.linalg.norm(n):
+            continue
+        p = (a + b + c) / 3 + eps * n / np.linalg.norm(n)
+        if any(gmsh.model.isInside(3, v, list(p)) for v in vols):
+            inward.add(s)
+    return inward
+
+
 def stl_face_groups(gmsh, surfs: list[int]) -> list[list[int]]:
     """classifySurfaces also cuts smooth regions into patches (a face with holes is not a disk). Join patches whose
     shared curve is flat (normals within 15 deg) so the user sees one face per CAD-like face."""
@@ -480,6 +557,26 @@ def main(job_path: str) -> None:
         gmsh.option.setNumber("Mesh.MeshSizeMax", h)
         gmsh.option.setNumber("Mesh.MeshSizeMin", job["_hmin"] * 0.5 if job.get("_hmin") else h * (0.5 if job["kind"] != "import" else 0.1))
         gmsh.option.setNumber("Mesh.Algorithm3D", 1)
+        if job.get("volume") and job.get("thin_n") and job["kind"] == "import" and not job.get("domain"):
+            # thin walls (fins, handles, ribs, plates) get enough elements across, whatever the overall size
+            flip = None
+            if not job["file"].lower().endswith(".stl"):
+                flip = cad_inward_faces(gmsh)          # CAD: mesh the surfaces once to measure, then start over
+            thin = thin_wall_sizes(gmsh, h, float(job["thin_n"]), flip)
+            if flip is not None:
+                gmsh.model.mesh.clear()
+            if thin is not None:
+                from scipy.spatial import cKDTree
+                pts, sz = thin
+                tree = cKDTree(pts)
+                kk = min(8, len(pts))
+                job["thin_min_mm"] = float(sz.min() * 1e3)
+                gmsh.option.setNumber("Mesh.MeshSizeMin", min(gmsh.option.getNumber("Mesh.MeshSizeMin"), float(sz.min()) * 0.5))
+
+                def size_cb(dim, tag, x, y, z, lc):
+                    d, j = tree.query((x, y, z), k=kk)
+                    return float(min(lc, np.min(sz[j] + 0.5 * d)))   # grows by half the distance away from the wall
+                gmsh.model.mesh.setSizeCallback(size_cb)
         if job.get("volume"):
             gmsh.model.mesh.generate(3)
             if job.get("order", 2) == 2:

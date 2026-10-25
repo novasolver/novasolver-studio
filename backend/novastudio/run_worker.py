@@ -326,7 +326,8 @@ def run_study(req: dict, jd: Path, prog) -> dict:
             res = fn(snap, sub, sp)
         name, val, unit = primary_quantity(snap, res)
         n = res["metrics"].get("elements") or 1
-        levels.append({"size": size, "elements": n, "h": n ** (-1 / 3), "value": val, "converged": res["converged"]})
+        levels.append({"size": size, "elements": n, "h": n ** (-1 / 3), "value": val, "converged": res["converged"],
+                       "peak_vm_pa": res["metrics"].get("max_vm_pa")})
         _write_json(sub / "results.json", res)
     g = gci(levels)
     tol = 5.0
@@ -336,6 +337,13 @@ def run_study(req: dict, jd: Path, prog) -> dict:
         if (jd / "levels" / "fine" / f).is_file():
             shutil.copyfile(jd / "levels" / "fine" / f, jd / f)
     conv = {"quantity": name, "unit": unit, "levels": levels, **g, "tolerance_pct": tol, "pass": passed}
+    peaks = [l.get("peak_vm_pa") for l in levels]
+    if all(peaks):
+        # a peak that keeps rising with every refinement is a stress singularity (sharp re-entrant corner, edge of a
+        # rigid support): the displacement converges, the peak stress never will. Say so instead of hiding it.
+        rise = (peaks[2] - peaks[1]) / peaks[1]
+        conv["peak_stress"] = {"levels_pa": peaks, "rise_fine_pct": rise * 100,
+                               "singular": peaks[0] < peaks[1] < peaks[2] and rise > 0.03}
     fine["convergence"] = conv
     if not (fine.get("reference") or {}).get("applicable"):
         # no analytic reference: the mesh study is the verification (solution verification, Roache/ASME V&V 20)

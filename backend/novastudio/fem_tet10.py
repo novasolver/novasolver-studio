@@ -13,6 +13,7 @@ import scipy.sparse.linalg as spla
 
 EDGES = np.array([(0, 1), (1, 2), (0, 2), (0, 3), (1, 3), (2, 3)])
 DIRECT_LIMIT = 30000          # unknowns; above this the AMG-CG iterative solver is used
+DIRECT_FALLBACK_LIMIT = 250000   # unknowns; direct solve when AMG-CG does not converge (about 2-4 GB at this size)
 
 
 def _amg_cg(A, b, B=None, tol=1e-10):
@@ -131,7 +132,7 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
         u[free] = spla.spsolve(Kff.tocsc(), f[free])
     else:
         # large 3D problems: smoothed-aggregation AMG preconditioned CG with the rigid-body modes (low memory)
-        xyz = nodes[free // 3]
+        xyz = nodes[free // 3] - nodes.mean(axis=0)      # rotations about the centre: better-scaled near-null space
         comp = free % 3
         B = np.zeros((len(free), 6))
         B[np.arange(len(free)), comp] = 1.0
@@ -139,7 +140,15 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
         B[comp == 0, 3] = -y[comp == 0]; B[comp == 1, 3] = x[comp == 1]
         B[comp == 1, 4] = -z[comp == 1]; B[comp == 2, 4] = y[comp == 2]
         B[comp == 0, 5] = z[comp == 0]; B[comp == 2, 5] = -x[comp == 2]
-        u[free] = _amg_cg(Kff, f[free], B)
+        try:
+            u[free] = _amg_cg(Kff, f[free], B)
+        except RuntimeError:
+            # strongly graded meshes (fine around a load, coarse elsewhere) can stall AMG-CG; a direct solve is slower
+            # and uses more memory but always answers, so fall back to it while the problem still fits
+            if len(free) > DIRECT_FALLBACK_LIMIT:
+                raise
+            progress("job.solving", 0.6)
+            u[free] = spla.spsolve(Kff.tocsc(), f[free])
 
     progress("job.post", 0.85)
     reaction = K @ u - f

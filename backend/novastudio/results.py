@@ -111,6 +111,10 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
         sy_pa = units.to_si(sy)
         if m["max_vm_pa"] > sy_pa:
             warnings.append({"code": "yield", "message": t("result.yield", lang, vm=m["max_vm_pa"] / 1e6, sy=sy_pa / 1e6)})
+    ps = (r.get("convergence") or {}).get("peak_stress") or {}
+    if ps.get("singular"):
+        a, b, c = (v / 1e6 for v in ps["levels_pa"])
+        warnings.append({"code": "stress_singular", "message": t("result.stress_singular", lang, a=a, b=b, c=c)})
     return {"run_id": jd.name, "warnings": warnings, "engine": r["engine"], "mode": r["mode"], "revision": r.get("revision"),
             "stale": r.get("revision") != case["revision"], "wall_s": r.get("wall_s"),
             "gates": gates, "gates_detail": gates_detail, "cards": cards, "verification": verification,

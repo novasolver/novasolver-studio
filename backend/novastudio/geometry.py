@@ -33,7 +33,7 @@ def dims(case: dict) -> list[float]:
     raise ValueError(kind)
 
 
-MESHER_VERSION = 6          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
+MESHER_VERSION = 7          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
 
 
 def _canon(o):
@@ -134,6 +134,10 @@ def mesh_dir(case: dict) -> Path:
 
 
 LOAD_ROLES = ("load", "pressure")
+# elements across the thinnest wall of an imported solid: bending needs more than conduction; the three sizes keep a
+# 1.5 ratio so the convergence study refines thin walls too
+THIN_THROUGH = {"import-structural": 2.0, "import-thermal": 1.2}
+THIN_LEVEL = {"coarse": 0.67, "normal": 1.0, "fine": 1.5}
 REFINE_DIVS = {"coarse": 60, "normal": 100, "fine": 160}     # element size near loaded faces = diagonal / this
 
 
@@ -167,6 +171,8 @@ def generate_mesh(case: dict) -> dict:
         near = [f["key"] for f in case["geometry"]["faces"] if set(f.get("bodies", [])) & fluid]
         kw = {"msh": True, "h": mesh_size(case), "refine_faces": near}   # fine around the water, coarse elsewhere
     kw.update(structural_refinement(case))
+    if case["template"] in THIN_THROUGH:          # imported solids: enough elements across thin walls
+        kw["thin_n"] = THIN_THROUGH[case["template"]] * THIN_LEVEL[case["mesh"]["size"]]
     _run_worker(worker_job(case, size=case["mesh"]["size"], volume=True, order=case["mesh"].get("order", 2),
                            out=str(meshdir), **kw), timeout=900)
     (meshdir / "key.txt").write_text(mesh_key(case))

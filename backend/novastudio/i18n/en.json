@@ -108,6 +108,7 @@
   "err.no_results": "No results yet. Call run_simulation first.",
   "err.mesh": "Mesh generation failed: {detail}",
   "err.solver": "The solver failed: {detail}",
+  "result.stress_singular": "The peak stress keeps rising as the mesh is refined ({a:.0f} → {b:.0f} → {c:.0f} MPa). It is probably at a sharp corner or at the edge of a rigid support, where the stress is theoretically infinite. The displacement can be trusted, this peak value cannot: model the real fillet, or judge by the stress a little away from that spot.",
   "result.yield": "Max von Mises stress {vm:.0f} MPa exceeds the typical yield strength {sy:.0f} MPa. The part would deform plastically, so this linear elastic result does not hold.",
   "err.range": "{path} must be between {lo} and {hi}.",
   "pos.left": "left",
