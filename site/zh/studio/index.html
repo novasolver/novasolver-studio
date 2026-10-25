@@ -3,24 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NovaSolver Studio — 免费开源的结构、传热与流体仿真软件（支持 AI 操作）</title>
-<meta name="description" content="免费开源的仿真软件：导入 CAD，求解结构、传热和流动问题。每个结果都标注“已运行、已收敛、已验证”，并自动与教科书解和文献值比较。支持通过 MCP 由 AI 助手操作，提供中文、日文和英文界面。">
+<title>NovaSolver Studio — 用 AI 画出来，再验证强度：面向 AI 工程设计的免费仿真软件</title>
+<meta name="description" content="用 AI 画出形状，在 Blender 中建模，再用 NovaSolver Studio 计算强度、传热和流动，在制造之前就知道会不会坏。面向 AI 工程设计的免费开源仿真软件，支持 AI 助手（MCP）操作，结果通过参考解或网格收敛自动验证。">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://novasolver.jp/zh/studio/">
 <link rel="alternate" hreflang="ja" href="https://novasolver.jp/studio/">
 <link rel="alternate" hreflang="en" href="https://novasolver.jp/en/studio/">
 <link rel="alternate" hreflang="zh-Hans" href="https://novasolver.jp/zh/studio/">
 <link rel="alternate" hreflang="x-default" href="https://novasolver.jp/en/studio/">
-<meta property="og:title" content="NovaSolver Studio — 免费开源的结构、传热与流体仿真软件">
-<meta property="og:description" content="导入 CAD，求解结构、传热和流动问题，并自动确认结果直至“已验证”。支持 AI 助手（MCP）。">
+<meta property="og:title" content="NovaSolver Studio — 用 AI 画出来，再验证强度">
+<meta property="og:description" content="AI 绘制 → Blender 建模 → 计算强度、传热与流动。面向 AI 工程设计的免费仿真软件。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="NovaSolver">
 <meta property="og:locale" content="zh_CN">
 <meta property="og:url" content="https://novasolver.jp/zh/studio/">
 <meta property="og:image" content="https://novasolver.jp/studio/img/results-cantilever.webp">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NovaSolver Studio — 免费开源仿真软件">
-<meta name="twitter:description" content="求解结构、传热和流动问题，并自动验证结果。支持 AI 助手（MCP）。">
+<meta name="twitter:title" content="NovaSolver Studio — 用 AI 画出来，再验证强度">
+<meta name="twitter:description" content="在制造之前，用计算验证 AI 设计的形状。面向 AI 工程设计的免费仿真软件（支持 MCP）。">
 <meta name="twitter:image" content="https://novasolver.jp/studio/img/results-cantilever.webp">
 <link rel="icon" href="/favicon.ico"><link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/studio/studio.css">
@@ -29,7 +29,7 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"NovaSolver Studio","applicationCategory":"EngineeringApplication",
  "operatingSystem":"Windows 10, Windows 11","inLanguage":"zh","url":"https://novasolver.jp/zh/studio/",
- "description":"免费开源的仿真软件：导入 CAD，求解结构、传热和流动问题，通过参考解或网格收敛自动验证结果，并可由 AI 助手通过 MCP 操作。",
+ "description":"面向 AI 工程设计的免费开源仿真软件：将 AI 绘制的形状在 Blender 中建模，计算其强度、传热和流动，通过参考解或网格收敛自动验证结果，并可由 AI 助手通过 MCP 操作。",
  "license":"https://www.gnu.org/licenses/gpl-3.0.html","isAccessibleForFree":true,
  "offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"},
  "downloadUrl":"https://github.com/novasolver/novasolver-studio/releases",
@@ -46,30 +46,57 @@
 <main>
 <div class="wrap hero">
   <span class="badge">预览版 v0.1 · 免费 · 开源（GPL-3.0）</span>
-  <h1>导入 CAD，求解结构、传热与流动。<br>连结果是否正确，也自动确认。</h1>
-  <p class="lead">NovaSolver Studio 是在您自己的电脑上运行的仿真软件。从模板或 CAD 文件开始，几次点击即可求解。每个结果都标注“已运行 → 已收敛 → 已验证”，也可以交给 AI 助手来设置和求解。</p>
+  <h1>AI 来画，AI 来验证。<br>新时代的 AI 工程设计。</h1>
+  <p class="lead">用图像生成 AI 画出形状，由 AI 在 Blender 中建模，再由 NovaSolver Studio 计算强度、传热和流动。在制造之前，就能知道画出来的东西会不会坏。从构思到验证，用免费软件和 AI 连成一条线。</p>
   <div class="cta">
     <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases">下载 Windows 版</a>
+    <a class="btn ghost" href="/dl/studio/NovaSolverStudio-0.1.0-win64.zip">从 novasolver.jp 直接下载</a>
     <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">在 GitHub 查看源码</a>
   </div>
-  <div class="shot"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" alt="悬臂梁分析结果：端部挠度与梁理论相差 −0.8%，已验证"></div>
+  <p class="note" style="margin-top:12px">GitHub 访问较慢时，可从本站直接下载（v0.1.0，约 175 MB，<a href="/dl/studio/NovaSolverStudio-0.1.0-win64.zip.sha256">SHA-256</a>）。</p>
+  <div class="shot"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" alt="NovaSolver Studio 结果界面：端部挠度与梁理论比较，判定为已验证"></div>
 </div>
 
 <section><div class="wrap">
-  <h2>不只是“算完了”，而是“已验证”</h2>
-  <p class="sub">网格太粗或边界条件不对，仿真结果很容易出错。Studio 对每个结果分三步判定。</p>
-  <div class="gates"><span class="gate ok">✓ 已运行</span>→<span class="gate ok">✓ 已收敛</span>→<span class="gate ok">✓ 已验证</span></div>
+  <h2>绘制 → 建模 → 验证</h2>
+  <p class="sub">从最初的构思到强度确认，每一步都可以交给 AI。</p>
+  <div class="flow">
+    <div class="step"><div class="pic">图片准备中</div><div class="body"><h3>用 AI 绘制</h3><p>用文字描述想做的东西，由图像生成 AI 画出形状。</p><span class="tool">图像生成 AI</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-blender.webp" width="1280" height="720" loading="lazy" alt="AI 在 Blender 中制作的渐开线直齿轮模型"></div><div class="body"><h3>在 Blender 中建模</h3><p>AI 操作 Blender，按尺寸建立三维模型，并导出为 STL。</p><span class="tool">Blender</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/heatsink-boundaries.webp" width="1280" height="800" loading="lazy" alt="点击导入形状的表面设定条件"></div><div class="body"><h3>导入 Studio</h3><p>导入形状，点击选择固定面和受力面。也可以对 AI 说：“固定底面，在顶面施加 500 N”。</p><span class="tool">STL · STEP · IGES</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" loading="lazy" alt="应力与变形计算结果"></div><div class="body"><h3>计算并验证</h3><p>计算应力、温度和流动，并自动判定结果是否可信，直至“已验证”。</p><span class="tool">NovaSolver Studio</span></div></div>
+  </div>
+  <p class="note" style="margin-top:14px">STL（Blender 等使用的网格格式）导入将在下一版本提供。v0.1 支持 STEP、IGES 和 BREP。</p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>不需要分析专家，也不需要昂贵的软件</h2>
+  <p class="sub">过去，CAE 只属于买得起高价软件、配得起专职人员的企业。有了 NovaSolver Studio，两者都没有也能开始。</p>
   <div class="grid">
-    <div class="card"><h3>自动与教科书解比较</h3><p>梁的挠度、应力集中、翅片散热、管内流动、圆球阻力等，都会与解析解或文献值比较。</p></div>
-    <div class="card"><h3>自己的形状用网格收敛确认</h3><p>没有理论解的形状，会在三种网格上求解，并确认离散误差（GCI）不超过 5%。</p></div>
-    <div class="card"><h3>危险结果会给出警告</h3><p>例如应力超过材料屈服强度时，会提示“线弹性分析结果不成立”。</p></div>
+    <div class="card"><h3>从零成本开始</h3><p>免费开源软件。没有许可费，也没有席位限制。</p></div>
+    <div class="card"><h3>知识由 AI 补足</h3><p>设置条件、划分网格、求解、解读结果，都可以用自然语言交给 AI 智能体。</p></div>
+    <div class="card"><h3>任意形状也能确认答案的可靠性</h3><p>自动加密网格重新求解，判断答案是否已经稳定。刚画出来的新形状也适用。</p></div>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <h2>可以求解的问题</h2>
-  <p class="sub">导入 CAD 文件（STEP、IGES、BREP），点击表面设定条件。</p>
+  <h2>需要准备什么</h2>
+  <p class="sub">有 AI 智能体和一台电脑，就能完成从绘制到验证的全过程。其余都是免费软件。</p>
   <table>
+    <thead><tr><th>准备</th><th>作用</th><th>费用</th></tr></thead>
+    <tbody>
+      <tr><td>AI 智能体（Claude Code、Codex 等）</td><td>绘制图像、在 Blender 中建模、在 Studio 中设置条件并求解</td><td>各服务的使用费</td></tr>
+      <tr><td>电脑（Windows 10/11）</td><td>运行全部软件。建议内存 16 GB 以上</td><td>现有电脑即可</td></tr>
+      <tr><td>Blender</td><td>建立三维模型并导出为 STL</td><td>免费</td></tr>
+      <tr><td>NovaSolver Studio</td><td>计算强度、传热与流动，并确认答案</td><td>免费</td></tr>
+      <tr><td>图像生成 AI（可选）</td><td>把构思画成图。手绘草图或照片也可以</td><td>可选</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<section><div class="wrap">
+  <h2>可以求解的问题</h2>
+    <table>
     <thead><tr><th>分析</th><th>典型用途</th><th>求解器</th></tr></thead>
     <tbody>
       <tr><td>结构（线性静力）</td><td>支架强度、挠度、应力集中</td><td>内置 FEM（数秒）· CalculiX</td></tr>
@@ -86,8 +113,9 @@
 </div></section>
 
 <section><div class="wrap">
-  <h2>标准算例已对照验证</h2>
-  <p class="sub">预览版已将以下问题与参考解进行比较。</p>
+  <details class="cases">
+  <summary>标准算例的验证结果<span class="count">7 例</span></summary>
+  <div class="inner">
   <table>
     <thead><tr><th>问题</th><th>参考解</th><th>Studio 结果</th><th>差异</th></tr></thead>
     <tbody>
@@ -100,6 +128,8 @@
       <tr><td>圆球阻力（Re=100）</td><td>Schiller–Naumann Cd = 1.092</td><td class="num">1.095</td><td class="num ok">+0.3%</td></tr>
     </tbody>
   </table>
+  </div>
+  </details>
 </div></section>
 
 <section><div class="wrap two">
@@ -114,7 +144,7 @@
 <section><div class="wrap">
   <h2>快速开始（Windows）</h2>
   <ol class="steps">
-    <li>从 <a href="https://github.com/novasolver/novasolver-studio/releases">GitHub Releases</a> 下载 zip 并解压（无需安装）。</li>
+    <li>从 <a href="https://github.com/novasolver/novasolver-studio/releases">GitHub Releases</a> 或 <a href="/dl/studio/NovaSolverStudio-0.1.0-win64.zip">本站</a> 下载 zip 并解压（无需安装）。</li>
     <li>双击 <code>NovaSolverStudio.exe</code>，界面会在浏览器中打开。</li>
     <li>结构和传热分析可直接使用（已内置求解器和 CalculiX）。</li>
     <li>流动分析需要将 OpenFOAM®（ESI 版 Windows 安装包，约 200 MB）安装到 <code>%LOCALAPPDATA%\NovaSolverStudio\solvers\openfoam</code>，无需管理员权限。</li>

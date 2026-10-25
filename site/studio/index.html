@@ -3,24 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NovaSolver Studio — 無料・オープンソースの構造・熱・流体解析ソフト（AI操作対応）</title>
-<meta name="description" content="CADを読み込んで構造・熱・流れを解く無料のオープンソース解析ソフト。結果には「実行できた・収束した・検証済み」の判定がつき、教科書の解や文献値と自動で比べます。AIアシスタント（MCP）からも操作でき、日本語・英語・中国語に対応しています。">
+<title>NovaSolver Studio — AIで描いて強度まで確かめる、AI工学設計のための無料解析ソフト</title>
+<meta name="description" content="AIで形を描き、Blenderでモデルにし、NovaSolver Studioで強度・熱・流れを計算して確かめる。作る前に壊れないかまで分かる、AI工学設計のための無料・オープンソース解析ソフトです。AIアシスタント（MCP）から操作でき、結果は参照解やメッシュ収束で自動検証します。">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://novasolver.jp/studio/">
 <link rel="alternate" hreflang="ja" href="https://novasolver.jp/studio/">
 <link rel="alternate" hreflang="en" href="https://novasolver.jp/en/studio/">
 <link rel="alternate" hreflang="zh-Hans" href="https://novasolver.jp/zh/studio/">
 <link rel="alternate" hreflang="x-default" href="https://novasolver.jp/en/studio/">
-<meta property="og:title" content="NovaSolver Studio — 無料・オープンソースの構造・熱・流体解析ソフト">
-<meta property="og:description" content="CADを読み込んで構造・熱・流れを解く。結果は「検証済み」まで自動で確かめ、AIアシスタントからも操作できます。">
+<meta property="og:title" content="NovaSolver Studio — AIで描いて、強度まで確かめる">
+<meta property="og:description" content="AIで描く → Blenderで形にする → 強度・熱・流れを計算して確かめる。AI工学設計のための無料の解析ソフト。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="NovaSolver">
 <meta property="og:locale" content="ja_JP">
 <meta property="og:url" content="https://novasolver.jp/studio/">
 <meta property="og:image" content="https://novasolver.jp/studio/img/results-cantilever.webp">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NovaSolver Studio — 無料・オープンソースの解析ソフト">
-<meta name="twitter:description" content="構造・熱・流れを解き、結果を「検証済み」まで自動で確かめる。AIアシスタント（MCP）対応。">
+<meta name="twitter:title" content="NovaSolver Studio — AIで描いて、強度まで確かめる">
+<meta name="twitter:description" content="AIで描いた形を、作る前に計算で確かめる。AI工学設計のための無料の解析ソフト（MCP対応）。">
 <meta name="twitter:image" content="https://novasolver.jp/studio/img/results-cantilever.webp">
 <link rel="icon" href="/favicon.ico"><link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/studio/studio.css">
@@ -29,7 +29,7 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"NovaSolver Studio","applicationCategory":"EngineeringApplication",
  "operatingSystem":"Windows 10, Windows 11","inLanguage":"ja","url":"https://novasolver.jp/studio/",
- "description":"CADを読み込んで構造・熱・流れを解く無料のオープンソース解析ソフト。結果を参照解やメッシュ収束で自動検証し、AIアシスタント（MCP）からも操作できる。",
+ "description":"AIで描いた形をBlenderでモデルにし、強度・熱・流れを計算して確かめるAI工学設計のための無料・オープンソース解析ソフト。結果は参照解やメッシュ収束で自動検証し、AIアシスタント（MCP）からも操作できる。",
  "license":"https://www.gnu.org/licenses/gpl-3.0.html","isAccessibleForFree":true,
  "offers":{"@type":"Offer","price":"0","priceCurrency":"JPY"},
  "downloadUrl":"https://github.com/novasolver/novasolver-studio/releases",
@@ -46,30 +46,54 @@
 <main>
 <div class="wrap hero">
   <span class="badge">プレビュー版 v0.1 ・ 無料 ・ オープンソース（GPL-3.0）</span>
-  <h1>CADを読み込んで、構造・熱・流れを解く。<br>答えが正しいかまで、自動で確かめる。</h1>
-  <p class="lead">NovaSolver Studio は、パソコンの中で動く解析ソフトです。テンプレートかCADファイルから始めて、数クリックで解けます。結果には「実行できた → 収束した → 検証済み」の判定がつき、AIアシスタントに頼んで操作することもできます。</p>
+  <h1>AIが描いて、AIが確かめる。<br>新時代のAI工学設計。</h1>
+  <p class="lead">画像生成AIで形を描き、AIがBlenderでモデルにし、NovaSolver Studio が強度・熱・流れを計算します。「描いたものが本当に壊れないか」まで、作る前に分かります。設計から検証までを、無料のソフトとAIでつなぎます。</p>
   <div class="cta">
     <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases">Windows版をダウンロード</a>
     <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">GitHubでソースを見る</a>
   </div>
-  <div class="shot"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" alt="片持ち梁の解析結果。先端たわみ0.9748 mm、手計算0.9831 mmとの差−0.8%で検証済み"></div>
+  <div class="shot"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" alt="NovaSolver Studio の結果画面。先端たわみを梁理論と比べて検証済みと判定している"></div>
 </div>
 
 <section><div class="wrap">
-  <h2>「動いた」ではなく「検証済み」まで</h2>
-  <p class="sub">解析ソフトの答えは、メッシュや条件しだいで簡単に間違います。Studio は結果ごとに3段階で判定します。</p>
-  <div class="gates"><span class="gate ok">✓ 実行できた</span>→<span class="gate ok">✓ 収束した</span>→<span class="gate ok">✓ 検証済み</span></div>
+  <h2>描く → 形にする → 確かめる</h2>
+  <p class="sub">アイデアの段階から、強度の確認まで。どの段階もAIに頼めます。</p>
+  <div class="flow">
+    <div class="step"><div class="pic">画像を準備中</div><div class="body"><h3>AIで描く</h3><p>作りたいものを言葉で伝え、画像生成AIで形のイメージを描きます。</p><span class="tool">画像生成AI</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-blender.webp" width="1280" height="720" loading="lazy" alt="AIがBlenderで作ったインボリュート平歯車のモデル"></div><div class="body"><h3>Blenderで形にする</h3><p>AIがBlenderを操作して、寸法どおりの3Dモデルを作り、STLで書き出します。</p><span class="tool">Blender</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/heatsink-boundaries.webp" width="1280" height="800" loading="lazy" alt="読み込んだ形状の面をクリックして条件を設定している画面"></div><div class="body"><h3>Studioに読み込む</h3><p>形状を読み込み、固定する面や力をかける面をクリックで選びます。AIに「底を固定して上から500 N」と頼むこともできます。</p><span class="tool">STL ・ STEP ・ IGES</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" loading="lazy" alt="応力と変形の計算結果"></div><div class="body"><h3>計算して確かめる</h3><p>応力・温度・流れを計算し、答えが信頼できるかを「検証済み」まで自動で判定します。</p><span class="tool">NovaSolver Studio</span></div></div>
+  </div>
+  <p class="note" style="margin-top:14px">STL（Blenderなどのメッシュ形式）の読み込みは次の版で公開します。v0.1 は STEP・IGES・BREP に対応しています。</p>
+</div></section>
+<section><div class="wrap">
+  <h2>解析の専門家も、高価なソフトもいらない</h2>
+  <p class="sub">これまでCAEは、数百万円のソフトと専門の担当者がそろった会社のものでした。NovaSolver Studio なら、その両方がなくても始められます。</p>
   <div class="grid">
-    <div class="card"><h3>教科書の解と自動で比較</h3><p>梁のたわみ、応力集中、フィンの放熱、管内流れ、球の抗力などを、解析解や文献値と比べます。</p></div>
-    <div class="card"><h3>自分の形状はメッシュ収束で確認</h3><p>理論解のない形状は、メッシュを3段階に変えて解き、答えの不確かさ（GCI）が5%以下かを確かめます。</p></div>
-    <div class="card"><h3>危ない結果には警告</h3><p>たとえば材料の降伏応力を超えたら「この線形解析の結果は成り立たない」と知らせます。</p></div>
+    <div class="card"><h3>費用はゼロから</h3><p>ソフトは無料・オープンソース。ライセンス料も、席数の制限もありません。</p></div>
+    <div class="card"><h3>知識はAIが補う</h3><p>条件の設定、メッシュ、計算、結果の読み取りまで、AIエージェントに日本語で頼めます。</p></div>
+    <div class="card"><h3>どんな形でも、答えの確かさを確かめる</h3><p>メッシュを自動で細かくして解き直し、答えが十分に落ち着いたかを判定します。描いたばかりの新しい形でも使えます。</p></div>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <h2>解けるもの</h2>
-  <p class="sub">CADファイル（STEP・IGES・BREP）を読み込み、面をクリックして条件を決めます。</p>
+  <h2>必要なもの</h2>
+  <p class="sub">AIエージェントとパソコンがあれば、描くところから確かめるところまで完了します。ほかは無料のソフトです。</p>
   <table>
+    <thead><tr><th>用意するもの</th><th>役割</th><th>費用</th></tr></thead>
+    <tbody>
+      <tr><td>AIエージェント（Claude Code、Codex など）</td><td>画像を描く・Blenderでモデルを作る・Studioで条件を設定して解く、までを操作する</td><td>各サービスの利用料</td></tr>
+      <tr><td>パソコン（Windows 10/11）</td><td>すべてのソフトを動かす。メモリ16GB以上がおすすめ</td><td>手持ちのもの</td></tr>
+      <tr><td>Blender</td><td>3Dモデルを作り、STLで書き出す</td><td>無料</td></tr>
+      <tr><td>NovaSolver Studio</td><td>強度・熱・流れを計算し、答えを確かめる</td><td>無料</td></tr>
+      <tr><td>画像生成AI（任意）</td><td>形のアイデアを絵にする。手描きのスケッチや写真でもよい</td><td>任意</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<section><div class="wrap">
+  <h2>解けるもの</h2>
+    <table>
     <thead><tr><th>解析</th><th>使い道の例</th><th>使うソルバ</th></tr></thead>
     <tbody>
       <tr><td>構造（静解析）</td><td>ブラケットの強度、たわみ、応力集中</td><td>内蔵FEM（数秒）・CalculiX</td></tr>
@@ -86,8 +110,9 @@
 </div></section>
 
 <section><div class="wrap">
-  <h2>標準問題で答え合わせ済み</h2>
-  <p class="sub">プレビュー版の時点で、次の問題を参照解と比べて確認しています。</p>
+  <details class="cases">
+  <summary>標準問題での検証結果<span class="count">7件</span></summary>
+  <div class="inner">
   <table>
     <thead><tr><th>問題</th><th>参照解</th><th>Studio の答え</th><th>差</th></tr></thead>
     <tbody>
@@ -100,6 +125,8 @@
       <tr><td>球の抗力（Re=100）</td><td>Schiller–Naumann Cd = 1.092</td><td class="num">1.095</td><td class="num ok">+0.3%</td></tr>
     </tbody>
   </table>
+  </div>
+  </details>
 </div></section>
 
 <section><div class="wrap two">

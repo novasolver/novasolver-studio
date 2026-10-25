@@ -3,24 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NovaSolver Studio — Free, Open-Source Structural, Thermal and CFD Simulation (AI-ready)</title>
-<meta name="description" content="Free open-source simulation software: import CAD and solve structural, thermal and flow problems. Every result is graded ran, converged or verified against textbook solutions. Operable from AI assistants via MCP.">
+<title>NovaSolver Studio — Draw It with AI, Check Its Strength: Free Simulation for AI Engineering Design</title>
+<meta name="description" content="Sketch a part with AI, model it in Blender, then compute its strength, heat and flow in NovaSolver Studio before anything is built. Free, open-source simulation for AI-driven engineering design, operable from AI assistants via MCP.">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://novasolver.jp/en/studio/">
 <link rel="alternate" hreflang="ja" href="https://novasolver.jp/studio/">
 <link rel="alternate" hreflang="en" href="https://novasolver.jp/en/studio/">
 <link rel="alternate" hreflang="zh-Hans" href="https://novasolver.jp/zh/studio/">
 <link rel="alternate" hreflang="x-default" href="https://novasolver.jp/en/studio/">
-<meta property="og:title" content="NovaSolver Studio — free, open-source structural, thermal and CFD simulation">
-<meta property="og:description" content="Import CAD, solve structural, thermal and flow problems, and check the answer all the way to verified. Works with AI assistants (MCP).">
+<meta property="og:title" content="NovaSolver Studio — draw it with AI, check its strength">
+<meta property="og:description" content="Draw with AI → model in Blender → compute strength, heat and flow. Free simulation software for AI engineering design.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="NovaSolver">
 <meta property="og:locale" content="en_US">
 <meta property="og:url" content="https://novasolver.jp/en/studio/">
 <meta property="og:image" content="https://novasolver.jp/studio/img/results-cantilever-en.webp">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NovaSolver Studio — free, open-source simulation">
-<meta name="twitter:description" content="Solve structural, thermal and flow problems and verify the answer automatically. MCP-ready for AI assistants.">
+<meta name="twitter:title" content="NovaSolver Studio — draw it with AI, check its strength">
+<meta name="twitter:description" content="Check what AI designed before you build it. Free simulation for AI engineering design (MCP-ready).">
 <meta name="twitter:image" content="https://novasolver.jp/studio/img/results-cantilever-en.webp">
 <link rel="icon" href="/favicon.ico"><link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/studio/studio.css">
@@ -29,7 +29,7 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"NovaSolver Studio","applicationCategory":"EngineeringApplication",
  "operatingSystem":"Windows 10, Windows 11","inLanguage":"en","url":"https://novasolver.jp/en/studio/",
- "description":"Free open-source simulation software that imports CAD, solves structural, thermal and flow problems, verifies results against references or by mesh convergence, and can be operated from AI assistants via MCP.",
+ "description":"Free open-source simulation software for AI engineering design: model what AI sketched in Blender, then compute its strength, heat and flow. Results are verified against references or by mesh convergence, and the app can be operated from AI assistants via MCP.",
  "license":"https://www.gnu.org/licenses/gpl-3.0.html","isAccessibleForFree":true,
  "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
  "downloadUrl":"https://github.com/novasolver/novasolver-studio/releases",
@@ -46,30 +46,55 @@
 <main>
 <div class="wrap hero">
   <span class="badge">Preview v0.1 · Free · Open source (GPL-3.0)</span>
-  <h1>Import CAD. Solve structures, heat and flow.<br>Then check that the answer is right — automatically.</h1>
-  <p class="lead">NovaSolver Studio is simulation software that runs on your own PC. Start from a template or a CAD file and solve in a few clicks. Every result is graded "ran → converged → verified", and you can let your AI assistant do the setup for you.</p>
+  <h1>AI draws it. AI checks it.<br>Engineering design for the AI era.</h1>
+  <p class="lead">Sketch a shape with image AI, let AI build the model in Blender, and NovaSolver Studio computes its strength, heat and flow. You learn whether the design will hold before anything is made. Free software and AI, connected from idea to verification.</p>
   <div class="cta">
     <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases">Download for Windows</a>
     <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">Source on GitHub</a>
   </div>
-  <div class="shot"><img src="/studio/img/results-cantilever-en.webp" width="1280" height="800" alt="Cantilever results: verified against beam theory, with a warning that the stress exceeds the yield strength"></div>
+  <div class="shot"><img src="/studio/img/results-cantilever-en.webp" width="1280" height="800" alt="NovaSolver Studio results: verified against beam theory, with a warning that the stress exceeds the yield strength"></div>
 </div>
 
 <section><div class="wrap">
-  <h2>Not just "it ran" — verified</h2>
-  <p class="sub">Simulation answers go wrong easily with a coarse mesh or a wrong boundary condition. Studio grades every result in three steps.</p>
-  <div class="gates"><span class="gate ok">✓ Ran</span>→<span class="gate ok">✓ Converged</span>→<span class="gate ok">✓ Verified</span></div>
+  <h2>Draw → model → check</h2>
+  <p class="sub">From the first idea to the strength check. You can hand every step to AI.</p>
+  <div class="flow">
+    <div class="step"><div class="pic">Image coming soon</div><div class="body"><h3>Draw it with AI</h3><p>Describe what you want to make and let image AI sketch the shape.</p><span class="tool">Image AI</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-blender.webp" width="1280" height="720" loading="lazy" alt="Involute spur gear modelled in Blender by AI"></div><div class="body"><h3>Model it in Blender</h3><p>AI drives Blender to build a 3D model to exact dimensions and exports it as STL.</p><span class="tool">Blender</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/heatsink-boundaries.webp" width="1280" height="800" loading="lazy" alt="Clicking faces of an imported shape to set conditions"></div><div class="body"><h3>Load it into Studio</h3><p>Load the shape and click the faces to fix and to load. Or ask your AI: "fix the bottom, push 500 N on the top".</p><span class="tool">STL · STEP · IGES</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/results-cantilever-en.webp" width="1280" height="800" loading="lazy" alt="Stress and deformation results"></div><div class="body"><h3>Compute and check</h3><p>Stress, temperature and flow are computed, and Studio grades whether the answer can be trusted, up to "verified".</p><span class="tool">NovaSolver Studio</span></div></div>
+  </div>
+  <p class="note" style="margin-top:14px">STL import (the mesh format used by Blender and others) ships in the next release. v0.1 reads STEP, IGES and BREP.</p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>No analysis expert. No expensive licence.</h2>
+  <p class="sub">CAE used to belong to companies that could afford costly software and a dedicated specialist. With NovaSolver Studio you can start without either.</p>
   <div class="grid">
-    <div class="card"><h3>Compared with textbook answers</h3><p>Beam deflection, stress concentration, fin heat loss, pipe flow and sphere drag are checked against analytic or published values.</p></div>
-    <div class="card"><h3>Your own shapes: mesh convergence</h3><p>Shapes without an analytic answer are solved on three meshes, and the discretisation uncertainty (GCI) must be 5% or less.</p></div>
-    <div class="card"><h3>Warnings that matter</h3><p>For example, if the stress exceeds the yield strength, Studio tells you the linear result no longer holds.</p></div>
+    <div class="card"><h3>Starts at zero cost</h3><p>Free and open source. No licence fees and no seat limits.</p></div>
+    <div class="card"><h3>AI fills in the know-how</h3><p>Ask an AI agent in plain words to set the conditions, mesh, solve and read the results.</p></div>
+    <div class="card"><h3>Trustworthy answers for any shape</h3><p>Studio refines the mesh, solves again and checks that the answer has settled, even for a shape drawn a minute ago.</p></div>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <h2>What you can solve</h2>
-  <p class="sub">Import CAD (STEP, IGES, BREP) and click faces to set the conditions.</p>
+  <h2>What you need</h2>
+  <p class="sub">An AI agent and a PC take you from drawing to verification. Everything else is free software.</p>
   <table>
+    <thead><tr><th>You need</th><th>What it does</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td>An AI agent (Claude Code, Codex, etc.)</td><td>Draws the image, builds the model in Blender, sets up and solves the case in Studio</td><td>The service's plan</td></tr>
+      <tr><td>A PC (Windows 10/11)</td><td>Runs all the software. 16 GB of memory or more recommended</td><td>The one you have</td></tr>
+      <tr><td>Blender</td><td>Builds the 3D model and exports it as STL</td><td>Free</td></tr>
+      <tr><td>NovaSolver Studio</td><td>Computes strength, heat and flow and checks the answer</td><td>Free</td></tr>
+      <tr><td>Image AI (optional)</td><td>Turns the idea into a picture. A hand sketch or a photo works too</td><td>Optional</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What you can solve</h2>
+    <table>
     <thead><tr><th>Analysis</th><th>Typical use</th><th>Solver</th></tr></thead>
     <tbody>
       <tr><td>Structural (linear static)</td><td>Bracket strength, deflection, stress concentration</td><td>Built-in FEM (seconds) · CalculiX</td></tr>
@@ -86,8 +111,9 @@
 </div></section>
 
 <section><div class="wrap">
-  <h2>Checked on standard problems</h2>
-  <p class="sub">Already in the preview, these problems are compared with reference solutions.</p>
+  <details class="cases">
+  <summary>Verification on standard problems<span class="count">7 cases</span></summary>
+  <div class="inner">
   <table>
     <thead><tr><th>Problem</th><th>Reference</th><th>Studio</th><th>Difference</th></tr></thead>
     <tbody>
@@ -100,6 +126,8 @@
       <tr><td>Sphere drag (Re = 100)</td><td>Schiller–Naumann, Cd = 1.092</td><td class="num">1.095</td><td class="num ok">+0.3%</td></tr>
     </tbody>
   </table>
+  </div>
+  </details>
 </div></section>
 
 <section><div class="wrap two">
