@@ -26,7 +26,7 @@
 ## 公開・普及（構築と並行・ユーザー指示 2026-10-25）
 
 1. **サイト公開**: ✅ 2026-10-25 /studio/（日英中）公開、トップ3言語から案内リンク、sitemap・IndexNow 済み（台帳 _analysis/_ledger_20261025_studio_site.md）。
-2. **早期リリース**: ✅ GitHub novasolver/novasolver-studio にコード公開。v0.1.0 の zip（166 MB）とリリースノート作成済み → Release 登録はユーザー操作待ち。
+2. **早期リリース**: ✅ 2026-10-25 v0.1.0（pre-release）公開 https://github.com/novasolver/novasolver-studio/releases/tag/v0.1.0 。以降のリリースは gh（%LOCALAPPDATA%\Programs\gh\bin\gh.exe、ログイン済み）で作成できる。
 3. **各メディアで紹介**: note など。既存の投稿台帳・自動投稿のルールに従う。
 4. **訴求点**: MCP連携（AIに頼むと解ける）、手軽さ、物理エンジンと違い**実務で使える**（検証済みの判定つき）。
 5. **動画が主役**: Web上の練習問題・既存ベンダーのチュートリアルを実際に解き、結果が劣らないことを示す。
