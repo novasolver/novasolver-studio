@@ -119,13 +119,15 @@ async def create_case(template: str, changes: dict[str, Any] | None = None, lang
 
 
 @mcp.tool(annotations=WRITE)
-async def import_geometry(path: str, physics: Literal["structural", "thermal"], language: Lang = "ja") -> CallToolResult:
-    """Create a case from a CAD file on this computer (STEP .step/.stp, IGES .iges/.igs, BREP .brep, STL .stl in mm), units read from the
-    file. Returns the faces with number, surface type, area and centroid so you can pick which faces to fix, load,
+async def import_geometry(path: str, physics: Literal["structural", "thermal"], units: Literal["mm", "m", "inch"] = "mm",
+                          language: Lang = "ja") -> CallToolResult:
+    """Create a case from a CAD file on this computer (STEP .step/.stp, IGES .iges/.igs, BREP .brep, or a mesh STL .stl
+    such as a Blender export). STEP/IGES/BREP carry their own units; for STL say the units the file was written in
+    (Blender exports metres unless the scene unit scale was changed; most CAD STL exports are mm). Returns the faces with number, surface type, area and centroid so you can pick which faces to fix, load,
     heat or cool (by position: e.g. the face with the lowest centroid z is the bottom). Then set roles with update_case
     using paths like boundaries.f12.role. Structural roles: free, fixed, load (force + direction), pressure.
     Thermal roles: insulated, temperature, heat-flux, convection (h + tinf)."""
-    r, e = await _call(C.import_geometry, language, physics, path, None, path, language)
+    r, e = await _call(C.import_geometry, language, physics, path, None, path, language, units=units)
     if e:
         return e
     c = r["case"]

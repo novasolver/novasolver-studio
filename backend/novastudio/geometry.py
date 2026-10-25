@@ -67,6 +67,9 @@ def worker_job(case: dict, **kw) -> dict:
     job = {"kind": case["geometry"]["kind"], "dims": dims(case) if case["geometry"]["kind"] != "import" else [0, 0, 0]}
     if case["geometry"]["kind"] == "import":
         job["file"] = str(case_dir(case["case_id"]) / case["geometry"]["file"])
+        if job["file"].lower().endswith(".stl"):
+            from .commands import STL_UNITS
+            job["stl_scale"] = STL_UNITS[case["geometry"].get("units", "mm")]
     if case["geometry"]["kind"] == "plate_hole":
         job["hole_d"] = units.to_si(case["geometry"]["params"]["hole"])
     job.update(kw)

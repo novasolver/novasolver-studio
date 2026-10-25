@@ -61,10 +61,12 @@ async def create(body: dict = Body(...), lang: str = "ja"):
 
 
 @app.post("/api/import")
-async def import_cad(request: Request, physics: str = "structural", filename: str = Query(...), lang: str = "ja"):
-    """Raw file bytes in the body (no multipart dependency). Example: POST /api/import?physics=thermal&filename=a.step"""
+async def import_cad(request: Request, physics: str = "structural", filename: str = Query(...), lang: str = "ja",
+                     units: str = "mm"):
+    """Raw file bytes in the body (no multipart dependency). Example: POST /api/import?physics=thermal&filename=a.step
+    units (mm | m | inch) applies to STL, which carries no units."""
     data = await request.body()
-    return await call(C.import_geometry, physics, filename, data, None, lang)
+    return await call(C.import_geometry, physics, filename, data, None, lang, units=units)
 
 
 @app.get("/api/samples")

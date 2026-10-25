@@ -150,14 +150,16 @@ def create_case(template: str, params: dict | None = None, lang: str = "ja") -> 
     return case_payload(case["case_id"], lang)
 
 
+STL_UNITS = {"mm": 1e-3, "m": 1.0, "inch": 0.0254}     # an STL has no units: the user says which
 CAD_EXT = {".step": "step", ".stp": "step", ".iges": "iges", ".igs": "iges", ".brep": "brep", ".brp": "brep", ".stl": "stl"}
 MAX_CAD_BYTES = 200 * 1024 * 1024
 PHYSICS = ("structural", "thermal", "flow", "external", "conjugate")
 
 
 def import_geometry(physics: str, filename: str, data: bytes | None = None, path: str | None = None,
-                    lang: str = "ja", template: str | None = None) -> dict:
-    """Create a case from a CAD file (STEP / IGES / BREP). The file is copied into the case; faces get numbers."""
+                    lang: str = "ja", template: str | None = None, units: str = "mm") -> dict:
+    """Create a case from a CAD file (STEP / IGES / BREP / STL). The file is copied into the case; faces get numbers.
+    units applies to STL only (STEP/IGES/BREP carry their own units)."""
     import hashlib
     import json as _json
     import shutil
@@ -167,6 +169,8 @@ def import_geometry(physics: str, filename: str, data: bytes | None = None, path
     ext = Path(filename).suffix.lower()
     if ext not in CAD_EXT:
         raise StudioError("err.cad_type", 400, ext=ext or "?", allowed=", ".join(sorted(CAD_EXT)))
+    if units not in STL_UNITS:
+        raise StudioError("err.path", 400, path=f"units={units} (allowed: {', '.join(STL_UNITS)})")
     if path is not None:
         src = Path(path)
         if not src.is_file():
@@ -186,6 +190,8 @@ def import_geometry(physics: str, filename: str, data: bytes | None = None, path
         case["title"] = {l: Path(filename).stem for l in ("ja", "en", "zh")}
     case["geometry"].update({"file": f"geometry/model{ext}", "name": Path(filename).name,
                              "sha256": hashlib.sha256(data).hexdigest(), "bbox": [[0, 0, 0], [1, 1, 1]]})
+    if ext == ".stl":
+        case["geometry"]["units"] = units
     try:
         geometry._run_worker(geometry.worker_job(case, size="normal", volume=False, order=1, out=str(d / "geom")),
                              timeout=300)
