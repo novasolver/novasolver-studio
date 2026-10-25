@@ -33,7 +33,7 @@ def dims(case: dict) -> list[float]:
     raise ValueError(kind)
 
 
-MESHER_VERSION = 7          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
+MESHER_VERSION = 8          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
 
 
 def _canon(o):
@@ -70,6 +70,9 @@ def worker_job(case: dict, **kw) -> dict:
         if job["file"].lower().endswith(".stl"):
             from .commands import STL_UNITS
             job["stl_scale"] = STL_UNITS[case["geometry"].get("units", "mm")]
+            if case["geometry"].get("faces"):       # lets a fallback surface keep the case's face names
+                job["faces_ref"] = [{"key": f["key"], "centroid": f["centroid"], "area": f["area"]}
+                                    for f in case["geometry"]["faces"]]
     if case["geometry"]["kind"] == "plate_hole":
         job["hole_d"] = units.to_si(case["geometry"]["params"]["hole"])
     job.update(kw)
@@ -135,10 +138,10 @@ def mesh_dir(case: dict) -> Path:
 
 LOAD_ROLES = ("load", "pressure")
 # elements across the thinnest wall of an imported solid: bending needs more than conduction; the three sizes keep a
-# 1.5 ratio so the convergence study refines thin walls too
+# clear ratio (about 2, then 1.6) so the convergence study sees the trend; small ratios make the GCI inconclusive
 THIN_THROUGH = {"import-structural": 2.0, "import-thermal": 1.2}
-THIN_LEVEL = {"coarse": 0.67, "normal": 1.0, "fine": 1.5}
-REFINE_DIVS = {"coarse": 60, "normal": 100, "fine": 160}     # element size near loaded faces = diagonal / this
+THIN_LEVEL = {"coarse": 0.5, "normal": 1.0, "fine": 1.6}
+REFINE_DIVS = {"coarse": 50, "normal": 100, "fine": 160}     # element size near loaded faces = diagonal / this
 
 
 def structural_refinement(case: dict) -> dict:

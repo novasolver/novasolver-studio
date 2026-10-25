@@ -94,9 +94,10 @@ def build_external_domain(gmsh, job, bmin, bmax, keys) -> float:
     return h_far, h_body
 
 
-def import_stl(gmsh, path: str, scale: float) -> list[list[int]]:
+def import_stl(gmsh, path: str, scale: float, remesh: bool = True) -> list[list[int]]:
     """Triangulated surface (e.g. exported from Blender) -> solid: split into faces by feature angle,
     rebuild a geometry that can be remeshed, and close it into one volume. scale converts file units to metres.
+    remesh=False keeps the file's own triangles as the surface mesh (fallback when remeshing the surface fails).
     Returns the surfaces of each user-visible face."""
     gmsh.merge(path)
     if scale != 1.0:
@@ -104,8 +105,9 @@ def import_stl(gmsh, path: str, scale: float) -> list[list[int]]:
     gmsh.model.mesh.removeDuplicateNodes()
     xyz = np.asarray(gmsh.model.mesh.getNodes()[1]).reshape(-1, 3)
     remesh_flat_regions(gmsh, max_edge=0.01 * float(np.linalg.norm(np.ptp(xyz, axis=0))))
-    gmsh.model.mesh.classifySurfaces(40 * math.pi / 180, True, True, math.pi)
-    gmsh.model.mesh.createGeometry()
+    gmsh.model.mesh.classifySurfaces(40 * math.pi / 180, True, remesh, math.pi)
+    if remesh:
+        gmsh.model.mesh.createGeometry()
     surfs = [t for _, t in gmsh.model.getEntities(2)]
     if not surfs:
         raise RuntimeError("NO_SOLID: the STL contains no surface")
@@ -430,9 +432,23 @@ def body_volume_centroid(gmsh, tag: int, discrete: bool):
     return float(abs(vol)), (acc / vol).tolist() if vol else [0.0, 0.0, 0.0]
 
 def main(job_path: str) -> None:
+    job = json.loads(Path(job_path).read_text(encoding="utf-8"))
+    try:
+        mesh_job(job)
+    except Exception as e:                       # noqa: BLE001
+        # remeshing a faceted STL surface can produce overlapping boundary facets (gmsh) on some shapes; the
+        # file's own triangles are a valid closed surface, so fall back to filling the volume behind them
+        stl = job["kind"] == "import" and job["file"].lower().endswith(".stl")
+        if not stl or job.get("stl_keep_surface") or not job.get("volume"):
+            raise
+        print(f"surface remeshing failed ({e}); keeping the STL triangles", file=sys.stderr, flush=True)
+        job["stl_keep_surface"] = True
+        mesh_job(job)
+
+
+def mesh_job(job: dict) -> None:
     import gmsh
 
-    job = json.loads(Path(job_path).read_text(encoding="utf-8"))
     out = Path(job["out"])
     out.mkdir(parents=True, exist_ok=True)
     gmsh.initialize(["", "-nopopup"])
@@ -444,7 +460,7 @@ def main(job_path: str) -> None:
         if job["kind"] == "import":
             stl = job["file"].lower().endswith(".stl")
             if stl:
-                groups = import_stl(gmsh, job["file"], float(job.get("stl_scale", 1e-3)))
+                groups = import_stl(gmsh, job["file"], float(job.get("stl_scale", 1e-3)), not job.get("stl_keep_surface"))
             else:
                 gmsh.option.setString("Geometry.OCCTargetUnit", "M")     # CAD units -> metres
                 gmsh.model.occ.importShapes(job["file"])
@@ -467,18 +483,23 @@ def main(job_path: str) -> None:
                 bbox = [[xmin, ymin, zmin], [xmax, ymax, zmax]]
             if not stl:
                 groups = [[tag] for _, tag in sorted(gmsh.model.getEntities(2), key=lambda e: e[1])]
+            diag_ref = float(np.linalg.norm([lx, ly, lz]))
             for n, group in enumerate(groups, start=1):
                 if job.get("domain"):
                     break
                 tag = group[0]
-                k = f"f{tag}"
-                for g in group:
-                    keys[g] = k
-                gmsh.model.addPhysicalGroup(2, group, tag=tag, name=k)
                 up, _ = gmsh.model.getAdjacencies(2, tag)
                 parts = [face_area_centroid(gmsh, g, stl) for g in group]
                 area = sum(a for a, _ in parts)
                 cen = (sum(a * np.array(c) for a, c in parts) / area).tolist() if area else parts[0][1]
+                k = f"f{tag}"
+                if job.get("stl_keep_surface") and job.get("faces_ref"):
+                    # the fallback splits the surface differently: keep the face names the case already uses
+                    k = min(job["faces_ref"], key=lambda r: np.linalg.norm(np.subtract(r["centroid"], cen))
+                            + abs(r["area"] - area) / max(r["area"], area, 1e-12) * diag_ref)["key"]
+                for g in group:
+                    keys[g] = k
+                gmsh.model.addPhysicalGroup(2, group, tag=tag, name=k)
                 face_info.append({"key": k, "n": n, "area": area, "centroid": cen,
                                   "type": "Discrete" if stl else gmsh.model.getType(2, tag),
                                   "bodies": [f"b{int(v)}" for v in up], "interface": len(up) > 1})
@@ -557,6 +578,7 @@ def main(job_path: str) -> None:
         gmsh.option.setNumber("Mesh.MeshSizeMax", h)
         gmsh.option.setNumber("Mesh.MeshSizeMin", job["_hmin"] * 0.5 if job.get("_hmin") else h * (0.5 if job["kind"] != "import" else 0.1))
         gmsh.option.setNumber("Mesh.Algorithm3D", 1)
+        gmsh.option.setNumber("Mesh.OptimizeNetgen", 1)   # removes near-flat slivers that stall the iterative solver
         if job.get("volume") and job.get("thin_n") and job["kind"] == "import" and not job.get("domain"):
             # thin walls (fins, handles, ribs, plates) get enough elements across, whatever the overall size
             flip = None

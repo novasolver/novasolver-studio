@@ -17,14 +17,28 @@ DIRECT_FALLBACK_LIMIT = 250000   # unknowns; direct solve when AMG-CG does not c
 
 
 def _amg_cg(A, b, B=None, tol=1e-10):
+    """Smoothed-aggregation AMG preconditioned CG. Strongly graded meshes (thin-wall and load refinement next to
+    coarse regions) can make the default set-up stall, so a sturdier set-up with symmetric Gauss-Seidel smoothing
+    is tried before giving up."""
     import pyamg
-    ml = pyamg.smoothed_aggregation_solver(A, B=B, symmetry="symmetric", strength=("symmetric", {"theta": 0.0}),
-                                           max_coarse=500)
-    res = []
-    x = ml.solve(b, tol=tol, accel="cg", maxiter=2000, residuals=res)
-    if not np.all(np.isfinite(x)) or (res and res[-1] > 1e-6 * max(res[0], 1e-300)):
-        raise RuntimeError(f"iterative solver did not converge (relative residual {res[-1] / max(res[0], 1e-300):.1e})")
-    return x
+    setups = [
+        dict(strength=("symmetric", {"theta": 0.0}), max_coarse=500),
+        dict(strength=("symmetric", {"theta": 0.02}), max_coarse=1000,
+             presmoother=("gauss_seidel", {"sweep": "symmetric", "iterations": 2}),
+             postsmoother=("gauss_seidel", {"sweep": "symmetric", "iterations": 2}),
+             smooth=("energy", {"krylov": "cg", "maxiter": 4})),
+    ]
+    last = None
+    for kw in setups:
+        ml = pyamg.smoothed_aggregation_solver(A, B=B, symmetry="symmetric", **kw)
+        res = []
+        x = ml.solve(b, tol=tol, accel="cg", maxiter=3000, residuals=res)
+        last = res[-1] / max(res[0], 1e-300) if res else np.inf
+        if np.all(np.isfinite(x)) and last <= 1e-6:
+            return x
+    raise RuntimeError(f"iterative solver did not converge (relative residual {last:.1e})")
+
+
 GA, GB = 0.5854101966249685, 0.1381966011250105
 GAUSS = np.array([[GB, GB, GB], [GA, GB, GB], [GB, GA, GB], [GB, GB, GA]])  # (xi, eta, zeta)
 GW = np.full(4, 1.0 / 24.0)
