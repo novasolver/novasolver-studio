@@ -32,7 +32,7 @@
  "description":"CADを読み込んで構造・熱・流れを解く無料のオープンソース解析ソフト。結果を参照解やメッシュ収束で自動検証し、AIアシスタント（MCP）からも操作できる。",
  "license":"https://www.gnu.org/licenses/gpl-3.0.html","isAccessibleForFree":true,
  "offers":{"@type":"Offer","price":"0","priceCurrency":"JPY"},
- "downloadUrl":"https://github.com/novasolver/novasolver-studio/releases/latest",
+ "downloadUrl":"https://github.com/novasolver/novasolver-studio/releases",
  "author":{"@type":"Organization","name":"NovaSolver","url":"https://novasolver.jp/"}}
 </script>
 </head>
@@ -49,7 +49,7 @@
   <h1>CADを読み込んで、構造・熱・流れを解く。<br>答えが正しいかまで、自動で確かめる。</h1>
   <p class="lead">NovaSolver Studio は、パソコンの中で動く解析ソフトです。テンプレートかCADファイルから始めて、数クリックで解けます。結果には「実行できた → 収束した → 検証済み」の判定がつき、AIアシスタントに頼んで操作することもできます。</p>
   <div class="cta">
-    <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases/latest">Windows版をダウンロード</a>
+    <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases">Windows版をダウンロード</a>
     <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">GitHubでソースを見る</a>
   </div>
   <div class="shot"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" alt="片持ち梁の解析結果。先端たわみ0.9748 mm、手計算0.9831 mmとの差−0.8%で検証済み"></div>
@@ -114,7 +114,7 @@
 <section><div class="wrap">
   <h2>はじめかた（Windows）</h2>
   <ol class="steps">
-    <li><a href="https://github.com/novasolver/novasolver-studio/releases/latest">GitHub Releases</a> から zip をダウンロードして展開します（インストール不要）。</li>
+    <li><a href="https://github.com/novasolver/novasolver-studio/releases">GitHub Releases</a> から zip をダウンロードして展開します（インストール不要）。</li>
     <li><code>NovaSolverStudio.exe</code> をダブルクリックすると、ブラウザに画面が開きます。</li>
     <li>構造と熱は、そのまま解けます（内蔵ソルバと CalculiX を同梱）。</li>
     <li>流れの解析には OpenFOAM®（ESI版 Windows パッケージ、約200 MB）を <code>%LOCALAPPDATA%\NovaSolverStudio\solvers\openfoam</code> に入れます。管理者権限は不要です。</li>
