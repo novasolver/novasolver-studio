@@ -18,6 +18,9 @@ MATERIALS_SOLID = {
                   "sy": {"value": 275, "unit": "MPa"}, "k": {"value": 167, "unit": "W/mK"}},
     "titanium": {"E": {"value": 114, "unit": "GPa"}, "nu": {"value": 0.34, "unit": "-"}, "rho": {"value": 4430, "unit": "kg/m3"},
                  "sy": {"value": 880, "unit": "MPa"}, "k": {"value": 6.7, "unit": "W/mK"}},
+    # quenched and tempered alloy steel (SCM440 / Cr-V tool steel class): tools, shafts, bolts
+    "alloy_steel": {"E": {"value": 205, "unit": "GPa"}, "nu": {"value": 0.29, "unit": "-"}, "rho": {"value": 7850, "unit": "kg/m3"},
+                    "sy": {"value": 785, "unit": "MPa"}, "k": {"value": 42, "unit": "W/mK"}},
     "copper": {"E": {"value": 117, "unit": "GPa"}, "nu": {"value": 0.34, "unit": "-"}, "rho": {"value": 8960, "unit": "kg/m3"},
                "sy": {"value": 70, "unit": "MPa"}, "k": {"value": 390, "unit": "W/mK"}},
 }
@@ -50,7 +53,7 @@ FLUID_PROPS = {   # rho, cp, mu, Pr (for multi-region thermal flow)
 }
 SOLID_PROPS = {   # rho, cp (k comes from MATERIALS_SOLID)
     "steel": {"rho": 7850.0, "cp": 460.0}, "aluminium": {"rho": 2700.0, "cp": 900.0}, "titanium": {"rho": 4430.0, "cp": 520.0},
-    "copper": {"rho": 8960.0, "cp": 385.0},
+    "copper": {"rho": 8960.0, "cp": 385.0}, "alloy_steel": {"rho": 7850.0, "cp": 470.0},
 }
 VALUE_FIELDS = sorted({k for v in ROLE_FIELDS.values() for k in v})
 

@@ -210,6 +210,7 @@
   "role.water-outlet": "Water outlet",
   "body.fluid": "Fluid (water etc.)",
   "body.solid": "Solid",
+  "material.alloy_steel": "Alloy steel, quenched (SCM440 / tool steel)",
   "material.copper": "Copper",
   "card.t_solid_max": "Max solid temperature",
   "card.t_outlet": "Outlet water temperature",

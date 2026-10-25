@@ -210,6 +210,7 @@
   "role.water-outlet": "水の出口",
   "body.fluid": "流体（水など）",
   "body.solid": "固体",
+  "material.alloy_steel": "焼入れ合金鋼（SCM440・工具鋼）",
   "material.copper": "銅",
   "card.t_solid_max": "固体の最高温度",
   "card.t_outlet": "出口の水温",
