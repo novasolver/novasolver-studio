@@ -100,6 +100,7 @@
   "engine.calculix": "CalculiX",
   "engine.openfoam": "OpenFOAM",
   "engine.builtin-fem.hint": "无需安装",
+  "results.focusPeak": "转到最大值位置",
   "results.quantity": "显示量",
   "results.deform": "变形放大",
   "results.colormap": "色图",

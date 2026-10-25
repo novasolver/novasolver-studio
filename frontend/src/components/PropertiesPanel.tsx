@@ -5,6 +5,7 @@ import {
   Check,
   Circle,
   CircleAlert,
+  Crosshair,
   ExternalLink,
   FileBox,
   Hourglass,
@@ -23,6 +24,7 @@ import {
   caseTitle,
   change,
   checkConvergence,
+  focusPeak,
   generateMesh,
   getState,
   goStep,
@@ -1372,6 +1374,10 @@ function ResultsStep() {
               }))}
               onChange={(q) => void loadField(q, true)}
             />
+            <Button variant="ghost" size="sm" className="mt-1.5 self-start" onClick={() => focusPeak()}>
+              <Crosshair size={14} strokeWidth={1.5} />
+              {t("results.focusPeak")}
+            </Button>
           </Field>
           <Field label={t("results.colormap")}>
             <Tabs

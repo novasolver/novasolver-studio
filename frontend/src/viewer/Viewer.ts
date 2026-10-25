@@ -554,6 +554,45 @@ export class Viewer {
     this.lookFrom(d, animate);
   }
 
+  /**
+   * Move the camera close to where the shown result is largest (e.g. peak stress at a tooth root hidden at the back).
+   * Looks at it from outside the body, keeping some of the current angle. Returns false when no field is shown.
+   */
+  focusPeak(animate = true): boolean {
+    const f = this.field;
+    const base = this.basePositions;
+    const sphere = this.boundingSphere();
+    if (!f || !base || !sphere || f.scalars.length === 0) return false;
+    const diverging = f.range[0] < 0 && f.range[1] > 0;
+    let best = 0;
+    let bestV = -Infinity;
+    for (let i = 0; i < f.scalars.length; i++) {
+      const v = diverging ? Math.abs(f.scalars[i]) : f.scalars[i];
+      if (v > bestV) {
+        bestV = v;
+        best = i;
+      }
+    }
+    const p = new THREE.Vector3(base[best * 3], base[best * 3 + 1], base[best * 3 + 2]);
+    const out = p.clone().sub(sphere.center);
+    if (out.lengthSq() < 1e-18) out.set(1, -1.35, 0.85);
+    const cur = this.camera.position.clone().sub(this.controls.target).normalize();
+    const dir = out.normalize().add(cur.multiplyScalar(0.6)).normalize();
+    const toPos = p.clone().add(dir.multiplyScalar(sphere.radius * 0.9));
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!animate || reduce) {
+      this.camera.position.copy(toPos);
+      this.controls.target.copy(p);
+      this.controls.update();
+      this.tween = null;
+      this.dirty = true;
+      return true;
+    }
+    this.tween = { t0: performance.now(), dur: 450, fromPos: this.camera.position.clone(), toPos,
+                   fromTarget: this.controls.target.clone(), toTarget: p };
+    return true;
+  }
+
   /** Force a resize (e.g. after the host layout changed). */
   resize(): void {
     const w = Math.max(1, this.container.clientWidth);

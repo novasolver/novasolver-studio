@@ -155,6 +155,10 @@ export function registerViewer(v: Viewer | null) {
 export function viewCmd(name: ViewName) {
   viewer?.view(name);
 }
+/** Bring the largest value of the shown result into view (the place that decides failure). */
+export function focusPeak() {
+  viewer?.focusPeak();
+}
 
 // ------------------------------------------------------------------ log / toast
 let seq = 0;
