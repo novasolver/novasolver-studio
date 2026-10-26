@@ -45,15 +45,15 @@
 
 <main>
 <div class="wrap hero">
-  <span class="badge">预览版 v0.1 · 免费 · 开源（GPL-3.0）</span>
+  <span class="badge">预览版 v0.2 · 免费 · 开源（GPL-3.0）</span>
   <h1>AI 来画，AI 来验证。<br>新时代的 AI 工程设计。</h1>
   <p class="lead">用图像生成 AI 画出形状，由 AI 在 Blender 中建模，再由 NovaSolver Studio 计算强度、传热和流动。在制造之前，就能知道画出来的东西会不会坏。从构思到验证，用免费软件和 AI 连成一条线。</p>
   <div class="cta">
     <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases">下载 Windows 版</a>
-    <a class="btn ghost" href="/dl/studio/NovaSolverStudio-0.1.0-win64.zip">从 novasolver.jp 直接下载</a>
+    <a class="btn ghost" href="/dl/studio/NovaSolverStudio-0.2.0-win64.zip">从 novasolver.jp 直接下载</a>
     <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">在 GitHub 查看源码</a>
   </div>
-  <p class="note" style="margin-top:12px">GitHub 访问较慢时，可从本站直接下载（v0.1.0，约 175 MB，<a href="/dl/studio/NovaSolverStudio-0.1.0-win64.zip.sha256">SHA-256</a>）。</p>
+  <p class="note" style="margin-top:12px">GitHub 访问较慢时，可从本站直接下载（v0.2.0，约 220 MB，<a href="/dl/studio/NovaSolverStudio-0.2.0-win64.zip.sha256">SHA-256</a>）。</p>
   <div class="shot"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" alt="NovaSolver Studio 结果界面：端部挠度与梁理论比较，判定为已验证"></div>
 </div>
 
@@ -66,7 +66,6 @@
     <div class="step"><div class="pic"><img src="/studio/img/heatsink-boundaries.webp" width="1280" height="800" loading="lazy" alt="点击导入形状的表面设定条件"></div><div class="body"><h3>导入 Studio</h3><p>导入形状，点击选择固定面和受力面。也可以对 AI 说：“固定底面，在顶面施加 500 N”。</p><span class="tool">STL · STEP · IGES</span></div></div>
     <div class="step"><div class="pic"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" loading="lazy" alt="应力与变形计算结果"></div><div class="body"><h3>计算并验证</h3><p>计算应力、温度和流动，并自动判定结果是否可信，直至“已验证”。</p><span class="tool">NovaSolver Studio</span></div></div>
   </div>
-  <p class="note" style="margin-top:14px">STL（Blender 等使用的网格格式）导入将在下一版本提供。v0.1 支持 STEP、IGES 和 BREP。</p>
 </div></section>
 
 <section><div class="wrap">
@@ -144,7 +143,7 @@
 <section><div class="wrap">
   <h2>快速开始（Windows）</h2>
   <ol class="steps">
-    <li>从 <a href="https://github.com/novasolver/novasolver-studio/releases">GitHub Releases</a> 或 <a href="/dl/studio/NovaSolverStudio-0.1.0-win64.zip">本站</a> 下载 zip 并解压（无需安装）。</li>
+    <li>从 <a href="https://github.com/novasolver/novasolver-studio/releases">GitHub Releases</a> 或 <a href="/dl/studio/NovaSolverStudio-0.2.0-win64.zip">本站</a> 下载 zip 并解压（无需安装）。</li>
     <li>双击 <code>NovaSolverStudio.exe</code>，界面会在浏览器中打开。</li>
     <li>结构和传热分析可直接使用（已内置求解器和 CalculiX）。</li>
     <li>流动分析需要将 OpenFOAM®（ESI 版 Windows 安装包，约 200 MB）安装到 <code>%LOCALAPPDATA%\NovaSolverStudio\solvers\openfoam</code>，无需管理员权限。</li>
