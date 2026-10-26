@@ -52,28 +52,40 @@
     <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases">Download for Windows</a>
     <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">Source on GitHub</a>
   </div>
-  <div class="shot"><img src="/studio/img/results-cantilever-en.webp" width="1280" height="800" alt="NovaSolver Studio results: verified against beam theory, with a warning that the stress exceeds the yield strength"></div>
+  <div class="shot video"><video controls preload="none" playsinline poster="/studio/img/intro-poster.webp" width="1280" height="720"><source src="/studio/video/novasolver-studio-intro-ja.mp4" type="video/mp4"></video></div>
+  <p class="note cap">Intro video (1:35, Japanese narration): a gear drawn by AI, modelled in Blender and checked in Studio</p>
 </div>
 
 <section><div class="wrap">
+  <h2>Simulation for everyone</h2>
+  <p class="sub">Strength and heat analysis used to belong to companies with expensive CAE licences and specialists to run them. Now anyone can run it by asking an AI. A shape an AI comes up with is checked by an AI against the laws of physics, so the path from idea to physical verification becomes one continuous step, and AI moves from writing text and drawing pictures to checking whether a thing will actually work.</p>
+  <div class="grid">
+    <div class="card"><h3>Analysis you can run yourself</h3><p>With a PC and an AI agent you can compute the strength, heat and flow of a shape you just thought of. At work or at home.</p></div>
+    <div class="card"><h3>No high-end CAE licence</h3><p>The software is free and open source. No licence fees, no seat limits.</p></div>
+    <div class="card"><h3>Let the AI do the analysis</h3><p>Ask in plain language for the setup, mesh, solve and reading of the results. The software itself checks whether the answer holds when the mesh is refined (verified).</p></div>
+  </div>
+</div></section>
+<section><div class="wrap">
   <h2>Draw → model → check</h2>
-  <p class="sub">From the first idea to the strength check. You can hand every step to AI.</p>
+  <p class="sub">One gear, from the idea to the strength check. Every step can be handed to an AI.</p>
   <div class="flow">
-    <div class="step"><div class="pic">Image coming soon</div><div class="body"><h3>Draw it with AI</h3><p>Describe what you want to make and let image AI sketch the shape.</p><span class="tool">Image AI</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-ai-image.webp" width="1280" height="720" loading="lazy" alt="Two meshing spur gears drawn by an image-generation AI"></div><div class="body"><h3>Draw it with AI</h3><p>Describe what you want and let an image-generation AI draw it. Here: a pair of meshing spur gears.</p><span class="tool">Image AI</span></div></div>
     <div class="step"><div class="pic"><img src="/studio/img/gear-blender.webp" width="1280" height="720" loading="lazy" alt="Involute spur gear modelled in Blender by AI"></div><div class="body"><h3>Model it in Blender</h3><p>AI drives Blender to build a 3D model to exact dimensions and exports it as STL.</p><span class="tool">Blender</span></div></div>
-    <div class="step"><div class="pic"><img src="/studio/img/heatsink-boundaries.webp" width="1280" height="800" loading="lazy" alt="Clicking faces of an imported shape to set conditions"></div><div class="body"><h3>Load it into Studio</h3><p>Load the shape and click the faces to fix and to load. Or ask your AI: "fix the bottom, push 500 N on the top".</p><span class="tool">STL · STEP · IGES</span></div></div>
-    <div class="step"><div class="pic"><img src="/studio/img/results-cantilever-en.webp" width="1280" height="800" loading="lazy" alt="Stress and deformation results"></div><div class="body"><h3>Compute and check</h3><p>Stress, temperature and flow are computed, and Studio grades whether the answer can be trusted, up to "verified".</p><span class="tool">NovaSolver Studio</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-studio-import.webp" width="1280" height="720" loading="lazy" alt="The Blender gear imported into NovaSolver Studio"></div><div class="body"><h3>Load it into Studio</h3><p>Import the STL, fix the shaft bore and push 1000 N on the tip of a tooth. The AI can set the conditions too.</p><span class="tool">STL · STEP · IGES</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-stress-result.webp" width="1280" height="720" loading="lazy" alt="Stress concentrated at the root of the loaded tooth"></div><div class="body"><h3>Compute and check</h3><p>The highest stress is at the tooth root, about 100 MPa. Refining the mesh three times checks that the deflection has settled (verified).</p><span class="tool">NovaSolver Studio</span></div></div>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <h2>No analysis expert. No expensive licence.</h2>
-  <p class="sub">CAE used to belong to companies that could afford costly software and a dedicated specialist. With NovaSolver Studio you can start without either.</p>
+  <h2>What checking with CAE gets you</h2>
+  <p class="sub">It turns "looks strong enough" into "a design checked by calculation", for a company's products and for things you make yourself.</p>
   <div class="grid">
-    <div class="card"><h3>Starts at zero cost</h3><p>Free and open source. No licence fees and no seat limits.</p></div>
-    <div class="card"><h3>AI fills in the know-how</h3><p>Ask an AI agent in plain words to set the conditions, mesh, solve and read the results.</p></div>
-    <div class="card"><h3>Trustworthy answers for any shape</h3><p>Studio refines the mesh, solves again and checks that the answer has settled, even for a shape drawn a minute ago.</p></div>
+    <div class="card"><h3>Optimise the shape</h3><p>The AI makes a shape, Studio evaluates it, and the AI reshapes it from the result. Each round moves you toward a part that is lighter and uses less material while staying strong.</p></div>
+    <div class="card"><h3>Say "safe up to X kg" with a number</h3><p>Stress, deflection and margin to the material's strength under the load you expect, as numbers checked for mesh convergence. One basis for the ratings you publish.</p><p class="ex">Example: a 3D-printed shelf bracket (PLA), back fixed, 500 N (about 50 kg) on the shelf → <b>0.15 mm</b> deflection (model with uniform, solid material)</p></div>
+    <div class="card"><h3>Stand out from look-alikes</h3><p>Among products that look the same, "a design checked by simulation" is a reason to choose yours. Show it in catalogues, quotes, shop pages and crowdfunding campaigns.</p></div>
+    <div class="card"><h3>Build fewer prototypes</h3><p>Do the make-break-fix loop on screen first, and spend material and time only on the prototypes you really need.</p></div>
   </div>
+  <p class="note" style="margin-top:16px">Simulation results support a design; they are not a warranty. Before you guarantee a product, account for material scatter and the manufacturing process, and add physical tests where needed.</p>
 </div></section>
 
 <section><div class="wrap">

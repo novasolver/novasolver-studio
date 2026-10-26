@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from . import units
+from .config import foam_workdir
 from .config import find_calculix, find_openfoam
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -463,12 +464,7 @@ def run_openfoam(case: dict, jd: Path, prog) -> dict:
     foam = find_openfoam()
     if not foam:
         raise RuntimeError("OpenFOAM is not installed")
-    wd = jd / "of"
-    if not str(wd).isascii():
-        # MinGW OpenFOAM is fragile with non-ASCII paths: solve in an ASCII scratch folder, keep a pointer in the job
-        wd = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NovaSolverStudio" / "runs" / jd.name / "of"
-        (jd / "of_location.txt").write_text(str(wd), encoding="utf-8")
-    wd.mkdir(parents=True, exist_ok=True)
+    wd = foam_workdir(jd)
     for rel, text in compile_openfoam(case).items():
         p = wd / rel
         p.parent.mkdir(parents=True, exist_ok=True)

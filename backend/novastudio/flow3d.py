@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from . import units
+from .config import foam_workdir
 
 MESH_DIV = {"coarse": 5, "normal": 8, "fine": 12}       # cells across the smallest inlet/outlet diameter
 
@@ -62,10 +63,11 @@ def compile_case(case: dict) -> dict[str, str]:
     files = {}
     files["system/controlDict"] = h("dictionary", "controlDict") + """
 application simpleFoam;
-startFrom startTime; startTime 0; stopAt endTime; endTime 2000; deltaT 1;
-writeControl timeStep; writeInterval 2000; purgeWrite 1;
+startFrom startTime; startTime 0; stopAt endTime; endTime 4000; deltaT 1;
+writeControl timeStep; writeInterval 4000; purgeWrite 1;
 writeFormat ascii; writePrecision 8; timeFormat general; runTimeModifiable false;
 """
+    # residualControl ends a converging run early; the cap only matters for fine meshes that need more sweeps
     files["system/fvSchemes"] = h("dictionary", "fvSchemes") + """
 ddtSchemes { default steadyState; }
 gradSchemes { default cellLimited Gauss linear 1; }
@@ -194,11 +196,7 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
     mesh = _mesh_for_run(case, jd, prog)            # also writes mesh.msh next to mesh.npz
     from .geometry import mesh_dir
     msh = mesh_dir(case) / "mesh.msh"
-    wd = jd / "of"
-    if not str(wd).isascii():
-        wd = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NovaSolverStudio" / "runs" / jd.name / "of"
-        (jd / "of_location.txt").write_text(str(wd), encoding="utf-8")
-    wd.mkdir(parents=True, exist_ok=True)
+    wd = foam_workdir(jd)
     for rel, text in compile_case(case).items():
         p = wd / rel
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -461,11 +459,7 @@ def run_external(case: dict, jd: Path, prog, proc) -> dict:
     aref = frontal_area(nodes, body, d)
     lref = math.sqrt(4 * aref / math.pi)                       # equivalent diameter of the frontal area
     center = nodes[np.unique(body[:, :3])].mean(axis=0)
-    wd = jd / "of"
-    if not str(wd).isascii():
-        wd = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NovaSolverStudio" / "runs" / jd.name / "of"
-        (jd / "of_location.txt").write_text(str(wd), encoding="utf-8")
-    wd.mkdir(parents=True, exist_ok=True)
+    wd = foam_workdir(jd)
     for rel, text in compile_external(case, aref, lref, center).items():
         p = wd / rel
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -688,11 +682,7 @@ def run_conjugate(case: dict, jd: Path, prog, proc) -> dict:
     if not foam:
         raise RuntimeError("OpenFOAM is not installed")
     mesh = _mesh_for_run(case, jd, prog)
-    wd = jd / "of"
-    if not str(wd).isascii():
-        wd = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NovaSolverStudio" / "runs" / jd.name / "of"
-        (jd / "of_location.txt").write_text(str(wd), encoding="utf-8")
-    wd.mkdir(parents=True, exist_ok=True)
+    wd = foam_workdir(jd)
     for rel, text in compile_conjugate_base(case).items():
         p = wd / rel
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -851,10 +841,7 @@ def run_external_snappy(case: dict, jd: Path, prog, proc) -> dict:
         lo[axis] = b0[axis] - dm["up"] * L; hi[axis] = b1[axis] + dm["down"] * L
     else:
         hi[axis] = b1[axis] + dm["up"] * L; lo[axis] = b0[axis] - dm["down"] * L
-    wd = jd / "of"
-    if not str(wd).isascii():
-        wd = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NovaSolverStudio" / "runs" / jd.name / "of"
-        (jd / "of_location.txt").write_text(str(wd), encoding="utf-8")
+    wd = foam_workdir(jd)
     (wd / "constant" / "triSurface").mkdir(parents=True, exist_ok=True)
     prog("job.meshing", 0.03)
     stl = wd / "constant" / "triSurface" / "body.stl"

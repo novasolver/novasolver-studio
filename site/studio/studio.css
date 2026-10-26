@@ -17,12 +17,15 @@ header.top .wrap{display:flex;align-items:center;gap:16px;height:56px}
 .btn.ghost{border:1px solid var(--line);color:var(--fg)}.btn.ghost:hover{text-decoration:none;background:var(--surface)}
 .shot{margin:40px auto 0;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;max-width:1040px}
 .shot img{display:block;width:100%;height:auto}
+.shot video{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#000}
+.hero .note.cap{margin:10px auto 0;max-width:760px}
 section{padding:56px 0;border-top:1px solid var(--line)}
 section h2{font-size:26px;margin:0 0 8px;font-weight:600}
 section p.sub{color:var(--fg2);margin:0 0 28px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
 .card h3{margin:0 0 6px;font-size:17px;font-weight:600}.card p{margin:0;color:var(--fg2);font-size:15px}
+.card p.ex{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:13px;color:var(--fg3)}.card p.ex b{color:var(--green);font-weight:600}
 .gates{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 20px;font-size:14px}
 .gate{border:1px solid var(--line);border-radius:999px;padding:3px 12px;color:var(--fg2)}.gate.ok{color:var(--green);border-color:#244b33}
 table{width:100%;border-collapse:collapse;font-size:15px;font-variant-numeric:tabular-nums}

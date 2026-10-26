@@ -23,6 +23,13 @@ MATERIALS_SOLID = {
                     "sy": {"value": 785, "unit": "MPa"}, "k": {"value": 42, "unit": "W/mK"}},
     "copper": {"E": {"value": 117, "unit": "GPa"}, "nu": {"value": 0.34, "unit": "-"}, "rho": {"value": 8960, "unit": "kg/m3"},
                "sy": {"value": 70, "unit": "MPa"}, "k": {"value": 390, "unit": "W/mK"}},
+    # 3D-printing plastics, solid (100 % infill) and loaded along the layers; across the layers they are weaker
+    "pla": {"E": {"value": 3.5, "unit": "GPa"}, "nu": {"value": 0.36, "unit": "-"}, "rho": {"value": 1240, "unit": "kg/m3"},
+            "sy": {"value": 50, "unit": "MPa"}, "k": {"value": 0.13, "unit": "W/mK"}},
+    "petg": {"E": {"value": 2.1, "unit": "GPa"}, "nu": {"value": 0.38, "unit": "-"}, "rho": {"value": 1270, "unit": "kg/m3"},
+             "sy": {"value": 50, "unit": "MPa"}, "k": {"value": 0.2, "unit": "W/mK"}},
+    "abs": {"E": {"value": 2.2, "unit": "GPa"}, "nu": {"value": 0.35, "unit": "-"}, "rho": {"value": 1040, "unit": "kg/m3"},
+            "sy": {"value": 40, "unit": "MPa"}, "k": {"value": 0.17, "unit": "W/mK"}},
 }
 MATERIALS_FLUID = {
     "water": {"nu": {"value": 1.0e-6, "unit": "m2/s"}, "rho": {"value": 998, "unit": "kg/m3"}},
@@ -54,6 +61,7 @@ FLUID_PROPS = {   # rho, cp, mu, Pr (for multi-region thermal flow)
 SOLID_PROPS = {   # rho, cp (k comes from MATERIALS_SOLID)
     "steel": {"rho": 7850.0, "cp": 460.0}, "aluminium": {"rho": 2700.0, "cp": 900.0}, "titanium": {"rho": 4430.0, "cp": 520.0},
     "copper": {"rho": 8960.0, "cp": 385.0}, "alloy_steel": {"rho": 7850.0, "cp": 470.0},
+    "pla": {"rho": 1240.0, "cp": 1800.0}, "petg": {"rho": 1270.0, "cp": 1200.0}, "abs": {"rho": 1040.0, "cp": 1400.0},
 }
 VALUE_FIELDS = sorted({k for v in ROLE_FIELDS.values() for k in v})
 

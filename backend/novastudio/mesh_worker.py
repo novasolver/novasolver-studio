@@ -94,15 +94,42 @@ def build_external_domain(gmsh, job, bmin, bmax, keys) -> float:
     return h_far, h_body
 
 
-def import_stl(gmsh, path: str, scale: float, target: float | None = None, factor: float = 1.0) -> list[list[int]]:
+def import_stl(gmsh, path: str, scale: float, target: float | None = None, factor: float = 1.0,
+               ref_faces: list[dict] | None = None) -> tuple[list[list[int]], dict | None]:
     """Triangulated surface (e.g. exported from Blender) -> solid, split into faces by feature angle and closed
     into one volume. scale converts file units to metres. The surface triangles are the surface mesh (gmsh is not
     asked to re-parametrise and remesh a faceted surface: that fails on chamfers and tiny faces).
     For a volume mesh, the surface is first remeshed with PyMeshLab into even triangles of about `target` metres
     (or the thinnest wall if thinner, sharp edges kept), times `factor` for the convergence level.
-    Returns the surfaces of each user-visible face."""
+    With ref_faces (the case's display triangles and face keys) each remeshed triangle takes the key of the face it
+    lies on. Returns the surfaces of each user-visible face, and {surface: key} when labelled from ref_faces."""
     if target:
         V, F = isotropic_surface(path, scale, target, factor)
+        labels = label_by_reference(V, F, ref_faces) if ref_faces else None
+        if labels is not None:
+            # one surface per case face: the names survive the remesh without any centroid matching
+            nodes = list(range(1, len(V) + 1))
+            first = None
+            for key in sorted(set(labels)):
+                s = gmsh.model.addDiscreteEntity(2)
+                if first is None:
+                    gmsh.model.mesh.addNodes(2, s, nodes, V.ravel().tolist())
+                    first = s
+                idx = np.flatnonzero(labels == key)
+                gmsh.model.mesh.addElementsByType(s, 2, (idx + 1).tolist(), (F[idx].ravel() + 1).tolist())
+            gmsh.model.mesh.createTopology()            # boundary curves and points between the faces; may renumber
+            key_of, by_key = {}, {}
+            for _, s in gmsh.model.getEntities(2):
+                _, etags, _ = gmsh.model.mesh.getElements(2, s)
+                if not len(etags) or not len(etags[0]):
+                    continue
+                ks, counts = np.unique(labels[np.asarray(etags[0], np.int64) - 1], return_counts=True)
+                key_of[s] = str(ks[np.argmax(counts)])
+                by_key.setdefault(key_of[s], []).append(s)
+            loop = gmsh.model.geo.addSurfaceLoop(list(key_of))
+            gmsh.model.geo.addVolume([loop])
+            gmsh.model.geo.synchronize()
+            return list(by_key.values()), key_of
         s = gmsh.model.addDiscreteEntity(2)
         gmsh.model.mesh.addNodes(2, s, list(range(1, len(V) + 1)), V.ravel().tolist())
         gmsh.model.mesh.addElementsByType(s, 2, [], (F.ravel() + 1).tolist())
@@ -121,7 +148,40 @@ def import_stl(gmsh, path: str, scale: float, target: float | None = None, facto
     loop = gmsh.model.geo.addSurfaceLoop([s for g in groups for s in g])
     gmsh.model.geo.addVolume([loop])
     gmsh.model.geo.synchronize()
-    return groups
+    return groups, None
+
+
+def label_by_reference(V: np.ndarray, F: np.ndarray, ref_faces: list[dict]) -> np.ndarray | None:
+    """Face name of each triangle (V, F in metres): the name of the nearest point sampled densely over the case's
+    original faces (display triangles with their keys). None if the reference does not cover this surface."""
+    from scipy.spatial import cKDTree
+    a, b, c = V[F[:, 0]], V[F[:, 1]], V[F[:, 2]]
+    cen = (a + b + c) / 3
+    h = float(np.median(np.linalg.norm(b - a, axis=1)))
+    pts, lab = [], []
+    for i, f in enumerate(ref_faces):
+        P = np.asarray(f["positions"], float).reshape(-1, 3)
+        T = np.asarray(f["indices"], np.int64).reshape(-1, 3)
+        if len(T) == 0:
+            continue
+        A, B, C = P[T[:, 0]], P[T[:, 1]], P[T[:, 2]]
+        area = 0.5 * np.linalg.norm(np.cross(B - A, C - A), axis=1)
+        n = np.maximum(1, np.ceil(area / (h / 4) ** 2)).astype(int)     # ~4 samples per edge length h
+        r = np.random.default_rng(i).random((int(n.sum()), 2))
+        flip = r.sum(1) > 1
+        r[flip] = 1 - r[flip]
+        idx = np.repeat(np.arange(len(T)), n)
+        S = A[idx] + r[:, :1] * (B - A)[idx] + r[:, 1:] * (C - A)[idx]
+        pts.append(np.vstack([S, A, B, C, (A + B + C) / 3]))
+        lab.append(np.full(len(pts[-1]), i))
+    if not pts:
+        return None
+    pts, lab = np.vstack(pts), np.concatenate(lab)
+    d, j = cKDTree(pts).query(cen)
+    if np.median(d) > h:                                  # reference in other units or another shape
+        return None
+    keys = np.array([f["key"] for f in ref_faces])
+    return keys[lab[j]]
 
 
 def isotropic_surface(path: str, scale: float, target: float, factor: float = 1.0):
@@ -140,10 +200,85 @@ def isotropic_surface(path: str, scale: float, target: float, factor: float = 1.
         t = min(t, float(np.percentile(thick[1], 10)))
     t *= factor
     t = max(t, 1e-4 * float(np.linalg.norm(np.ptp(V0, axis=0))))
-    ms.meshing_isotropic_explicit_remeshing(iterations=6, targetlen=pml.PureValue(t / scale), featuredeg=30.0,
-                                            checksurfdist=True, maxsurfdist=pml.PureValue(t / scale / 20))
+    # Remeshing can fold triangles where two walls nearly touch (organic, topology-optimised parts), and Gmsh then
+    # refuses the surface. Repair such spots locally; if that fails, retry slightly finer, else keep the input.
+    bodies = ms.get_topological_measures()["connected_components_number"]
+    for attempt in range(4):
+        trial = pml.MeshSet()
+        trial.add_mesh(pml.Mesh(m.vertex_matrix(), m.face_matrix()))     # id 0: the input, to project repairs onto
+        trial.add_mesh(pml.Mesh(m.vertex_matrix(), m.face_matrix()))
+        try:
+            trial.meshing_isotropic_explicit_remeshing(iterations=6, targetlen=pml.PureValue(t / scale),
+                                                       featuredeg=30.0, checksurfdist=True,
+                                                       maxsurfdist=pml.PureValue(t / scale / 20))
+            ok = repair_self_intersections(trial, bodies, source=0, edge=t / scale / 2)
+        except pml.PyMeshLabException as e:                # a filter refused the mesh: treat as a failed attempt
+            print(f"remesh at {t * 1e3:.3g} mm failed: {e}", flush=True)
+            ok = False
+        if ok:
+            out = trial.current_mesh()
+            return out.vertex_matrix() * scale, out.face_matrix().astype(np.int64)
+        print(f"remesh at {t * 1e3:.3g} mm self-intersects; retrying finer", flush=True)
+        gap = wall_thickness(V0, F0[:, ::-1]) if attempt == 0 else None   # flipped: gaps between walls
+        if gap is not None:
+            # triangles wider than a narrow gap (e.g. a thin solid wall between two channels of a fluid domain)
+            # poke through the opposite wall: go below the narrow gaps, once
+            t = min(t * 0.8, float(np.percentile(gap[1], 2)))
+        else:
+            t *= 0.8
+    print("remesh failed; using the input triangles", flush=True)
+    return V0, F0.astype(np.int64)
+
+
+def folded_faces(V: np.ndarray, F: np.ndarray) -> np.ndarray:
+    """Triangles folded back onto a neighbour (normals more than ~155 degrees apart across a shared edge). PyMeshLab's
+    self-intersection test skips edge neighbours, but Gmsh sees such a fold as overlapping facets."""
+    n = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    n /= np.linalg.norm(n, axis=1)[:, None] + 1e-300
+    E = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
+    fid = np.tile(np.arange(len(F)), 3)
+    key = np.sort(E, 1)
+    o = np.lexsort((key[:, 1], key[:, 0]))
+    k, f = key[o], fid[o]
+    same = np.all(k[1:] == k[:-1], axis=1)
+    a, b = f[:-1][same], f[1:][same]
+    bad = np.einsum("ij,ij->i", n[a], n[b]) < -0.9
+    return np.unique(np.concatenate([a[bad], b[bad]]))
+
+
+def repair_self_intersections(ms, bodies: int, source: int, edge: float, rounds: int = 5) -> bool:
+    """Cut out folded or self-intersecting triangles and close the holes with triangles of about `edge`, then put
+    every vertex back on the input surface (mesh `source` of ms) so a fill across a sharp corner does not shave it
+    off. The cut starts with just the bad triangles and widens by one ring each round they persist. True if the result
+    is closed, manifold, free of both and still has `bodies` separate bodies."""
+    import pymeshlab as pml
+    for r in range(rounds):
+        m = ms.current_mesh()
+        V, F = m.vertex_matrix(), m.face_matrix()
+        bad = np.zeros(len(F))
+        bad[folded_faces(V, F)] = 1.0
+        ms.add_mesh(pml.Mesh(V, F, f_scalar_array=bad))
+        if bad.any():
+            ms.compute_selection_by_condition_per_face(condselect="fq > 0.5")
+        else:
+            ms.compute_selection_by_self_intersections_per_face()
+            if ms.current_mesh().selected_face_number() == 0:
+                break
+        for _ in range(r):
+            ms.apply_selection_dilatation()
+        ms.meshing_remove_selected_faces()
+        ms.meshing_remove_unreferenced_vertices()
+        ms.meshing_repair_non_manifold_edges(method=0)     # a cut can leave edges shared by 3+ triangles;
+        ms.meshing_repair_non_manifold_vertices()          # hole filling refuses such a mesh
+        ms.meshing_close_holes(maxholesize=10000, selfintersection=False, refinehole=True,
+                               refineholeedgelen=pml.PureValue(edge))
+        ms.transfer_attributes_per_vertex(sourcemesh=source, targetmesh=ms.current_mesh_id(), geomtransfer=True)
     m = ms.current_mesh()
-    return m.vertex_matrix() * scale, m.face_matrix().astype(np.int64)
+    ms.compute_selection_by_self_intersections_per_face()
+    g = ms.get_topological_measures()
+    return (ms.current_mesh().selected_face_number() == 0 and not len(folded_faces(m.vertex_matrix(), m.face_matrix()))
+            and g["boundary_edges"] == 0 and g["non_two_manifold_edges"] == 0
+            and g["connected_components_number"] == bodies)
 
 
 def wall_thickness(V: np.ndarray, F: np.ndarray):
@@ -355,8 +490,21 @@ def surface_triangles(gmsh, tag: int):
     for et, nodes in zip(*gmsh.model.mesh.getElements(2, tag)[::2]):
         npe = gmsh.model.mesh.getElementProperties(et)[3]
         tris.append(np.asarray(nodes, dtype=np.int64).reshape(-1, npe)[:, :3])
-    tri = np.searchsorted(ntags, np.concatenate(tris)) if tris else np.zeros((0, 3), np.int64)
-    return ntags, xyz, tri
+    if not tris:
+        return ntags, xyz, np.zeros((0, 3), np.int64)
+    tri_tags = np.concatenate(tris)
+    missing = np.setdiff1d(tri_tags, ntags)
+    if len(missing):                              # a triangle can use a node classified on another entity
+        gtags, gcoords, _ = gmsh.model.mesh.getNodes()
+        gtags = np.asarray(gtags, dtype=np.int64)
+        gxyz = np.asarray(gcoords).reshape(-1, 3)
+        g = np.argsort(gtags)
+        extra = gxyz[g[np.searchsorted(gtags[g], missing)]]
+        ntags = np.concatenate([ntags, missing])
+        xyz = np.concatenate([xyz, extra])
+        order = np.argsort(ntags)
+        ntags, xyz = ntags[order], xyz[order]
+    return ntags, xyz, np.searchsorted(ntags, tri_tags)
 
 
 def thin_wall_sizes(gmsh, h: float, n_through: float, flip: set | None = None):
@@ -390,7 +538,7 @@ def cad_inward_faces(gmsh) -> set:
     """Surface-mesh a CAD model and return the faces whose triangles point into the solid (gmsh meshes OCC faces
     along their own parametrisation, not necessarily outward): probe a point just off one triangle of each face."""
     gmsh.model.mesh.generate(2)
-    xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(-1, -1)
+    xmin, ymin, zmin, xmax, ymax, zmax = model_bounds(gmsh)
     eps = 1e-4 * float(np.linalg.norm([xmax - xmin, ymax - ymin, zmax - zmin]))
     vols = [v for _, v in gmsh.model.getEntities(3)]
     inward = set()
@@ -474,6 +622,18 @@ def main(job_path: str) -> None:
     mesh_job(json.loads(Path(job_path).read_text(encoding="utf-8")))
 
 
+def model_bounds(gmsh) -> tuple:
+    """Tight bounding box of the solids. The whole-model OCC box can be wrong: the degenerate edge at the pole of a
+    revolved surface may report its pre-scaling position, and B-spline boxes include the control polygon (an egg
+    shell read as 28 m long, so no tetrahedron was made). Use the triangulation-based box over the volumes."""
+    gmsh.option.setNumber("Geometry.OCCBoundsUseStl", 1)
+    vols = gmsh.model.getEntities(3) or gmsh.model.getEntities(2)
+    boxes = np.array([gmsh.model.getBoundingBox(d, t) for d, t in vols]) if vols else None
+    if boxes is None or not len(boxes):
+        return gmsh.model.getBoundingBox(-1, -1)
+    return (*boxes[:, :3].min(0), *boxes[:, 3:].max(0))
+
+
 def mesh_job(job: dict) -> None:
     import gmsh
 
@@ -489,16 +649,24 @@ def mesh_job(job: dict) -> None:
             stl = job["file"].lower().endswith(".stl")
             if stl:
                 # volume meshes: even PyMeshLab triangles at this level's size; display: the file's own triangles
-                groups = import_stl(gmsh, job["file"], float(job.get("stl_scale", 1e-3)),
-                                    target=job.get("surf_cap") if job.get("volume") else None,
-                                    factor=float(job.get("surf_factor", 1.0)))
+                ref = None
+                if job.get("volume") and job.get("faces_display") and Path(job["faces_display"]).is_file():
+                    ref = json.loads(Path(job["faces_display"]).read_text(encoding="utf-8")).get("faces")
+                groups, labelled = import_stl(gmsh, job["file"], float(job.get("stl_scale", 1e-3)),
+                                              target=job.get("surf_cap") if job.get("volume") else None,
+                                              factor=float(job.get("surf_factor", 1.0)), ref_faces=ref)
             else:
                 gmsh.option.setString("Geometry.OCCTargetUnit", "M")     # CAD units -> metres
                 gmsh.model.occ.importShapes(job["file"])
-                n_before = len(gmsh.model.occ.getEntities(3))
+                raw = gmsh.model.occ.getEntities(3)
+                n_before = len(raw)
+                mass_before = sum(gmsh.model.occ.getMass(3, t) for _, t in raw)
                 gmsh.model.occ.healShapes()
-                if len(gmsh.model.occ.getEntities(3)) < n_before:
-                    # healing can destroy valid single-face solids (e.g. a sphere): fall back to the raw import
+                healed = gmsh.model.occ.getEntities(3)
+                mass_after = sum(gmsh.model.occ.getMass(3, t) for _, t in healed)
+                if len(healed) < n_before or abs(mass_after - mass_before) > 0.01 * max(mass_before, 1e-30):
+                    # healing can destroy valid solids: a single-face sphere, or a hollow shell whose inner face it
+                    # drops (the shell becomes a full body). Then fall back to the raw import
                     gmsh.model.occ.remove(gmsh.model.occ.getEntities(), recursive=True)
                     gmsh.model.occ.importShapes(job["file"])
                 vols = gmsh.model.occ.getEntities(3)
@@ -507,7 +675,7 @@ def mesh_job(job: dict) -> None:
                 if len(vols) > 1:
                     gmsh.model.occ.fragment(vols[:1], vols[1:])          # conformal interfaces between bodies
                 gmsh.model.occ.synchronize()
-            xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(-1, -1)
+            xmin, ymin, zmin, xmax, ymax, zmax = model_bounds(gmsh)
             lx, ly, lz = xmax - xmin, ymax - ymin, zmax - zmin
             if job.get("domain"):
                 h, job["_hmin"] = build_external_domain(gmsh, job, np.array([xmin, ymin, zmin]), np.array([xmax, ymax, zmax]), keys)
@@ -524,7 +692,9 @@ def mesh_job(job: dict) -> None:
                 area = sum(a for a, _ in parts)
                 cen = (sum(a * np.array(c) for a, c in parts) / area).tolist() if area else parts[0][1]
                 k = f"f{tag}"
-                if stl and job.get("volume") and job.get("faces_ref"):
+                if stl and labelled:
+                    k = labelled[tag]
+                elif stl and job.get("volume") and job.get("faces_ref"):
                     # the remeshed surface is split into new entities: keep the face names the case already uses
                     k = min(job["faces_ref"], key=lambda r: np.linalg.norm(np.subtract(r["centroid"], cen))
                             + abs(r["area"] - area) / max(r["area"], area, 1e-12) * diag_ref)["key"]

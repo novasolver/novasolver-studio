@@ -33,7 +33,7 @@ def dims(case: dict) -> list[float]:
     raise ValueError(kind)
 
 
-MESHER_VERSION = 10          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
+MESHER_VERSION = 12          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
 
 
 def _canon(o):
@@ -73,6 +73,8 @@ def worker_job(case: dict, **kw) -> dict:
             if case["geometry"].get("faces"):       # lets a fallback surface keep the case's face names
                 job["faces_ref"] = [{"key": f["key"], "centroid": f["centroid"], "area": f["area"]}
                                     for f in case["geometry"]["faces"]]
+            # the import's own triangles with their face keys: the remeshed surface is labelled from them
+            job["faces_display"] = str(case_dir(case["case_id"]) / "geom" / "display.json")
     if case["geometry"]["kind"] == "plate_hole":
         job["hole_d"] = units.to_si(case["geometry"]["params"]["hole"])
     job.update(kw)
@@ -183,6 +185,10 @@ def generate_mesh(case: dict) -> dict:
             diag = float(sum(d * d for d in dims(case)) ** 0.5)
             kw["surf_cap"] = diag / STL_SURF_DIV                      # base surface size (normal level)
             kw["surf_factor"] = STL_SURF_FACTOR[case["mesh"]["size"]]
+    if case["template"] == "import-flow" and case["geometry"].get("file", "").lower().endswith(".stl"):
+        # the STL's own triangles can be coarser than the channel (4 triangles on a 5 mm inlet): remesh the surface
+        # at the flow cell size, which already follows the inlet's hydraulic diameter and the mesh level
+        kw["surf_cap"], kw["surf_factor"] = kw["h"], 1.0
     _run_worker(worker_job(case, size=case["mesh"]["size"], volume=True, order=case["mesh"].get("order", 2),
                            out=str(meshdir), **kw), timeout=900)
     (meshdir / "key.txt").write_text(mesh_key(case))

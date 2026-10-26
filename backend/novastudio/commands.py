@@ -156,6 +156,17 @@ MAX_CAD_BYTES = 200 * 1024 * 1024
 PHYSICS = ("structural", "thermal", "flow", "external", "conjugate")
 
 
+def faceted_step_check(data: bytes) -> None:
+    """A STEP that is really a triangle mesh (thousands of flat faces, as written by mesh-to-STEP converters) takes
+    minutes to read and gives a face per triangle. Say so at once and point to the STL route, which handles it."""
+    import re
+    text = data.decode("latin-1")
+    faces = len(re.findall(r"ADVANCED_FACE\s*\(", text))
+    planes = len(re.findall(r"=\s*PLANE\s*\(", text))
+    if faces > 2000 and planes >= 0.95 * faces:
+        raise StudioError("err.faceted_step", 400, faces=faces)
+
+
 def import_geometry(physics: str, filename: str, data: bytes | None = None, path: str | None = None,
                     lang: str = "ja", template: str | None = None, units: str = "mm") -> dict:
     """Create a case from a CAD file (STEP / IGES / BREP / STL). The file is copied into the case; faces get numbers.
@@ -182,6 +193,8 @@ def import_geometry(physics: str, filename: str, data: bytes | None = None, path
         raise StudioError("err.cad_missing", 400, path=filename)
     if len(data) > MAX_CAD_BYTES:
         raise StudioError("err.cad_size", 400, mb=MAX_CAD_BYTES // 2**20)
+    if ext in (".step", ".stp"):
+        faceted_step_check(data)
     case = store.create(template or f"import-{physics}")
     d = store.case_dir(case["case_id"])
     (d / "geometry").mkdir(exist_ok=True)

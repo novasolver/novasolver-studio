@@ -41,7 +41,22 @@ def _mesh_for_run(case: dict, jd: Path, prog):
             prog("job.meshing", 0.03)
             geometry.generate_mesh(case)
     shutil.copyfile(geometry.mesh_dir(case) / "mesh.npz", jd / "mesh.npz")   # results stay tied to their mesh
-    return dict(np.load(jd / "mesh.npz"))
+    m = dict(np.load(jd / "mesh.npz"))
+    check_condition_faces(case, m)
+    return m
+
+
+PASSIVE_ROLES = {None, "free", "insulated", "wall"}   # the default role of each physics: no condition to lose
+
+
+def check_condition_faces(case: dict, m: dict) -> None:
+    """Every face that carries a condition must be in the mesh. Otherwise the solver would quietly run without that
+    support or load and report a converged but meaningless answer (seen when a remesh lost a face's name)."""
+    from .store import StudioError
+    lost = sorted(k for k, b in case.get("boundaries", {}).items()
+                  if b.get("role") not in PASSIVE_ROLES and len(m.get(f"face_{k}", ())) == 0)
+    if lost:
+        raise StudioError("err.face_lost", 500, faces=", ".join(lost))
 
 
 def structural_loads(case: dict, m: dict):
@@ -449,6 +464,8 @@ def main(job_dir: str) -> None:
         (jd / "error.txt").write_text(tb, encoding="utf-8")
         if (jd / "STOP").exists():                 # stopped by the user (while waiting or running): not a failure
             update(jd, state="stopped", message_key="job.stopped", message_args={})
+        elif getattr(exc, "key", "").startswith("err."):    # a StudioError: its own translated message
+            update(jd, state="failed", message_key=exc.key, message_args={k: str(v) for k, v in exc.kw.items()})
         else:
             update(jd, state="failed", message_key="err.solver", message_args={"detail": f"{type(exc).__name__}: {exc}"})
     finally:

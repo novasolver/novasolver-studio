@@ -24,6 +24,22 @@ def worker_argv(module: str, *args: str) -> list[str]:
     return [sys.executable, "-m", module, *args]
 
 
+def foam_workdir(jd: Path) -> Path:
+    """Empty OpenFOAM case folder for the job folder jd. MinGW OpenFOAM is fragile with non-ASCII paths, so such jobs
+    solve in an ASCII scratch folder (pointer in of_location.txt), named uniquely per job: convergence levels are all
+    called coarse/normal/fine, and a shared folder once made a run read an older run's latest time step."""
+    import hashlib
+    wd = jd / "of"
+    if not str(wd).isascii():
+        tag = hashlib.sha1(str(jd.resolve()).encode("utf-8")).hexdigest()[:10]
+        wd = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NovaSolverStudio" / "runs" / f"{jd.name}_{tag}" / "of"
+        (jd / "of_location.txt").write_text(str(wd), encoding="utf-8")
+    if wd.exists():
+        shutil.rmtree(wd)
+    wd.mkdir(parents=True, exist_ok=True)
+    return wd
+
+
 def workspace() -> Path:
     p = Path(os.environ.get("NOVASTUDIO_WORKSPACE", default_workspace())).resolve()
     (p / "cases").mkdir(parents=True, exist_ok=True)

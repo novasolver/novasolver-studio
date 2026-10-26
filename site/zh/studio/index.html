@@ -54,28 +54,40 @@
     <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">在 GitHub 查看源码</a>
   </div>
   <p class="note" style="margin-top:12px">GitHub 访问较慢时，可从本站直接下载（v0.2.0，约 220 MB，<a href="/dl/studio/NovaSolverStudio-0.2.0-win64.zip.sha256">SHA-256</a>）。</p>
-  <div class="shot"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" alt="NovaSolver Studio 结果界面：端部挠度与梁理论比较，判定为已验证"></div>
+  <div class="shot video"><video controls preload="none" playsinline poster="/studio/img/intro-poster.webp" width="1280" height="720"><source src="/studio/video/novasolver-studio-intro-ja.mp4" type="video/mp4"></video></div>
+  <p class="note cap">介绍视频（1分35秒，日语旁白）：从 AI 画出的齿轮，到 Blender 建模，再到用 Studio 验证强度</p>
 </div>
 
 <section><div class="wrap">
+  <h2>让仿真属于每一个人</h2>
+  <p class="sub">过去，强度和热分析属于那些配备了数百万日元 CAE 软件和专职工程师的企业。现在，只要交给 AI，个人也能完成分析。AI 想出的形状，由 AI 用物理定律来验证。从创意到物理验证连成一线，AI 的作用也从“写文章、画图”扩展到“验证东西是否真的可行”。</p>
+  <div class="grid">
+    <div class="card"><h3>个人也能做分析</h3><p>有一台电脑和 AI 助手，就能当场计算刚想到的形状的强度、热和流动。无论是企业还是个人创作。</p></div>
+    <div class="card"><h3>不需要昂贵的 CAE 软件</h3><p>软件免费、开源。没有许可费，也没有席位限制。</p></div>
+    <div class="card"><h3>分析交给 AI</h3><p>条件设置、网格、计算、结果解读，都可以用自然语言交给 AI。网格加密后答案是否不变（是否已验证），由软件自动判定。</p></div>
+  </div>
+</div></section>
+<section><div class="wrap">
   <h2>绘制 → 建模 → 验证</h2>
-  <p class="sub">从最初的构思到强度确认，每一步都可以交给 AI。</p>
+  <p class="sub">用一个齿轮，从创意走到强度验证。每一步都可以交给 AI。</p>
   <div class="flow">
-    <div class="step"><div class="pic">图片准备中</div><div class="body"><h3>用 AI 绘制</h3><p>用文字描述想做的东西，由图像生成 AI 画出形状。</p><span class="tool">图像生成 AI</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-ai-image.webp" width="1280" height="720" loading="lazy" alt="图像生成 AI 画出的两个相互啮合的直齿轮"></div><div class="body"><h3>用 AI 绘制</h3><p>用文字描述想做的东西，让图像生成 AI 画出形状。这里是一对啮合的直齿轮。</p><span class="tool">图像生成 AI</span></div></div>
     <div class="step"><div class="pic"><img src="/studio/img/gear-blender.webp" width="1280" height="720" loading="lazy" alt="AI 在 Blender 中制作的渐开线直齿轮模型"></div><div class="body"><h3>在 Blender 中建模</h3><p>AI 操作 Blender，按尺寸建立三维模型，并导出为 STL。</p><span class="tool">Blender</span></div></div>
-    <div class="step"><div class="pic"><img src="/studio/img/heatsink-boundaries.webp" width="1280" height="800" loading="lazy" alt="点击导入形状的表面设定条件"></div><div class="body"><h3>导入 Studio</h3><p>导入形状，点击选择固定面和受力面。也可以对 AI 说：“固定底面，在顶面施加 500 N”。</p><span class="tool">STL · STEP · IGES</span></div></div>
-    <div class="step"><div class="pic"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" loading="lazy" alt="应力与变形计算结果"></div><div class="body"><h3>计算并验证</h3><p>计算应力、温度和流动，并自动判定结果是否可信，直至“已验证”。</p><span class="tool">NovaSolver Studio</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-studio-import.webp" width="1280" height="720" loading="lazy" alt="把 Blender 制作的齿轮导入 NovaSolver Studio 的界面"></div><div class="body"><h3>导入 Studio</h3><p>导入 STL，固定轴孔，在一个齿的齿顶施加 1000 N。条件设置也可以交给 AI。</p><span class="tool">STL · STEP · IGES</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-stress-result.webp" width="1280" height="720" loading="lazy" alt="应力集中在受载齿根部的计算结果"></div><div class="body"><h3>计算并验证</h3><p>最大应力出现在齿根，约 100 MPa。再把网格分三级加密，确认变形结果是否收敛（是否已验证）。</p><span class="tool">NovaSolver Studio</span></div></div>
   </div>
 </div></section>
 
 <section><div class="wrap">
-  <h2>不需要分析专家，也不需要昂贵的软件</h2>
-  <p class="sub">过去，CAE 只属于买得起高价软件、配得起专职人员的企业。有了 NovaSolver Studio，两者都没有也能开始。</p>
+  <h2>用 CAE 验证，能带来什么</h2>
+  <p class="sub">把“看起来够结实”变成“经过计算验证的设计”。无论是企业的产品开发，还是个人的创作，都同样有用。</p>
   <div class="grid">
-    <div class="card"><h3>从零成本开始</h3><p>免费开源软件。没有许可费，也没有席位限制。</p></div>
-    <div class="card"><h3>知识由 AI 补足</h3><p>设置条件、划分网格、求解、解读结果，都可以用自然语言交给 AI 智能体。</p></div>
-    <div class="card"><h3>任意形状也能确认答案的可靠性</h3><p>自动加密网格重新求解，判断答案是否已经稳定。刚画出来的新形状也适用。</p></div>
+    <div class="card"><h3>优化形状</h3><p>AI 生成形状，Studio 进行评估，AI 再根据结果修改形状。循环越多，越接近更轻、更省材料却依然坚固的形状。</p></div>
+    <div class="card"><h3>用数字说明“能承受多少公斤”</h3><p>在预期载荷下的应力、变形以及相对材料强度的余量，都以经过网格收敛验证的数值给出，可作为确定规格值的依据之一。</p><p class="ex">示例：3D 打印的搁板支架（PLA）背面固定，搁板上施加 500 N（约 50 kg）→ 变形 <b>0.15 mm</b>（假设材料均匀的模型）</p></div>
+    <div class="card"><h3>与同类产品形成差异</h3><p>在外观相似的产品中，“经过仿真验证的设计”就是被选择的理由。可以展示在产品目录、报价、销售页面和众筹中。</p></div>
+    <div class="card"><h3>减少试制次数</h3><p>先在屏幕上完成“制作、破坏、修改”的循环，把材料和时间只用在真正需要的试制上。</p></div>
   </div>
+  <p class="note" style="margin-top:16px">仿真结果用于说明设计依据，并不等于产品保证。对产品作出保证时，请考虑材料偏差和制造工艺的影响，并在需要时结合实物试验。</p>
 </div></section>
 
 <section><div class="wrap">

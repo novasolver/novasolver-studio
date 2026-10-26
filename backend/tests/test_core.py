@@ -158,6 +158,64 @@ def test_import_stl_matches_step(tmp_path):
     assert r["convergence"]["pass"] and r["gates"]["verified"]
 
 
+def test_lost_condition_face_stops_the_run():
+    """A face that carries a load but is missing from the mesh must stop the run, not solve without the load."""
+    from novastudio.run_worker import check_condition_faces
+    tri = np.array([[0, 1, 2]])
+    case = {"boundaries": {"f1": {"role": "load"}, "f2": {"role": "fixed"}, "f3": {"role": "free"}}}
+    check_condition_faces(case, {"face_f1": tri, "face_f2": tri})              # f3 is passive: may be absent
+    with pytest.raises(StudioError) as e:
+        check_condition_faces(case, {"face_f2": tri})
+    assert e.value.key == "err.face_lost" and e.value.kw["faces"] == "f1"
+
+
+def test_folded_faces_found():
+    """Two triangles folded flat onto each other across their shared edge are reported; a flat pair is not."""
+    from novastudio.mesh_worker import folded_faces
+    V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0.2, 0.6, 1e-3]], float)   # vertex 4 folds back over 0
+    assert len(folded_faces(V, np.array([[0, 1, 2], [1, 3, 2]]))) == 0
+    assert set(folded_faces(V, np.array([[0, 1, 2], [1, 4, 2]]))) == {0, 1}
+
+
+def test_foam_workdir_is_unique_and_empty(tmp_path, monkeypatch):
+    """Jobs in non-ASCII folders solve in an ASCII scratch folder: two convergence levels both called 'coarse' must
+    not share it, and nothing from an earlier run may remain in it."""
+    from novastudio.config import foam_workdir
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    a, b = tmp_path / "解析A" / "coarse", tmp_path / "解析B" / "coarse"
+    a.mkdir(parents=True); b.mkdir(parents=True)
+    wa = foam_workdir(a)
+    (wa / "4000").mkdir()                                    # a time step left by a run
+    assert foam_workdir(b) != wa
+    assert foam_workdir(a) == wa and not (wa / "4000").exists()
+
+
+def test_hollow_shell_import_keeps_inner_face_and_true_size(tmp_path):
+    """Shape healing once dropped the inner face of a hollow shell (it became a full body), and the whole-model box
+    of a revolved surface was read 1000x too long. A hollow sphere must keep both faces and its real size."""
+    import gmsh
+    path = str(tmp_path / "shell.brep")
+    gmsh.initialize(); gmsh.option.setNumber("General.Terminal", 0)
+    occ = gmsh.model.occ
+    occ.cut([(3, occ.addSphere(0, 0, 0, 0.010))], [(3, occ.addSphere(0, 0, 0, 0.009))])
+    occ.synchronize(); gmsh.write(path); gmsh.finalize()
+    p = C.import_geometry("structural", "shell.brep", path=path)
+    g = p["case"]["geometry"]
+    assert len(g["faces"]) == 2
+    (x0, y0, z0), (x1, y1, z1) = g["bbox"]
+    assert abs((x1 - x0) - 0.020) < 1e-3 and abs((z1 - z0) - 0.020) < 1e-3
+
+
+def test_faceted_step_is_rejected_quickly():
+    """A STEP made of thousands of flat triangles is refused at once with a pointer to STL; a real CAD STEP is not."""
+    C.faceted_step_check(open(os.path.join(SAMPLES, "l_bracket.step"), "rb").read())
+    fake = b"".join(b"#%d=ADVANCED_FACE('',(#1),#%d,.T.);\n#%d=PLANE('',#2);\n" % (3 * i, 3 * i + 1, 3 * i + 1)
+                    for i in range(2500))
+    with pytest.raises(StudioError) as e:
+        C.faceted_step_check(fake)
+    assert e.value.key == "err.faceted_step"
+
+
 def test_import_rejects_bad_type():
     with pytest.raises(StudioError) as e:
         C.import_geometry("structural", "x.obj", data=b"o x")

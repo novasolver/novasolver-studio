@@ -52,27 +52,39 @@
     <a class="btn primary" href="https://github.com/novasolver/novasolver-studio/releases">Windows版をダウンロード</a>
     <a class="btn ghost" href="https://github.com/novasolver/novasolver-studio">GitHubでソースを見る</a>
   </div>
-  <div class="shot"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" alt="NovaSolver Studio の結果画面。先端たわみを梁理論と比べて検証済みと判定している"></div>
+  <div class="shot video"><video controls preload="none" playsinline poster="/studio/img/intro-poster.webp" width="1280" height="720"><source src="/studio/video/novasolver-studio-intro-ja.mp4" type="video/mp4"></video></div>
+  <p class="note cap">紹介動画（1分35秒）：AIが描いた歯車を、Blenderで形にして、Studioで強度を確かめるまで</p>
 </div>
 
 <section><div class="wrap">
-  <h2>描く → 形にする → 確かめる</h2>
-  <p class="sub">アイデアの段階から、強度の確認まで。どの段階もAIに頼めます。</p>
-  <div class="flow">
-    <div class="step"><div class="pic">画像を準備中</div><div class="body"><h3>AIで描く</h3><p>作りたいものを言葉で伝え、画像生成AIで形のイメージを描きます。</p><span class="tool">画像生成AI</span></div></div>
-    <div class="step"><div class="pic"><img src="/studio/img/gear-blender.webp" width="1280" height="720" loading="lazy" alt="AIがBlenderで作ったインボリュート平歯車のモデル"></div><div class="body"><h3>Blenderで形にする</h3><p>AIがBlenderを操作して、寸法どおりの3Dモデルを作り、STLで書き出します。</p><span class="tool">Blender</span></div></div>
-    <div class="step"><div class="pic"><img src="/studio/img/heatsink-boundaries.webp" width="1280" height="800" loading="lazy" alt="読み込んだ形状の面をクリックして条件を設定している画面"></div><div class="body"><h3>Studioに読み込む</h3><p>形状を読み込み、固定する面や力をかける面をクリックで選びます。AIに「底を固定して上から500 N」と頼むこともできます。</p><span class="tool">STL ・ STEP ・ IGES</span></div></div>
-    <div class="step"><div class="pic"><img src="/studio/img/results-cantilever.webp" width="1280" height="800" loading="lazy" alt="応力と変形の計算結果"></div><div class="body"><h3>計算して確かめる</h3><p>応力・温度・流れを計算し、答えが信頼できるかを「検証済み」まで自動で判定します。</p><span class="tool">NovaSolver Studio</span></div></div>
+  <h2>シミュレーションを、すべての人に</h2>
+  <p class="sub">これまで強度や熱の解析は、数百万円のCAEソフトと専門の担当者をそろえた会社のものでした。いまは、AIに頼めば個人でも解析できます。AIが考えた形を、AIが物理の法則で確かめる。アイデアから物理検証までが一続きになり、AIの役割は「文章や絵をつくる」から「ものが本当に成り立つかを確かめる」ところまで広がります。</p>
+  <div class="grid">
+    <div class="card"><h3>個人で解析できる</h3><p>パソコンとAIエージェントがあれば、思いついた形の強度・熱・流れをその場で計算できます。会社でも、個人のものづくりでも。</p></div>
+    <div class="card"><h3>高級CAEソフトはいらない</h3><p>ソフトは無料・オープンソース。ライセンス料も、席数の制限もありません。</p></div>
+    <div class="card"><h3>解析はAIにやらせる</h3><p>条件の設定、メッシュ、計算、結果の読み取りまで、日本語で頼めます。メッシュを細かくしても答えが変わらないか（検証済みか）は、ソフトが判定します。</p></div>
   </div>
 </div></section>
 <section><div class="wrap">
-  <h2>解析の専門家も、高価なソフトもいらない</h2>
-  <p class="sub">これまでCAEは、数百万円のソフトと専門の担当者がそろった会社のものでした。NovaSolver Studio なら、その両方がなくても始められます。</p>
-  <div class="grid">
-    <div class="card"><h3>費用はゼロから</h3><p>ソフトは無料・オープンソース。ライセンス料も、席数の制限もありません。</p></div>
-    <div class="card"><h3>知識はAIが補う</h3><p>条件の設定、メッシュ、計算、結果の読み取りまで、AIエージェントに日本語で頼めます。</p></div>
-    <div class="card"><h3>どんな形でも、答えの確かさを確かめる</h3><p>メッシュを自動で細かくして解き直し、答えが十分に落ち着いたかを判定します。描いたばかりの新しい形でも使えます。</p></div>
+  <h2>描く → 形にする → 確かめる</h2>
+  <p class="sub">1つの歯車で、アイデアから強度の確認まで。どの段階もAIに頼めます。</p>
+  <div class="flow">
+    <div class="step"><div class="pic"><img src="/studio/img/gear-ai-image.webp" width="1280" height="720" loading="lazy" alt="画像生成AIが描いたかみ合う2つの平歯車"></div><div class="body"><h3>AIで描く</h3><p>作りたいものを言葉で伝え、画像生成AIで形のイメージを描きます。ここでは、かみ合う平歯車。</p><span class="tool">画像生成AI</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-blender.webp" width="1280" height="720" loading="lazy" alt="AIがBlenderで作ったインボリュート平歯車のモデル"></div><div class="body"><h3>Blenderで形にする</h3><p>AIがBlenderを操作して、寸法どおりの3Dモデルを作り、STLで書き出します。</p><span class="tool">Blender</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-studio-import.webp" width="1280" height="720" loading="lazy" alt="Blenderで作った歯車をNovaSolver Studioに読み込んだ画面"></div><div class="body"><h3>Studioに読み込む</h3><p>書き出したSTLを読み込み、軸の穴を固定して、歯の先に1000 Nをかけます。条件の設定もAIに頼めます。</p><span class="tool">STL ・ STEP ・ IGES</span></div></div>
+    <div class="step"><div class="pic"><img src="/studio/img/gear-stress-result.webp" width="1280" height="720" loading="lazy" alt="歯の付け根に応力が集中した計算結果"></div><div class="body"><h3>計算して確かめる</h3><p>いちばん大きな力がかかるのは歯の付け根で、約100 MPa。メッシュを3段階に細かくして、たわみの答えが落ち着くか（検証済みか）も確かめます。</p><span class="tool">NovaSolver Studio</span></div></div>
   </div>
+</div></section>
+<section><div class="wrap">
+  <h2>CAEで確かめると、何が得か</h2>
+  <p class="sub">「なんとなく丈夫そう」を「計算で確かめた設計」に変えられます。会社の製品づくりにも、個人のものづくりにも効きます。</p>
+  <div class="grid">
+    <div class="card"><h3>形を最適化できる</h3><p>AIが形を作り、Studioが評価し、その結果を見てAIが形を直す。これを繰り返すほど、軽く、材料が少なく、それでいて強い形に近づきます。</p></div>
+    <div class="card"><h3>「何kgまで大丈夫か」を数字で言える</h3><p>想定する荷重に対する応力・たわみ・強さへの余裕を、メッシュ収束まで確かめた数字で出せます。仕様値を決めるときの根拠のひとつになります。</p><p class="ex">例：3Dプリントの棚受け（PLA）の背面を固定し、棚に500 N（約50 kg分）→ たわみ <b>0.15 mm</b>（均質な材料を仮定したモデル）</p></div>
+    <div class="card"><h3>ほかの商品との違いになる</h3><p>同じような見た目の商品が並ぶなかで、「解析で確かめた設計」は選ばれる理由になります。カタログ、見積もり、販売ページ、クラウドファンディングで示せます。</p></div>
+    <div class="card"><h3>試作の回数を減らせる</h3><p>作って、壊して、直す、の繰り返しを画面の上で先に済ませます。材料費と時間を、本当に必要な試作だけに使えます。</p></div>
+  </div>
+  <p class="note" style="margin-top:16px">解析の数字は、設計の根拠を示すものです。製品として保証するときは、材料のばらつきや製法の影響も考え、必要に応じて実物の試験と組み合わせてください。</p>
 </div></section>
 
 <section><div class="wrap">
