@@ -72,6 +72,26 @@ def structural_loads(case: dict, m: dict):
     return fixed, tractions
 
 
+def support_peak(nodes: np.ndarray, fixed: list, vm: np.ndarray) -> dict:
+    """Is the peak stress at the edge of a fully fixed face? There the stress is theoretically infinite (a rigid
+    support is a singularity), so the peak means nothing. Also return the peak a couple of elements away from the
+    supports, which is the number to judge strength by."""
+    if not fixed:
+        return {}
+    from scipy.spatial import cKDTree
+    tri = np.concatenate([np.asarray(f)[:, :3] for f in fixed])
+    fx = nodes[np.unique(tri)]
+    edge = np.linalg.norm(nodes[tri[:, 0]] - nodes[tri[:, 1]], axis=1)
+    reach = 2.0 * float(np.median(edge))                        # about two elements
+    dist, _ = cKDTree(fx).query(nodes)
+    away = dist > reach
+    peak_on_support = bool(dist[int(np.argmax(vm))] <= reach)
+    out = {"peak_on_support": peak_on_support}
+    if away.any():
+        out["max_vm_away_pa"] = float(vm[away].max())
+    return out
+
+
 def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     from . import fem_tet10
     m = _mesh_for_run(case, jd, prog)
@@ -83,9 +103,10 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     U = r["u"]
     umag = np.linalg.norm(U, axis=1)
     np.savez_compressed(jd / "results.npz", u=U, vm=r["vm"])
-    metrics = {"max_disp_m": float(umag.max()), "max_vm_pa": float(r["vm"].max()),
+    metrics = {"max_vm_pa": float(r["vm"].max()), "max_disp_m": float(umag.max()),
                "reaction_n": float(np.linalg.norm(r["reaction"])), "applied_n": float(np.linalg.norm(r["applied"])),
                "imbalance": r["imbalance"], "nodes": int(len(nodes)), "elements": int(len(tets))}
+    metrics.update(support_peak(nodes, fixed, r["vm"]))
     if case["template"] == "cantilever":
         metrics["tip_disp_m"] = float(-U[np.unique(m["face_x1"]), 2].mean())
         ref = reference_cantilever(case, metrics["tip_disp_m"])
