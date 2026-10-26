@@ -27,7 +27,7 @@
 
 ```bash
 python -m venv .venv
-.venv\Scripts\python -m pip install "mcp>=2.3,<3" fastapi "uvicorn[standard]" numpy scipy matplotlib gmsh meshio psutil pyamg zstandard pytest
+.venv\Scripts\python -m pip install "mcp>=2.3,<3" fastapi "uvicorn[standard]" numpy scipy matplotlib gmsh meshio psutil pyamg pymeshlab zstandard pytest
 cd frontend && npm install && npm run build && cd ..
 cd backend
 set PYTHONPATH=%CD%

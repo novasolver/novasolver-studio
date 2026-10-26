@@ -33,7 +33,7 @@ def dims(case: dict) -> list[float]:
     raise ValueError(kind)
 
 
-MESHER_VERSION = 9          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
+MESHER_VERSION = 10          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
 
 
 def _canon(o):
@@ -141,7 +141,8 @@ LOAD_ROLES = ("load", "pressure")
 # clear ratio (about 2, then 1.6) so the convergence study sees the trend; small ratios make the GCI inconclusive
 THIN_THROUGH = {"import-structural": 2.0, "import-thermal": 1.2}
 THIN_LEVEL = {"coarse": 0.5, "normal": 1.0, "fine": 1.6}
-STL_SURF_DIVS = {"coarse": 25, "normal": 40, "fine": 64}   # STL surface remesh size cap = diagonal / this
+STL_SURF_DIV = 40                     # STL surface triangles at the normal level: min(diagonal / this, thinnest wall)
+STL_SURF_FACTOR = {"coarse": 1.6, "normal": 1.0, "fine": 0.7}   # x that size per convergence level
 REFINE_DIVS = {"coarse": 50, "normal": 100, "fine": 160}     # element size near loaded faces = diagonal / this
 
 
@@ -180,7 +181,8 @@ def generate_mesh(case: dict) -> dict:
         kw["thin_n"] = max(1.0, THIN_THROUGH[case["template"]] * THIN_LEVEL[case["mesh"]["size"]])
         if case["geometry"].get("file", "").lower().endswith(".stl"):
             diag = float(sum(d * d for d in dims(case)) ** 0.5)
-            kw["surf_cap"] = diag / STL_SURF_DIVS[case["mesh"]["size"]]
+            kw["surf_cap"] = diag / STL_SURF_DIV                      # base surface size (normal level)
+            kw["surf_factor"] = STL_SURF_FACTOR[case["mesh"]["size"]]
     _run_worker(worker_job(case, size=case["mesh"]["size"], volume=True, order=case["mesh"].get("order", 2),
                            out=str(meshdir), **kw), timeout=900)
     (meshdir / "key.txt").write_text(mesh_key(case))

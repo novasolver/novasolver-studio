@@ -17,7 +17,7 @@ Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
 & $py -m PyInstaller --noconfirm --clean --onedir --console --name NovaSolverStudio `
     --distpath (Join-Path $work "dist") --workpath (Join-Path $work "work") --specpath $work `
     --paths (Join-Path $root "backend") `
-    --collect-all gmsh --collect-submodules novastudio --collect-submodules uvicorn `
+    --collect-all gmsh --collect-all pymeshlab --collect-submodules novastudio --collect-submodules uvicorn `
     --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp.types --collect-submodules mcp_types --exclude-module mcp.cli `
     --collect-submodules pyamg --hidden-import scipy.sparse.linalg --hidden-import matplotlib.backends.backend_agg `
     --add-data "$root\backend\novastudio\i18n;novastudio\i18n" `

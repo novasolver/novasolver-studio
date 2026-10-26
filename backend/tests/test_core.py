@@ -151,6 +151,11 @@ def test_import_stl_matches_step(tmp_path):
         disp.append({c["key"]: c["value"] for c in r["cards"]}["max_disp"])
     # two different meshes of the same part (faceted holes, other node layout): agree within discretisation error
     assert abs(disp[1] - disp[0]) / disp[0] < 0.02
+    # the STL mesh study really refines (surface remeshed per level) and keeps the case's face names
+    r = C.check_convergence(p["case"]["case_id"], wait_s=900)["results"]
+    n = [lv["elements"] for lv in r["convergence"]["levels"]]
+    assert n[1] >= 1.3 * n[0] and n[2] >= 1.3 * n[1]
+    assert r["convergence"]["pass"] and r["gates"]["verified"]
 
 
 def test_import_rejects_bad_type():

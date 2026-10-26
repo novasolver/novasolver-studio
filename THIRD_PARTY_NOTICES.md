@@ -26,6 +26,7 @@ via www.openfoam.com, and owner of the OPENFOAM® and OpenCFD® trade marks.
 | FastAPI, Starlette, Uvicorn, Pydantic | MIT / BSD-3-Clause |
 | MCP Python SDK | MIT |
 | PyAMG | MIT |
+| PyMeshLab 2025.7 (MeshLab / VCGLib; surface remeshing of STL imports) | GPL-3.0 | https://github.com/cnr-isti-vclab/PyMeshLab |
 | psutil | BSD-3-Clause |
 | meshio | MIT |
 | zstandard | BSD-3-Clause |

@@ -94,20 +94,26 @@ def build_external_domain(gmsh, job, bmin, bmax, keys) -> float:
     return h_far, h_body
 
 
-def import_stl(gmsh, path: str, scale: float, remesh: bool = True) -> list[list[int]]:
-    """Triangulated surface (e.g. exported from Blender) -> solid: split into faces by feature angle,
-    rebuild a geometry that can be remeshed, and close it into one volume. scale converts file units to metres.
-    remesh=False keeps the file's own triangles as the surface mesh (fallback when remeshing the surface fails).
+def import_stl(gmsh, path: str, scale: float, target: float | None = None, factor: float = 1.0) -> list[list[int]]:
+    """Triangulated surface (e.g. exported from Blender) -> solid, split into faces by feature angle and closed
+    into one volume. scale converts file units to metres. The surface triangles are the surface mesh (gmsh is not
+    asked to re-parametrise and remesh a faceted surface: that fails on chamfers and tiny faces).
+    For a volume mesh, the surface is first remeshed with PyMeshLab into even triangles of about `target` metres
+    (or the thinnest wall if thinner, sharp edges kept), times `factor` for the convergence level.
     Returns the surfaces of each user-visible face."""
-    gmsh.merge(path)
-    if scale != 1.0:
-        gmsh.model.mesh.affineTransform([scale, 0, 0, 0, 0, scale, 0, 0, 0, 0, scale, 0])
-    gmsh.model.mesh.removeDuplicateNodes()
-    xyz = np.asarray(gmsh.model.mesh.getNodes()[1]).reshape(-1, 3)
-    remesh_flat_regions(gmsh, max_edge=0.01 * float(np.linalg.norm(np.ptp(xyz, axis=0))))
-    gmsh.model.mesh.classifySurfaces(40 * math.pi / 180, True, remesh, math.pi)
-    if remesh:
-        gmsh.model.mesh.createGeometry()
+    if target:
+        V, F = isotropic_surface(path, scale, target, factor)
+        s = gmsh.model.addDiscreteEntity(2)
+        gmsh.model.mesh.addNodes(2, s, list(range(1, len(V) + 1)), V.ravel().tolist())
+        gmsh.model.mesh.addElementsByType(s, 2, [], (F.ravel() + 1).tolist())
+    else:
+        gmsh.merge(path)
+        if scale != 1.0:
+            gmsh.model.mesh.affineTransform([scale, 0, 0, 0, 0, scale, 0, 0, 0, 0, scale, 0])
+        gmsh.model.mesh.removeDuplicateNodes()
+        xyz = np.asarray(gmsh.model.mesh.getNodes()[1]).reshape(-1, 3)
+        remesh_flat_regions(gmsh, max_edge=0.01 * float(np.linalg.norm(np.ptp(xyz, axis=0))))
+    gmsh.model.mesh.classifySurfaces(40 * math.pi / 180, True, False, math.pi)
     surfs = [t for _, t in gmsh.model.getEntities(2)]
     if not surfs:
         raise RuntimeError("NO_SOLID: the STL contains no surface")
@@ -116,6 +122,66 @@ def import_stl(gmsh, path: str, scale: float, remesh: bool = True) -> list[list[
     gmsh.model.geo.addVolume([loop])
     gmsh.model.geo.synchronize()
     return groups
+
+
+def isotropic_surface(path: str, scale: float, target: float, factor: float = 1.0):
+    """Even, well-shaped surface triangles of about `target` metres from any closed STL (PyMeshLab isotropic explicit
+    remeshing, feature edges over 30 degrees kept). The base size never exceeds the thinnest walls (10th percentile
+    of the measured thickness) so fins and handles keep about one triangle across; factor scales it per level."""
+    import pymeshlab as pml
+    ms = pml.MeshSet()
+    ms.load_new_mesh(path)
+    ms.meshing_remove_duplicate_vertices()
+    m = ms.current_mesh()
+    V0, F0 = m.vertex_matrix() * scale, m.face_matrix()
+    t = target
+    thick = wall_thickness(V0, F0)
+    if thick is not None:
+        t = min(t, float(np.percentile(thick[1], 10)))
+    t *= factor
+    t = max(t, 1e-4 * float(np.linalg.norm(np.ptp(V0, axis=0))))
+    ms.meshing_isotropic_explicit_remeshing(iterations=6, targetlen=pml.PureValue(t / scale), featuredeg=30.0,
+                                            checksurfdist=True, maxsurfdist=pml.PureValue(t / scale / 20))
+    m = ms.current_mesh()
+    return m.vertex_matrix() * scale, m.face_matrix().astype(np.int64)
+
+
+def wall_thickness(V: np.ndarray, F: np.ndarray):
+    """Local wall thickness of a closed, outward-oriented triangle surface: for sampled triangles, the nearest
+    triangle on an opposite-facing wall straight behind it. Returns (points, thickness) for the walls where one was
+    found, or None."""
+    from scipy.spatial import cKDTree
+    a, b, c = V[F[:, 0]], V[F[:, 1]], V[F[:, 2]]
+    nv = np.cross(b - a, c - a)
+    area = 0.5 * np.linalg.norm(nv, axis=1)
+    ok = area > 0
+    P, N = ((a + b + c) / 3)[ok], (nv[ok] / (2 * area[ok])[:, None])
+    if len(P) == 0:
+        return None
+    step = max(1, len(P) // 40000)
+    S, SN = P[::step], N[::step]
+    thick = np.full(len(S), np.inf)
+    dirs = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]], float)
+    dirs = np.vstack([dirs, np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]) / np.sqrt(3)])
+    sbin = np.argmax(SN @ dirs.T, axis=1)
+    for k, d in enumerate(dirs):
+        mine = np.flatnonzero(sbin == k)
+        cand = np.flatnonzero(N @ d < -0.5)                # walls facing the other way
+        if len(mine) == 0 or len(cand) == 0:
+            continue
+        dist, j = cKDTree(P[cand]).query(S[mine], k=min(8, len(cand)))
+        j = j.reshape(len(mine), -1)
+        v = P[cand][j] - S[mine][:, None, :]
+        along = -np.einsum("mkd,md->mk", v, SN[mine])       # depth behind the wall
+        lateral = np.linalg.norm(v + along[..., None] * SN[mine][:, None, :], axis=2)
+        good = (along > 0) & (lateral < 0.6 * along + 1e-12)
+        thick[mine] = np.minimum(thick[mine], np.where(good, along, np.inf).min(axis=1))
+    found = np.isfinite(thick)
+    if not found.any():
+        return None
+    t = thick[found]
+    t = np.maximum(t, 0.4 * np.percentile(t, 10))           # edges and chamfers fake very thin "walls"
+    return S[found], t
 
 
 def weld_vertices(xyz: np.ndarray, tris: np.ndarray, tol: float):
@@ -294,10 +360,8 @@ def surface_triangles(gmsh, tag: int):
 
 
 def thin_wall_sizes(gmsh, h: float, n_through: float, flip: set | None = None):
-    """Local wall thickness from the (outward-oriented) surface triangles: for each sampled triangle, the nearest
-    triangle on an opposite-facing wall straight behind it. Returns (points, sizes) where a thin wall needs a size
-    below h so that n_through elements fit across it (a 1.2 mm fin, a 5 mm spanner handle), or None."""
-    from scipy.spatial import cKDTree
+    """Element sizes for thin walls of the meshed surface: (points, sizes) where a wall needs a size below h so that
+    n_through elements fit across it (a 1.2 mm fin, a 5 mm spanner handle), or None. flip: CAD faces meshed inward."""
     ntags, coords, _ = gmsh.model.mesh.getNodes()
     if len(ntags) == 0:
         return None
@@ -312,60 +376,15 @@ def thin_wall_sizes(gmsh, h: float, n_through: float, flip: set | None = None):
             tris.append(tt[:, ::-1] if flip and s in flip else tt)      # inward-meshed CAD faces turned outward
     if not tris:
         return None
-    tri = order[np.searchsorted(tags_sorted, np.concatenate(tris))]
-    a, b, c = xyz[tri[:, 0]], xyz[tri[:, 1]], xyz[tri[:, 2]]
-    nv = np.cross(b - a, c - a)
-    area = 0.5 * np.linalg.norm(nv, axis=1)
-    ok = area > 0
-    P, N = ((a + b + c) / 3)[ok], (nv[ok] / (2 * area[ok])[:, None])
-    step = max(1, len(P) // 40000)
-    S, SN = P[::step], N[::step]
-    thick = np.full(len(S), np.inf)
-    dirs = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]], float)
-    dirs = np.vstack([dirs, np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]) / np.sqrt(3)])
-    sbin = np.argmax(SN @ dirs.T, axis=1)
-    for k, d in enumerate(dirs):
-        mine = np.flatnonzero(sbin == k)
-        cand = np.flatnonzero(N @ d < -0.5)                # walls facing the other way
-        if len(mine) == 0 or len(cand) == 0:
-            continue
-        tree = cKDTree(P[cand])
-        dist, j = tree.query(S[mine], k=min(8, len(cand)))
-        dist, j = np.atleast_2d(dist.T).T, np.atleast_2d(j.T).T
-        q = P[cand][j]                                      # (m, k, 3)
-        v = q - S[mine][:, None, :]
-        along = -np.einsum("mkd,md->mk", v, SN[mine])       # depth behind the wall
-        lateral = np.linalg.norm(v + along[..., None] * SN[mine][:, None, :], axis=2)
-        good = (along > 0) & (lateral < 0.6 * along + 1e-12)
-        t = np.where(good, along, np.inf).min(axis=1)
-        thick[mine] = np.minimum(thick[mine], t)
+    found = wall_thickness(xyz, order[np.searchsorted(tags_sorted, np.concatenate(tris))])
+    if found is None:
+        return None
+    S, thick = found
     size = np.clip(thick / n_through, h * 0.02, h)
     keep = size < 0.9 * h
-    if keep.any():                             # edges and chamfers fake very thin "walls": floor at 0.4 x the 10th percentile
-        size = np.maximum(size, 0.4 * np.percentile(size[keep], 10))
     if not keep.any():
         return None
     return S[keep], size[keep]
-
-
-def entity_size_caps(gmsh) -> dict:
-    """Largest sensible element size per discrete curve and surface of a remeshed STL: a short curve gets at least two
-    segments, a narrow face (a 0.5 mm chamfer strip next to a fin) elements no wider than itself. Without this,
-    remeshing tiny faces at the general size makes their new boundaries cross ("overlapping facets")."""
-    caps, length = {}, {}
-    for _, c in gmsh.model.getEntities(1):
-        xyz = np.asarray(gmsh.model.mesh.getNodes(1, c, includeBoundary=True)[1]).reshape(-1, 3)
-        if len(xyz) < 2:
-            continue
-        length[c] = float(np.linalg.norm(np.ptp(xyz, axis=0)))
-        caps[(1, c)] = max(length[c] / 2, 1e-9)
-    for _, s in gmsh.model.getEntities(2):
-        area, _ = face_area_centroid(gmsh, s, True)
-        per = sum(length.get(abs(c), 0.0) for _, c in gmsh.model.getBoundary([(2, s)], oriented=False))
-        if area > 0 and per > 0:
-            caps[(2, s)] = 2 * area / per
-    return caps
-
 
 def cad_inward_faces(gmsh) -> set:
     """Surface-mesh a CAD model and return the faces whose triangles point into the solid (gmsh meshes OCC faces
@@ -450,19 +469,9 @@ def body_volume_centroid(gmsh, tag: int, discrete: bool):
         acc += (v[:, None] * (a + b + c) / 4).sum(0)
     return float(abs(vol)), (acc / vol).tolist() if vol else [0.0, 0.0, 0.0]
 
+
 def main(job_path: str) -> None:
-    job = json.loads(Path(job_path).read_text(encoding="utf-8"))
-    try:
-        mesh_job(job)
-    except Exception as e:                       # noqa: BLE001
-        # remeshing a faceted STL surface can produce overlapping boundary facets (gmsh) on some shapes; the
-        # file's own triangles are a valid closed surface, so fall back to filling the volume behind them
-        stl = job["kind"] == "import" and job["file"].lower().endswith(".stl")
-        if not stl or job.get("stl_keep_surface") or not job.get("volume"):
-            raise
-        print(f"surface remeshing failed ({e}); keeping the STL triangles", file=sys.stderr, flush=True)
-        job["stl_keep_surface"] = True
-        mesh_job(job)
+    mesh_job(json.loads(Path(job_path).read_text(encoding="utf-8")))
 
 
 def mesh_job(job: dict) -> None:
@@ -479,7 +488,10 @@ def mesh_job(job: dict) -> None:
         if job["kind"] == "import":
             stl = job["file"].lower().endswith(".stl")
             if stl:
-                groups = import_stl(gmsh, job["file"], float(job.get("stl_scale", 1e-3)), not job.get("stl_keep_surface"))
+                # volume meshes: even PyMeshLab triangles at this level's size; display: the file's own triangles
+                groups = import_stl(gmsh, job["file"], float(job.get("stl_scale", 1e-3)),
+                                    target=job.get("surf_cap") if job.get("volume") else None,
+                                    factor=float(job.get("surf_factor", 1.0)))
             else:
                 gmsh.option.setString("Geometry.OCCTargetUnit", "M")     # CAD units -> metres
                 gmsh.model.occ.importShapes(job["file"])
@@ -512,8 +524,8 @@ def mesh_job(job: dict) -> None:
                 area = sum(a for a, _ in parts)
                 cen = (sum(a * np.array(c) for a, c in parts) / area).tolist() if area else parts[0][1]
                 k = f"f{tag}"
-                if job.get("stl_keep_surface") and job.get("faces_ref"):
-                    # the fallback splits the surface differently: keep the face names the case already uses
+                if stl and job.get("volume") and job.get("faces_ref"):
+                    # the remeshed surface is split into new entities: keep the face names the case already uses
                     k = min(job["faces_ref"], key=lambda r: np.linalg.norm(np.subtract(r["centroid"], cen))
                             + abs(r["area"] - area) / max(r["area"], area, 1e-12) * diag_ref)["key"]
                 for g in group:
@@ -614,20 +626,10 @@ def mesh_job(job: dict) -> None:
                 kk = min(8, len(pts))
                 job["thin_min_mm"] = float(sz.min() * 1e3)
                 gmsh.option.setNumber("Mesh.MeshSizeMin", min(gmsh.option.getNumber("Mesh.MeshSizeMin"), float(sz.min()) * 0.5))
-            # a faceted STL surface remeshed much coarser than its features gives crossing patch boundaries
-            # ("overlapping facets"): cap the surface size per level; the interior may still be coarse
-            surf_cap = job.get("surf_cap") if job["file"].lower().endswith(".stl") and not job.get("stl_keep_surface") else None
-            caps = entity_size_caps(gmsh) if surf_cap else {}
-
-            def size_cb(dim, tag, x, y, z, lc):
-                s = lc
-                if tree is not None:
+            if tree is not None:
+                def size_cb(dim, tag, x, y, z, lc):
                     d, j = tree.query((x, y, z), k=kk)
-                    s = min(s, float(np.min(sz[j] + 0.5 * d)))   # grows by half the distance away from the wall
-                if surf_cap and dim <= 2:
-                    s = min(s, surf_cap, caps.get((dim, tag), surf_cap))
-                return float(s)
-            if tree is not None or surf_cap:
+                    return float(min(lc, np.min(sz[j] + 0.5 * d)))   # grows by half the distance away from the wall
                 gmsh.model.mesh.setSizeCallback(size_cb)
         if job.get("volume"):
             gmsh.model.mesh.generate(3)
