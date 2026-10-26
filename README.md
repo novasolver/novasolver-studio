@@ -42,6 +42,25 @@ Solvers are found automatically when installed (without them, the built-in previ
 
 ## Use it from an AI assistant (MCP) / AI アシスタントから使う
 
+**Easiest (Claude Desktop and other MCPB-aware apps):** download `novasolver-studio-<version>-win64.mcpb` from
+[Releases](https://github.com/novasolver/novasolver-studio/releases) and open it — the app installs it as an extension.
+Also listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.novasolver/novasolver-studio`.
+
+**With the downloaded zip:** point any MCP client at the exe.
+
+```json
+{
+  "mcpServers": {
+    "novasolver-studio": {
+      "command": "C:\\path\\to\\NovaSolverStudio\\NovaSolverStudio.exe",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**From source:**
+
 ```json
 {
   "mcpServers": {

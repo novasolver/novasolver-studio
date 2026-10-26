@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.novasolver/novasolver-studio",
+  "title": "NovaSolver Studio",
+  "description": "Free desktop CAE: import CAD/STL, solve FEM structural/thermal and CFD, verify the answer.",
+  "repository": {
+    "url": "https://github.com/novasolver/novasolver-studio",
+    "source": "github"
+  },
+  "websiteUrl": "https://novasolver.jp/en/studio/",
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/novasolver/novasolver-studio/releases/download/v0.2.0/novasolver-studio-0.2.0-win64.mcpb",
+      "fileSha256": "72ffe477967f614caaee509ad34adf3c79d3e0f3f9f0e8b5d09e66957e64c9b0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
