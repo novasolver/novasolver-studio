@@ -18,6 +18,7 @@ from . import units
 from .config import foam_workdir
 
 MESH_DIV = {"coarse": 5, "normal": 8, "fine": 12}       # cells across the smallest inlet/outlet diameter
+DUAL_FEATURE_ANGLE = 70                                  # polyDualMesh keeps edges sharper than this as cell edges
 
 
 def _faces(case):
@@ -67,22 +68,26 @@ startFrom startTime; startTime 0; stopAt endTime; endTime 4000; deltaT 1;
 writeControl timeStep; writeInterval 4000; purgeWrite 1;
 writeFormat ascii; writePrecision 8; timeFormat general; runTimeModifiable false;
 """
-    # residualControl ends a converging run early; the cap only matters for fine meshes that need more sweeps
-    files["system/fvSchemes"] = h("dictionary", "fvSchemes") + """
-ddtSchemes { default steadyState; }
-gradSchemes { default cellLimited Gauss linear 1; }
+    # residualControl ends a converging run early; the cap only matters for fine meshes that need more sweeps.
+    # The tetrahedra are turned into polyhedra (polyDualMesh) and the laplacian is fully corrected: on raw tets with
+    # 'limited corrected 0.5' a laminar pipe gave the right velocity profile but a 39 % too steep pressure gradient;
+    # dual cells + full correction match Hagen-Poiseuille to 0.1 % (2026-10-26, 5 mm straw at Re 20)
+    grad = "cellLimited Gauss linear 1" if turbulent else "Gauss linear"
+    files["system/fvSchemes"] = h("dictionary", "fvSchemes") + f"""
+ddtSchemes {{ default steadyState; }}
+gradSchemes {{ default {grad}; }}
 divSchemes
-{
+{{
     default none;
     div(phi,U) bounded Gauss linearUpwind grad(U);
     div(phi,k) bounded Gauss upwind;
     div(phi,omega) bounded Gauss upwind;
     div((nuEff*dev2(T(grad(U))))) Gauss linear;
-}
-laplacianSchemes { default Gauss linear limited corrected 0.5; }
-interpolationSchemes { default linear; }
-snGradSchemes { default limited corrected 0.5; }
-wallDist { method meshWave; }
+}}
+laplacianSchemes {{ default Gauss linear corrected; }}
+interpolationSchemes {{ default linear; }}
+snGradSchemes {{ default corrected; }}
+wallDist {{ method meshWave; }}
 """
     files["system/fvSolution"] = h("dictionary", "fvSolution") + """
 solvers
@@ -92,7 +97,7 @@ solvers
 }
 SIMPLE
 {
-    nNonOrthogonalCorrectors 1;
+    nNonOrthogonalCorrectors 2;
     consistent yes;
     residualControl { p 1e-4; U 1e-5; "(k|omega)" 1e-5; }
 }
@@ -121,8 +126,9 @@ relaxationFactors { equations { U 0.7; ".*" 0.7; } fields { p 0.3; } }
                 s = "type omegaWallFunction; value uniform 1;" if role == "wall" else \
                     f"type turbulentMixingLengthFrequencyInlet; mixingLength {0.07 * _hyd_diameter(faces[key]['area']):.6g}; value uniform 1;" \
                     if role == "inlet" else "type inletOutlet; inletValue uniform 1; value uniform 1;"
-            else:  # nut
-                s = "type nutkWallFunction; value uniform 0;" if role == "wall" else "type calculated; value uniform 0;"
+            else:  # nut: Spalding's law holds at any y+; tet/dual meshes put the first cell in the buffer layer
+                # (y+ 7..33 in a 10 mm pipe at Re 2e4), where nutkWallFunction gave 57 % too little friction (Spalding 38 %)
+                s = "type nutUSpaldingWallFunction; value uniform 0;" if role == "wall" else "type calculated; value uniform 0;"
             out.append(f"    {key} {{ {s} }}")
         return "\n".join(out)
 
@@ -210,6 +216,11 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
         raise RuntimeError("gmshToFoam failed: see log.gmshToFoam")
     walls = {k for k, b in case["boundaries"].items() if b.get("role") == "wall"}
     set_wall_types(wd / "constant" / "polyMesh" / "boundary", walls)
+    # one polyhedron per tet node: far more accurate wall friction than raw tetrahedra (see compile_case)
+    if proc([exe("polyDualMesh"), "-case", str(wd), "-overwrite", str(DUAL_FEATURE_ANGLE)], wd, wd / "log.polyDualMesh",
+            jd, env) != 0:
+        raise RuntimeError("polyDualMesh failed: see log.polyDualMesh")
+    set_wall_types(wd / "constant" / "polyMesh" / "boundary", walls)
     prog("job.solving", 0.15)
     rc = proc([exe("simpleFoam"), "-case", str(wd)], wd, wd / "log.simpleFoam", jd, env)
     if rc != 0:
@@ -230,16 +241,13 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
     iters = len(re.findall(r"^Time = ", log, re.M))
     converged_res = resid[-1] if resid else 1.0
 
-    # map cell values to the Gmsh tetrahedra (same cells, possibly reordered) and then to nodes
+    # dual mesh: each polyhedron belongs to one Gmsh node, whose value is the nearest cell centre's
     nodes, tets = mesh["nodes"], mesh["tets"][:, :4]
-    cent = nodes[tets].mean(axis=1)
-    dist, idx = cKDTree(C).query(cent)
-    Ut, pt = U[idx], p[idx]
-    acc = np.zeros((len(nodes), 4)); cnt = np.zeros(len(nodes))
-    for c in range(4):
-        np.add.at(acc, tets[:, c], np.column_stack([Ut, pt]))
-        np.add.at(cnt, tets[:, c], 1)
-    nodal = acc / np.maximum(cnt, 1)[:, None]
+    dist, idx = cKDTree(C).query(nodes)
+    nodal = np.column_stack([U[idx], p[idx]])
+    for key in walls:                                   # no-slip: the wall itself does not move
+        if f"face_{key}" in mesh:
+            nodal[np.unique(mesh[f"face_{key}"]), :3] = 0.0
     rho = units.to_si(case["materials"]["fluid"].get("rho", {"value": 1000, "unit": "kg/m3"}))
 
     # flow rates and pressure drop from boundary values
@@ -256,17 +264,29 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
             ta = tri_areas(nodes, tri)
             p_in.append(float((nodal[tri[:, :3], 3].mean(axis=1) * ta).sum() / ta.sum()) * rho)
         elif b.get("role") == "outlet":
+            # OpenFOAM's own face fluxes: nodal velocities are zero on the wall rim and would read low
+            phi = _boundary_values(last / "phi", key, False) if (last / "phi").is_file() else None
+            if phi is not None and len(phi) > 1:
+                q_out += float(phi.sum())
+                continue
             from .fem_tet10 import outward_normals
             n = outward_normals(nodes, np.asarray(mesh["tets"]), tri)
             un = np.einsum("ij,ij->i", nodal[tri[:, :3], :3].mean(axis=1), n)
             q_out += float((un * tri_areas(nodes, tri)).sum())
     balance = abs(q_in - q_out) / q_in if q_in > 0 else 1.0
+    face_flux = {}                                      # exact volume flow out through each open face (phi)
+    if (last / "phi").is_file():
+        for key, b in case["boundaries"].items():
+            if b.get("role") in ("inlet", "outlet"):
+                phi = _boundary_values(last / "phi", key, False)
+                if phi is not None and len(phi) > 1:
+                    face_flux[key] = float(phi.sum())
     np.savez_compressed(jd / "results.npz", U=nodal[:, :3], p=nodal[:, 3] * rho)
     speed = np.linalg.norm(nodal[:, :3], axis=1)
     metrics = {"re": meta["re_inlet"], "turbulent": meta["turbulent"], "flow_rate_m3s": q_in, "outflow_m3s": q_out,
                "mass_balance": balance, "dp_pa": (max(p_in) if p_in else 0.0), "max_speed": float(speed.max()),
                "iterations": iters, "residual": converged_res, "nodes": int(len(nodes)), "elements": int(len(tets)),
-               "map_max_dist": float(dist.max())}
+               "map_max_dist": float(dist.max()), "face_flux_m3s": face_flux}
     converged = bool(converged_res < 1e-3 and balance < 0.02 and np.isfinite(speed).all())
     return {"kind": "flow3d", "metrics": metrics, "converged": converged,
             "converged_detail": {"residual": converged_res, "limit": 1e-3, "mass_balance": balance, "balance_limit": 0.02},

@@ -709,7 +709,11 @@ def mesh_job(job: dict) -> None:
                 h = diag / {"coarse": 10, "normal": 18, "fine": 30}[job.get("size", "normal")] if job.get("volume") \
                     else diag / (70 if stl else 25)   # STL: no curvature sizing, so the display mesh must be finer
                 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 12)
-            gmsh.option.setNumber("Mesh.SecondOrderLinear", 1)   # midside nodes on straight edges (solver matches them geometrically)
+            # CAD: midside nodes on the true surface. Straight edges facet a round bar into a polygon (a 6-sided
+            # 20 mm shaft has 17 % less area, so 17 % more stress). STL has no true surface: keep them straight.
+            gmsh.option.setNumber("Mesh.SecondOrderLinear", 1 if stl else 0)
+            if not stl:                       # a curved midside node on a coarse element next to a small fillet can
+                gmsh.option.setNumber("Mesh.HighOrderOptimize", 2)   # fold the element (quality < 0): untangle
             if stl:
                 # sizing from the curvature of a discrete surface follows its facets, not the shape: very slow, no gain
                 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
@@ -749,24 +753,42 @@ def mesh_job(job: dict) -> None:
                 h = min(ly, lz) / DIVS[job.get("size", "normal")]
             else:
                 h = min(lx, ly, lz) if job["kind"] == "box" else max(lx, ly) / 12
+        spots = list(job.get("refine_spots") or [])        # faces the user asked to mesh finer (fillets, notches)
         if job.get("refine_faces") and job.get("h"):
             # fine only near the listed faces (e.g. a water channel inside a large plate), coarse elsewhere
-            tags = [tg for tg, kk in keys.items() if kk in set(job["refine_faces"])]
-            fd = gmsh.model.mesh.field.add("Distance")
-            gmsh.model.mesh.field.setNumbers(fd, "SurfacesList", tags)
-            ft = gmsh.model.mesh.field.add("Threshold")
-            gmsh.model.mesh.field.setNumber(ft, "InField", fd)
-            gmsh.model.mesh.field.setNumber(ft, "SizeMin", job["h"])
-            gmsh.model.mesh.field.setNumber(ft, "SizeMax", h)
-            dmin, dmax = job.get("refine_dist") or (job["h"] * 2, job["h"] * 12)
-            gmsh.model.mesh.field.setNumber(ft, "DistMin", dmin)
-            gmsh.model.mesh.field.setNumber(ft, "DistMax", dmax)
-            gmsh.model.mesh.field.setAsBackgroundMesh(ft)
-            gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
-            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
-            job["_hmin"] = job["h"]
+            spots.insert(0, {"faces": job["refine_faces"], "h": job["h"], "dist": job.get("refine_dist")})
         else:
             h = job.get("h", h)                 # caller may set the size directly (e.g. cells across a pipe inlet)
+        if spots:
+            fields = []
+            for sp in spots:
+                tags = [tg for tg, kk in keys.items() if kk in set(sp["faces"])]
+                if not tags:
+                    continue
+                fd = gmsh.model.mesh.field.add("Distance")
+                gmsh.model.mesh.field.setNumbers(fd, "SurfacesList", tags)
+                # the distance is measured to sample points on the surface (20 per direction by default): around a
+                # 0.5 mm fillet on a 20 mm shaft they sat 3 mm apart, wider than the whole refinement band
+                ext = max(max(b[3] - b[0], b[4] - b[1], b[5] - b[2])
+                          for b in (gmsh.model.getBoundingBox(2, tg) for tg in tags))
+                gmsh.model.mesh.field.setNumber(fd, "Sampling", int(min(400, max(20, 2 * ext / sp["h"]))))
+                ft = gmsh.model.mesh.field.add("Threshold")
+                gmsh.model.mesh.field.setNumber(ft, "InField", fd)
+                gmsh.model.mesh.field.setNumber(ft, "SizeMin", sp["h"])
+                gmsh.model.mesh.field.setNumber(ft, "SizeMax", h)
+                dmin, dmax = sp.get("dist") or (sp["h"] * 2, sp["h"] * 12)
+                gmsh.model.mesh.field.setNumber(ft, "DistMin", dmin)
+                gmsh.model.mesh.field.setNumber(ft, "DistMax", dmax)
+                fields.append(ft)
+            if len(fields) > 1:
+                fm = gmsh.model.mesh.field.add("Min")
+                gmsh.model.mesh.field.setNumbers(fm, "FieldsList", fields)
+                fields = [fm]
+            if fields:
+                gmsh.model.mesh.field.setAsBackgroundMesh(fields[0])
+                gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+                gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+                job["_hmin"] = min(sp["h"] for sp in spots)
         if job["kind"] == "import" and not job.get("domain"):
             # one physical volume per body: gmshToFoam turns them into cellZones (b<tag>) for multi-region solvers
             for _, vt in gmsh.model.getEntities(3):

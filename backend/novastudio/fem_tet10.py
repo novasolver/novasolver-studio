@@ -14,6 +14,7 @@ import scipy.sparse.linalg as spla
 EDGES = np.array([(0, 1), (1, 2), (0, 2), (0, 3), (1, 3), (2, 3)])
 DIRECT_LIMIT = 30000          # unknowns; above this the AMG-CG iterative solver is used
 DIRECT_FALLBACK_LIMIT = 250000   # unknowns; direct solve when AMG-CG does not converge (about 2-4 GB at this size)
+ASSEMBLY_CHUNK = 20000        # elements per block of element matrices (about 140 MB)
 
 
 def _amg_cg(A, b, B=None, tol=1e-8):
@@ -100,32 +101,43 @@ def _bmatrix(dNdx):
 
 
 def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tuple[np.ndarray, np.ndarray]],
-          progress: Callable[[str, float], None] = lambda *_: None) -> dict:
+          progress: Callable[[str, float], None] = lambda *_: None,
+          rollers: list[tuple[np.ndarray, int]] = ()) -> dict:
     """fixed_faces: list of tri6 arrays whose nodes get u=0.
     tractions: list of (tri6 array, traction vector [Pa]) applied uniformly on that face.
+    rollers: list of (tri6 array, component) whose nodes get u[component]=0 (symmetry planes normal to an axis).
+    E, nu: one value, or one per element (assemblies of several materials).
     """
     tets = canonical_tets(nodes, tets)
     n = len(nodes)
     ndof = 3 * n
-    D = elasticity_matrix(E, nu)
+    pairs, mat = np.unique(np.column_stack([np.broadcast_to(E, len(tets)), np.broadcast_to(nu, len(tets))]), axis=0,
+                           return_inverse=True)
+    Ds = np.array([elasticity_matrix(*p) for p in pairs])          # one D per material
+    mat = mat.ravel()
     X = nodes[tets]                                   # (E,10,3)
 
     progress("job.assembling", 0.10)
-    Ke = np.zeros((len(tets), 30, 30))
     vol = np.zeros(len(tets))
-    for g in range(4):
-        J = np.einsum("ik,ekj->eij", DSHAPE[g], X)    # (E,3,3)
-        detJ = np.linalg.det(J)
-        if np.any(detJ <= 0):
-            raise ValueError("inverted element (negative Jacobian)")
-        dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(tets), 3, 10)))
-        B = _bmatrix(dNdx)
-        Ke += GW[g] * detJ[:, None, None] * np.einsum("eki,kl,elj->eij", B, D, B)
-        vol += GW[g] * detJ
     dofs = (3 * tets[:, :, None] + np.arange(3)).reshape(len(tets), 30)
-    rows = np.repeat(dofs, 30, axis=1).ravel()
-    cols = np.tile(dofs, (1, 30)).ravel()
-    K = sp.csr_matrix((Ke.ravel(), (rows, cols)), shape=(ndof, ndof))
+    K = sp.csr_matrix((ndof, ndof))
+    # in chunks: the element matrices of a 300k-element model take 2.3 GB at once
+    for s in range(0, len(tets), ASSEMBLY_CHUNK):
+        sl = slice(s, s + ASSEMBLY_CHUNK)
+        Ke = np.zeros((len(dofs[sl]), 30, 30))
+        for g in range(4):
+            J = np.einsum("ik,ekj->eij", DSHAPE[g], X[sl])    # (E,3,3)
+            detJ = np.linalg.det(J)
+            if np.any(detJ <= 0):
+                raise ValueError("inverted element (negative Jacobian)")
+            dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(detJ), 3, 10)))
+            B = _bmatrix(dNdx)
+            Ke += GW[g] * detJ[:, None, None] * np.einsum("eki,ekl,elj->eij", B, Ds[mat[sl]], B)
+            vol[sl] += GW[g] * detJ
+        rows = np.repeat(dofs[sl], 30, axis=1).ravel()
+        cols = np.tile(dofs[sl], (1, 30)).ravel()
+        K = K + sp.csr_matrix((Ke.ravel(), (rows, cols)), shape=(ndof, ndof))
+        del Ke
 
     f = np.zeros(ndof)
     for tri, t in tractions:
@@ -138,6 +150,8 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
 
     fixed_nodes = np.unique(np.concatenate([fa.ravel() for fa in fixed_faces])) if fixed_faces else np.array([], int)
     fixed = (3 * fixed_nodes[:, None] + np.arange(3)).ravel()
+    if len(rollers):
+        fixed = np.unique(np.concatenate([fixed] + [3 * np.unique(tri) + c for tri, c in rollers]))
     free = np.setdiff1d(np.arange(ndof), fixed)
 
     progress("job.solving", 0.45)
@@ -175,7 +189,7 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     for g in range(4):
         J = np.einsum("ik,ekj->eij", DSHAPE[g], X)
         dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(tets), 3, 10)))
-        sg[:, g] = np.einsum("eij,ej->ei", _bmatrix(dNdx), u[dofs]) @ D.T
+        sg[:, g] = np.einsum("ekl,el->ek", Ds[mat], np.einsum("eij,ej->ei", _bmatrix(dNdx), u[dofs]))
     Lg = np.column_stack([1 - GAUSS.sum(axis=1), GAUSS])           # barycentric coords of Gauss points (4x4)
     sc = np.einsum("cg,egk->eck", np.linalg.inv(Lg), sg)            # (E, 4 corners, 6)
     acc = np.zeros((n, 6)); cnt = np.zeros(n)
@@ -190,9 +204,12 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     vm_e = np.sqrt(0.5 * ((se[:, 0] - se[:, 1]) ** 2 + (se[:, 1] - se[:, 2]) ** 2 + (se[:, 2] - se[:, 0]) ** 2)
                    + 3 * (se[:, 3] ** 2 + se[:, 4] ** 2 + se[:, 5] ** 2))
     applied = f.reshape(-1, 3).sum(axis=0)
-    react = reaction.reshape(-1, 3)[fixed_nodes].sum(axis=0) if len(fixed_nodes) else np.zeros(3)
-    imbalance = float(np.linalg.norm(applied + react) / max(np.linalg.norm(applied), 1e-30))
-    return {"u": U, "vm": vm, "vm_elem_max": float(vm_e.max()), "applied": applied, "reaction": react,
+    react = np.zeros(3)                                # over every constrained dof, symmetry planes included
+    np.add.at(react, fixed % 3, reaction[fixed])
+    # relative to the total load, not the net one: internal pressure on a closed vessel nets to ~0
+    scale = max(np.linalg.norm(applied), np.linalg.norm(np.abs(f).reshape(-1, 3).sum(axis=0)), 1e-30)
+    imbalance = float(np.linalg.norm(applied + react) / scale)
+    return {"u": U, "vm": vm, "s": sn, "vm_elem_max": float(vm_e.max()), "applied": applied, "reaction": react,
             "imbalance": imbalance, "volume": float(vol.sum()), "ndof": ndof, "nfree": int(len(free))}
 
 
@@ -223,7 +240,7 @@ TRI6_M = np.array([[6, -1, -1, 0, -4, 0], [-1, 6, -1, 0, 0, -4], [-1, -1, 6, -4,
                    [0, 0, -4, 32, 16, 16], [-4, 0, 0, 16, 32, 16], [0, -4, 0, 16, 16, 32]], float)
 
 
-def solve_thermal(nodes, tets, k: float, fixed: list[tuple[np.ndarray, float]], fluxes: list[tuple[np.ndarray, float]],
+def solve_thermal(nodes, tets, k, fixed: list[tuple[np.ndarray, float]], fluxes: list[tuple[np.ndarray, float]],
                   convection: list[tuple[np.ndarray, float, float]],
                   progress: Callable[[str, float], None] = lambda *_: None) -> dict:
     """Steady conduction with quadratic tetrahedra.
@@ -240,7 +257,7 @@ def solve_thermal(nodes, tets, k: float, fixed: list[tuple[np.ndarray, float]], 
         if np.any(detJ <= 0):
             raise ValueError("inverted element (negative Jacobian)")
         dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(tets), 3, 10)))
-        Ke += GW[g] * detJ[:, None, None] * k * np.einsum("eki,ekj->eij", dNdx, dNdx)
+        Ke += GW[g] * detJ[:, None, None] * np.reshape(k, (-1, 1, 1)) * np.einsum("eki,ekj->eij", dNdx, dNdx)
     rows = np.repeat(tets, 10, axis=1).ravel()
     cols = np.tile(tets, (1, 10)).ravel()
     K = sp.csr_matrix((Ke.ravel(), (rows, cols)), shape=(n, n))

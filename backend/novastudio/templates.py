@@ -30,13 +30,69 @@ MATERIALS_SOLID = {
              "sy": {"value": 50, "unit": "MPa"}, "k": {"value": 0.2, "unit": "W/mK"}},
     "abs": {"E": {"value": 2.2, "unit": "GPa"}, "nu": {"value": 0.35, "unit": "-"}, "rho": {"value": 1040, "unit": "kg/m3"},
             "sy": {"value": 40, "unit": "MPa"}, "k": {"value": 0.17, "unit": "W/mK"}},
+    # parts of assemblies (several bodies, one material each): buildings and electronics. sy = tensile for concrete/glass
+    "concrete": {"E": {"value": 30, "unit": "GPa"}, "nu": {"value": 0.2, "unit": "-"}, "rho": {"value": 2400, "unit": "kg/m3"},
+                 "sy": {"value": 3, "unit": "MPa"}, "k": {"value": 1.6, "unit": "W/mK"}},
+    "insulation": {"E": {"value": 0.005, "unit": "GPa"}, "nu": {"value": 0.1, "unit": "-"}, "rho": {"value": 25, "unit": "kg/m3"},
+                   "sy": {"value": 0.1, "unit": "MPa"}, "k": {"value": 0.035, "unit": "W/mK"}},
+    "wood": {"E": {"value": 11, "unit": "GPa"}, "nu": {"value": 0.3, "unit": "-"}, "rho": {"value": 500, "unit": "kg/m3"},
+             "sy": {"value": 40, "unit": "MPa"}, "k": {"value": 0.13, "unit": "W/mK"}},
+    "glass": {"E": {"value": 70, "unit": "GPa"}, "nu": {"value": 0.22, "unit": "-"}, "rho": {"value": 2500, "unit": "kg/m3"},
+              "sy": {"value": 40, "unit": "MPa"}, "k": {"value": 1.0, "unit": "W/mK"}},
+    "fr4": {"E": {"value": 22, "unit": "GPa"}, "nu": {"value": 0.15, "unit": "-"}, "rho": {"value": 1850, "unit": "kg/m3"},
+            "sy": {"value": 300, "unit": "MPa"}, "k": {"value": 0.3, "unit": "W/mK"}},
+    "silicon": {"E": {"value": 130, "unit": "GPa"}, "nu": {"value": 0.28, "unit": "-"}, "rho": {"value": 2330, "unit": "kg/m3"},
+                "sy": {"value": 120, "unit": "MPa"}, "k": {"value": 148, "unit": "W/mK"}},
 }
+BODY_PROPS = {"k": "W/mK", "E": "GPa", "nu": "-"}       # per-body overrides of a preset (body_props.<b>.<prop>)
+
+
+def solid_props(case: dict, body: str | None = None) -> dict:
+    """E, nu and k (SI) of one body: its preset (body_materials) with any overrides (body_props), else the case's
+    single solid material."""
+    from . import units
+    mat = case["materials"]["solid"]
+    if body is not None and body in case.get("body_materials", {}):
+        mat = {**MATERIALS_SOLID[case["body_materials"][body]], **case.get("body_props", {}).get(body, {})}
+    return {p: units.to_si(mat[p]) for p in ("E", "nu", "k") if p in mat}
+
+
+def element_groups(case: dict, tet_body) -> list[tuple]:
+    """[(element indices, props)]: one group per body of a multi-material assembly, else one group for all."""
+    import numpy as np
+    tet_body = np.asarray(tet_body)
+    if not case.get("body_materials"):
+        return [(np.arange(len(tet_body)), solid_props(case))]
+    out = []
+    for b in sorted(case["body_materials"]):
+        idx = np.where(tet_body == int(b[1:]))[0]
+        if len(idx):
+            out.append((idx, solid_props(case, b)))
+    if sum(len(i) for i, _ in out) != len(tet_body):
+        raise ValueError("some elements belong to no body: regenerate the mesh")
+    return out
+
+
+def element_prop(case: dict, mesh: dict, prop: str):
+    """One value of E, nu or k per element (a scalar when the part has a single material)."""
+    import numpy as np
+    groups = element_groups(case, mesh.get("tet_body", np.zeros(len(mesh["tets"]), int)))
+    if len(groups) == 1:
+        return groups[0][1][prop]
+    out = np.empty(len(mesh["tets"]))
+    for idx, p in groups:
+        out[idx] = p[prop]
+    return out
+
+
+def element_k(case: dict, mesh: dict):
+    return element_prop(case, mesh, "k")
 MATERIALS_FLUID = {
     "water": {"nu": {"value": 1.0e-6, "unit": "m2/s"}, "rho": {"value": 998, "unit": "kg/m3"}},
     "air": {"nu": {"value": 1.5e-5, "unit": "m2/s"}, "rho": {"value": 1.2, "unit": "kg/m3"}},
 }
 
-STRUCT_ROLES = ["free", "fixed", "load", "pressure"]
+STRUCT_ROLES = ["free", "fixed", "symmetry", "constraint", "load", "pressure"]
 FLOW_ROLES = ["wall", "moving-wall", "inlet", "outlet", "plane2d"]
 THERMAL_ROLES = ["insulated", "temperature", "heat-flux", "convection"]
 DIRECTIONS = ["-z", "+z", "-y", "+y", "-x", "+x", "normal"]   # load direction; "normal" = pushes into the face
@@ -44,6 +100,7 @@ DIRECTIONS = ["-z", "+z", "-y", "+y", "-x", "+x", "normal"]   # load direction; 
 # value fields each role carries (path suffix -> default quantity)
 ROLE_FIELDS = {
     "load": {"force": {"value": 100, "unit": "N"}, "direction": "-z"},
+    "constraint": {"components": "xy"},        # displacement held at zero along these axes (any face, flat or curved)
     "pressure": {"pressure": {"value": 1, "unit": "MPa"}},
     "moving-wall": {"speed": {"value": 1, "unit": "m/s"}},
     "inlet": {"speed": {"value": 1, "unit": "m/s"}},

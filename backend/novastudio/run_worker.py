@@ -87,6 +87,32 @@ def structural_loads(case: dict, m: dict):
     return fixed, tractions
 
 
+def symmetry_rollers(case: dict, m: dict) -> list[tuple[np.ndarray, int]]:
+    """Symmetry faces: flat and normal to x, y or z; the displacement along that axis is zero there.
+    Without a fixed face, the symmetry planes must cover all three axes or the part can still slide or spin."""
+    from .store import StudioError
+    out = []
+    for face, b in case["boundaries"].items():
+        tri = m.get(f"face_{face}")
+        if tri is None:
+            continue
+        if b["role"] == "constraint":           # chosen components held on any face (a guide, a slider)
+            out += [(tri, "xyz".index(c)) for c in b.get("components", "")]
+            continue
+        if b["role"] != "symmetry":
+            continue
+        P = m["nodes"][tri[:, :3]]
+        n = np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0])
+        n /= np.linalg.norm(n, axis=1, keepdims=True)
+        axis = int(np.argmax(np.abs(n).sum(axis=0)))
+        if np.abs(n[:, axis]).min() < 0.9999:
+            raise StudioError("err.symmetry_plane", 400, face=face)
+        out.append((tri, axis))
+    if out and not any(b["role"] == "fixed" for b in case["boundaries"].values()) and len({a for _, a in out}) < 3:
+        raise StudioError("err.symmetry_rbm", 400)
+    return out
+
+
 def support_peak(nodes: np.ndarray, fixed: list, vm: np.ndarray) -> dict:
     """Is the peak stress at the edge of a fully fixed face? There the stress is theoretically infinite (a rigid
     support is a singularity), so the peak means nothing. Also return the peak a couple of elements away from the
@@ -111,13 +137,14 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     from . import fem_tet10
     m = _mesh_for_run(case, jd, prog)
     nodes, tets = m["nodes"], m["tets"]
-    mat = case["materials"]["solid"]
-    E, nu = units.to_si(mat["E"]), units.to_si(mat["nu"])
+    from .templates import element_prop
+    E, nu = element_prop(case, m, "E"), element_prop(case, m, "nu")     # per element for multi-material assemblies
     fixed, tractions = structural_loads(case, m)
-    r = fem_tet10.solve(nodes, tets, E, nu, fixed, tractions, progress=lambda k, f: prog(k, f))
+    r = fem_tet10.solve(nodes, tets, E, nu, fixed, tractions, progress=lambda k, f: prog(k, f),
+                        rollers=symmetry_rollers(case, m))
     U = r["u"]
     umag = np.linalg.norm(U, axis=1)
-    np.savez_compressed(jd / "results.npz", u=U, vm=r["vm"])
+    np.savez_compressed(jd / "results.npz", u=U, vm=r["vm"], s=r["s"])
     metrics = {"max_vm_pa": float(r["vm"].max()), "max_disp_m": float(umag.max()),
                "reaction_n": float(np.linalg.norm(r["reaction"])), "applied_n": float(np.linalg.norm(r["applied"])),
                "imbalance": r["imbalance"], "nodes": int(len(nodes)), "elements": int(len(tets))}
@@ -152,7 +179,8 @@ def thermal_groups(case: dict, m: dict):
 def run_thermal_builtin(case: dict, jd: Path, prog) -> dict:
     from . import fem_tet10
     m = _mesh_for_run(case, jd, prog)
-    k = units.to_si(case["materials"]["solid"]["k"])
+    from .templates import element_k
+    k = element_k(case, m)
     fixed, fluxes, conv, order = thermal_groups(case, m)
     r = fem_tet10.solve_thermal(m["nodes"], m["tets"], k, fixed, fluxes, conv, progress=lambda kk, f: prog(kk, f))
     T = r["T"]

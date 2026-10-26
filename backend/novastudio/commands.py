@@ -227,6 +227,10 @@ def import_geometry(physics: str, filename: str, data: bytes | None = None, path
                                      "material": "water" if b["key"] == small else "aluminium"} for b in bodies}
         case["geometry"]["bodies"] = bodies
         store.normalize_conjugate(case)
+    elif physics in ("structural", "thermal") and len(disp.get("bodies") or []) >= 2:
+        # an assembly: one material per body (all start as the case material; set body_materials.<b>)
+        case["body_materials"] = {b["key"]: case["materials"]["solid"]["preset"] for b in disp["bodies"]}
+        case["geometry"]["bodies"] = disp["bodies"]
     store.normalize_boundaries(case)
     store.save(case, bump=False)
     gkey = hashlib.sha256(_json.dumps(geometry._canon(case["geometry"]), sort_keys=True).encode()).hexdigest()[:16]
@@ -289,6 +293,12 @@ def describe_case(case_id: str, detail: str = "concise", lang: str = "ja") -> di
            "parameters": {p["path"]: f"{p['value']} {p['unit']}" for p in pl["ui"]["params"]},
            "boundaries": {f["key"]: f["role"] for f in pl["ui"]["faces"]},
            "latest_run": pl["latest_run"]}
+    if c.get("body_materials"):
+        geo = {b["key"]: b for b in c["geometry"].get("bodies", [])}
+        out["body_materials"] = {b: {"material": m, "overrides": c.get("body_props", {}).get(b, {}),
+                                     "volume_mm3": round(geo.get(b, {}).get("volume", 0) * 1e9, 3),
+                                     "centroid_mm": [round(x * 1e3, 3) for x in geo.get(b, {}).get("centroid", [])]}
+                                 for b, m in c["body_materials"].items()}
     if detail == "full":
         out["case"] = c
         out["editable"] = store.editable_paths(c)
@@ -414,6 +424,72 @@ def field(case_id: str, quantity: str, lang: str = "ja") -> dict:
 
 def render_view(case_id: str, quantity: str = "", lang: str = "ja") -> tuple[bytes, dict]:
     return results.render_png(store.load(case_id), quantity, lang_of(lang))
+
+
+def probe_results(case_id: str, points: list | None = None, line: dict | None = None, faces: list[str] | None = None,
+                  run_id: str | None = None, lang: str = "ja") -> dict:
+    from .probe import probe
+    return probe(store.load(case_id), points, line, faces, run_id)
+
+
+def clone_case(case_id: str, changes: dict | None = None, title: str | None = None, lang: str = "ja") -> dict:
+    """Copy a case (geometry, face roles, materials, mesh settings; not its runs) under a new id, then apply changes."""
+    import shutil
+    import time as _time
+    src = store.case_dir(case_id)
+    case = store.load(case_id)
+    cid = store.new_id()
+    while (store.cases_dir() / cid).exists():
+        cid = store.new_id()
+    dst = store.cases_dir() / cid
+    shutil.copytree(src, dst, ignore=lambda d, names: [n for n in names if d == str(src) and n in ("run", "revisions")])
+    (dst / "revisions").mkdir(exist_ok=True)
+    case["case_id"], case["revision"] = cid, 1
+    if title:
+        case["title"] = {l: title for l in ("ja", "en", "zh")}
+    prov = case.setdefault("provenance", {})
+    prov.update({"created_at": _time.strftime("%Y-%m-%dT%H:%M:%S"), "cloned_from": case_id})
+    store._write_json(dst / "case.json", case)
+    if changes:
+        try:
+            update_case(cid, 1, changes, lang)
+        except StudioError:
+            shutil.rmtree(dst, ignore_errors=True)
+            raise
+    return case_payload(cid, lang)
+
+
+MAX_SWEEP = 8
+
+
+def run_sweep(case_id: str, path: str, values: list, mode: str | None = None, study: str = "single",
+              lang: str = "ja") -> dict:
+    """One clone per value of `path`, each started as a background job. Compare them with compare_runs."""
+    if not 1 <= len(values) <= MAX_SWEEP:
+        raise StudioError("err.path", 400, path=f"values: 1..{MAX_SWEEP} items")
+    if study not in ("single", "convergence"):
+        raise StudioError("err.path", 400, path=f"study={study} (single|convergence)")
+    base = store.load(case_id)
+    stem = base["title"][lang_of(lang)]
+    made = []
+    for v in values:
+        ch = {path: v}
+        if mode:
+            ch["run.mode"] = mode
+        label = v if isinstance(v, str) else (f"{v.get('value')} {v.get('unit')}" if isinstance(v, dict) else str(v))
+        pl = clone_case(case_id, ch, f"{stem} [{path.rsplit('.', 1)[-1]}={label}]", lang)
+        cid = pl["case"]["case_id"]
+        case = store.load(cid)
+        items = checks.run(case, lang)
+        if any(i["level"] == "error" for i in items):
+            made.append({"case_id": cid, "value": v, "job_id": None,
+                         "blocked": [i["message"] for i in items if i["level"] == "error"]})
+            continue
+        j = jobs.start(case, case["run"]["mode"], checks.engine_for(case),
+                       **({"study": "convergence"} if study == "convergence" else {}))
+        made.append({"case_id": cid, "value": v, "job_id": j["job_id"]})
+    return {"base": case_id, "path": path, "study": study, "cases": made,
+            "poll_after_s": 15 if study == "convergence" else 5}
 
 
 def compare_runs(case_ids: list[str], lang: str = "ja") -> dict:

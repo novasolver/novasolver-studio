@@ -80,6 +80,7 @@
   "bc.role.load": "载荷",
   "bc.role.pressure": "压力",
   "bc.role.symmetry": "对称",
+  "bc.role.constraint": "位移约束（分量）",
   "bc.role.inlet": "入口",
   "bc.role.outlet": "出口",
   "bc.role.wall": "壁面",

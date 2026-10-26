@@ -106,6 +106,21 @@ def _proc_once(argv: list[str], cwd: Path, log: Path, jd: Path, env: dict | None
 CCX_EDGE_ORDER = [(0, 1), (1, 2), (0, 2), (0, 3), (1, 3), (2, 3)]   # C3D10 nodes 5..10 (same as fem_tet10.EDGES)
 
 
+def _ccx_sections(case, mesh, material_lines) -> list[str]:
+    """One material and solid section per body of a multi-material assembly (one for the whole part otherwise)."""
+    from .templates import element_groups
+    groups = element_groups(case, mesh.get("tet_body", np.zeros(len(mesh["tets"]), int)))
+    if len(groups) == 1:
+        return ["*MATERIAL, NAME=MAT", *material_lines(groups[0][1]), "*SOLID SECTION, ELSET=EALL, MATERIAL=MAT"]
+    out = []
+    for i, (idx, props) in enumerate(groups):
+        ids = [str(int(e) + 1) for e in idx]
+        out.append(f"*ELSET, ELSET=B{i}")
+        out += [", ".join(ids[j:j + 16]) for j in range(0, len(ids), 16)]
+        out += [f"*MATERIAL, NAME=M{i}", *material_lines(props), f"*SOLID SECTION, ELSET=B{i}, MATERIAL=M{i}"]
+    return out
+
+
 def _ccx_header(case, nodes, tets):
     out = ["** NovaSolver Studio - generated from case %s rev %s" % (case["case_id"], case["revision"]), "*NODE, NSET=NALL"]
     out += [f"{i + 1}, {x:.9e}, {y:.9e}, {z:.9e}" for i, (x, y, z) in enumerate(nodes)]
@@ -135,7 +150,7 @@ def _nset(name, nodes_):
 def compile_calculix(case: dict, mesh: dict) -> str:
     """Linear static analysis. Loads are the same per-triangle tractions the built-in solver uses."""
     from .fem_tet10 import canonical_tets, tri_areas
-    from .run_worker import structural_loads
+    from .run_worker import structural_loads, symmetry_rollers
     nodes, tets = mesh["nodes"], canonical_tets(mesh["nodes"], mesh["tets"])
     mat = case["materials"]["solid"]
     E, nu = units.to_si(mat["E"]), units.to_si(mat["nu"])
@@ -147,9 +162,17 @@ def compile_calculix(case: dict, mesh: dict) -> str:
         area = tri_areas(nodes, tri)
         for k in range(3, 6):                      # consistent loads: midside nodes take area/3 each
             np.add.at(loads, tri[:, k], (area / 3)[:, None] * tt)
-    out += _nset("FIX", fixed)
-    out += ["*MATERIAL, NAME=MAT", "*ELASTIC", f"{E:.6e}, {nu:.4f}", "*SOLID SECTION, ELSET=EALL, MATERIAL=MAT",
-            "*STEP", "*STATIC", "*BOUNDARY", "FIX, 1, 3, 0.", "*CLOAD"]
+    bc = []
+    if len(fixed):
+        out += _nset("FIX", fixed)
+        bc.append("FIX, 1, 3, 0.")
+    for axis in range(3):                          # symmetry planes: only the normal component is held
+        sym = [np.unique(tri) for tri, a in symmetry_rollers(case, mesh) if a == axis]
+        if sym:
+            out += _nset(f"SYM{'XYZ'[axis]}", np.unique(np.concatenate(sym)))
+            bc.append(f"SYM{'XYZ'[axis]}, {axis + 1}, {axis + 1}, 0.")
+    out += _ccx_sections(case, mesh, lambda p: ["*ELASTIC", f"{p['E']:.6e}, {p['nu']:.4f}"])
+    out += ["*STEP", "*STATIC", "*BOUNDARY", *bc, "*CLOAD"]
     for n in np.nonzero(np.abs(loads).sum(axis=1))[0]:
         for d in range(3):
             if abs(loads[n, d]) > 0:
@@ -163,11 +186,10 @@ def compile_calculix_thermal(case: dict, mesh: dict) -> str:
     from .fem_tet10 import canonical_tets
     from .run_worker import thermal_groups
     nodes, tets = mesh["nodes"], canonical_tets(mesh["nodes"], mesh["tets"])
-    k = units.to_si(case["materials"]["solid"]["k"])
     out = _ccx_header(case, nodes, tets)
     fixed, fluxes, conv, _ = thermal_groups(case, mesh)
-    out += ["*MATERIAL, NAME=MAT", "*CONDUCTIVITY", f"{k:.6e}", "*SOLID SECTION, ELSET=EALL, MATERIAL=MAT",
-            "*STEP", "*HEAT TRANSFER, STEADY STATE", "1., 1."]
+    out += _ccx_sections(case, mesh, lambda p: ["*CONDUCTIVITY", f"{p['k']:.6e}"])
+    out += ["*STEP", "*HEAT TRANSFER, STEADY STATE", "1., 1."]
     if fixed:
         out.append("*BOUNDARY")
         done = set()
@@ -251,7 +273,7 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
     U, S = r["DISP"], r["STRESS"]
     vm = np.sqrt(0.5 * ((S[:, 0] - S[:, 1]) ** 2 + (S[:, 1] - S[:, 2]) ** 2 + (S[:, 2] - S[:, 0]) ** 2)
                  + 3 * (S[:, 3] ** 2 + S[:, 4] ** 2 + S[:, 5] ** 2))
-    np.savez_compressed(jd / "results.npz", u=U, vm=vm)
+    np.savez_compressed(jd / "results.npz", u=U, vm=vm, s=S[:, :6])
     umag = np.linalg.norm(U, axis=1)
     metrics = {"max_disp_m": float(umag.max()), "max_vm_pa": float(vm.max()), **common}
     if case["template"] == "cantilever":
@@ -270,9 +292,9 @@ def _fixed_face_flows(case, mesh, T, flows):
     """Heat through fixed-temperature faces = conduction residual, evaluated with the built-in conductivity matrix."""
     from .run_worker import thermal_groups
     fixed, fluxes, conv, order = thermal_groups(case, mesh)
-    k = units.to_si(case["materials"]["solid"]["k"])
+    from .templates import element_k
     out = dict(flows)
-    out.update(_residual_flows(mesh, k, T, fixed, order["fixed"], fluxes, conv))
+    out.update(_residual_flows(mesh, element_k(case, mesh), T, fixed, order["fixed"], fluxes, conv))
     return out
 
 
@@ -286,7 +308,7 @@ def _residual_flows(mesh, k, T, fixed, faces, fluxes=(), conv=()):
     for g in range(4):
         J = np.einsum("ik,ekj->eij", DSHAPE[g], X)
         dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(tets), 3, 10)))
-        Ke += GW[g] * np.linalg.det(J)[:, None, None] * k * np.einsum("eki,ekj->eij", dNdx, dNdx)
+        Ke += GW[g] * np.linalg.det(J)[:, None, None] * np.reshape(k, (-1, 1, 1)) * np.einsum("eki,ekj->eij", dNdx, dNdx)
     K = sp.csr_matrix((Ke.ravel(), (np.repeat(tets, 10, axis=1).ravel(), np.tile(tets, (1, 10)).ravel())),
                       shape=(len(nodes), len(nodes)))
     from .fem_tet10 import TRI6_M, tri_areas

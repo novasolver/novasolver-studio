@@ -256,6 +256,142 @@ def test_openfoam_imported_elbow_mass_balance():
     from novastudio import results as R
     m = R.load(cid)[1]["metrics"]
     assert r["gates"]["converged"] and m["mass_balance"] < 0.02 and m["dp_pa"] > 0
+    pr = C.probe_results(cid, faces=[inlet["key"], outlet["key"]])["faces"]
+    q_in = m["flow_rate_m3s"]           # inlet speed x the meshed (polygonal) inlet area, a little under the circle's
+    # inlets and outlets report OpenFOAM's own face fluxes
+    assert pr[0]["flow_out_m3s"] == pytest.approx(-q_in, rel=0.005)     # into the fluid at the inlet
+    assert abs(pr[0]["flow_out_m3s"] + pr[1]["flow_out_m3s"]) < 0.02 * q_in
+    assert pr[0]["mean"]["p"] > pr[1]["mean"]["p"]
+
+
+def test_probe_cantilever_points_line_faces():
+    from novastudio import geometry, store
+    cid = C.create_case("cantilever")["case"]["case_id"]
+    res = C.run_simulation(cid, "preview", wait_s=120)["results"]
+    tip = {c["key"]: c["value"] for c in res["cards"]}["tip_disp"]
+    L, W, H = (x * 1e3 for x in geometry.dims(store.load(cid)))
+    r = C.probe_results(cid, points=[[L - 1e-3, W / 2, H / 2], [L + 50, W / 2, H / 2]],
+                        line={"from": [0, W / 2, H / 2], "to": [L, W / 2, H / 2], "n": 21}, faces=["x1", "x0"])
+    p_tip, p_out = r["points"]
+    assert p_tip["inside"] and abs(p_tip["values"]["uz"]) == pytest.approx(tip, rel=0.03)
+    assert not p_out["inside"]
+    uz = [abs(s["values"]["uz"]) for s in r["line"]["samples"]]
+    assert r["line"]["inside_fraction"] == 1.0 and all(b >= a - 1e-9 for a, b in zip(uz, uz[1:]))
+    x1, x0 = r["faces"]
+    assert x1["area_mm2"] == pytest.approx(W * H, rel=1e-6) and x0["max"]["disp"] < 1e-9
+    assert x1["mean"]["disp"] == pytest.approx(tip, rel=0.05)
+
+
+def test_symmetry_planes_give_uniform_compression():
+    """A block held only by symmetry planes x0, y0, z0 and pressed on x1: sigma_xx = -p everywhere, u_x = -pL/E."""
+    from novastudio import geometry, store, units as U
+    p = C.create_case("cantilever")
+    cid = p["case"]["case_id"]
+    ch = {f"boundaries.{k}.role": "symmetry" for k in ("x0", "y0", "z0")}
+    ch.update({"boundaries.x1.role": "pressure", "boundaries.x1.pressure": "10 MPa"})
+    C.update_case(cid, p["case"]["revision"], ch)
+    res = C.run_simulation(cid, "preview", wait_s=120)["results"]
+    assert res["gates"]["converged"]
+    case = store.load(cid)
+    L, W, H = (x * 1e3 for x in geometry.dims(case))
+    E = U.to_si(case["materials"]["solid"]["E"])
+    pt = C.probe_results(cid, points=[[L / 2, W / 2, H / 2], [L - 1e-3, W / 2, H / 2]])["points"]
+    assert pt[0]["values"]["sxx"] == pytest.approx(-10.0, rel=1e-3)
+    assert abs(pt[0]["values"]["syy"]) < 0.01 and abs(pt[0]["values"]["vm"] - 10.0) < 0.01
+    assert pt[1]["values"]["ux"] == pytest.approx(-10e6 * L / E, rel=1e-3)
+    C.update_case(cid, case["revision"], {"boundaries.z0.role": "free"})
+    with pytest.raises(StudioError):                      # only two directions held: the block can still slide
+        r = C.run_simulation(cid, "preview", wait_s=120)
+        if r["done"] and not r["results"]:
+            raise StudioError("err.symmetry_rbm")
+
+
+def _two_block_step(path):
+    """Two 100 x 50 x 50 mm blocks side by side along x, as one STEP (an assembly of two bodies)."""
+    import gmsh
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", 0)
+    gmsh.model.occ.addBox(0, 0, 0, 100, 50, 50)
+    gmsh.model.occ.addBox(100, 0, 0, 100, 50, 50)
+    gmsh.model.occ.synchronize()
+    gmsh.write(str(path))
+    gmsh.finalize()
+
+
+def _assembly(tmp_path, physics, mats):
+    step = tmp_path / "two_blocks.step"
+    _two_block_step(step)
+    p = C.import_geometry(physics, step.name, path=str(step))
+    d = C.describe_case(p["case"]["case_id"])
+    bodies = sorted(d["body_materials"], key=lambda b: d["body_materials"][b]["centroid_mm"][0])
+    faces = p["case"]["geometry"]["faces"]
+    x0 = min(faces, key=lambda f: f["centroid"][0])["key"]
+    x1 = max(faces, key=lambda f: f["centroid"][0])["key"]
+    ch = {f"body_materials.{b}": m for b, m in zip(bodies, mats)}
+    return p, bodies, x0, x1, ch
+
+
+def test_two_material_wall_series_conduction(tmp_path):
+    p, bodies, x0, x1, ch = _assembly(tmp_path, "thermal", ["steel", "steel"])
+    ch.update({f"body_props.{bodies[1]}.k": "5 W/mK", f"boundaries.{x0}.role": "temperature",
+               f"boundaries.{x0}.temperature": "100 degC", f"boundaries.{x1}.role": "temperature",
+               f"boundaries.{x1}.temperature": "0 degC"})
+    cid = p["case"]["case_id"]
+    C.update_case(cid, p["case"]["revision"], ch)
+    res = C.run_simulation(cid, "preview", wait_s=300)["results"]
+    assert res["gates"]["converged"]
+    # series resistance: 0.1/(50*0.0025) + 0.1/(5*0.0025) = 0.8 + 8 K/W -> Q = 100 / 8.8 W, interface at 100 - Q*0.8
+    q_ref = 100 / 8.8
+    flows = __import__("novastudio.results", fromlist=["load"]).load(cid)[1]["metrics"]["face_flows_w"]
+    assert flows[x0] == pytest.approx(q_ref, rel=1e-3)
+    t_if = C.probe_results(cid, points=[[100, 25, 25]])["points"][0]["values"]["temp"]
+    assert t_if == pytest.approx(100 - q_ref * 0.8, abs=0.05)
+    from novastudio.config import find_calculix
+    if find_calculix():                         # one material and section per body in the CalculiX deck too
+        C.run_simulation(cid, "final", wait_s=600)
+        flows = __import__("novastudio.results", fromlist=["load"]).load(cid)[1]["metrics"]["face_flows_w"]
+        assert flows[x0] == pytest.approx(q_ref, rel=1e-3)
+
+
+def test_two_material_bar_in_tension(tmp_path):
+    p, bodies, x0, x1, ch = _assembly(tmp_path, "structural", ["steel", "aluminium"])
+    # no Poisson contraction (sideways strain -nu*sigma/E differs between the materials): the bonded interface then
+    # carries no sideways stress and the bar is exactly uniaxial
+    ch.update({f"boundaries.{x0}.role": "symmetry", f"boundaries.{x1}.role": "pressure",
+               f"boundaries.{x1}.pressure": "-10 MPa", f"body_props.{bodies[0]}.nu": 1e-6,
+               f"body_props.{bodies[1]}.nu": 1e-6})
+    faces = p["case"]["geometry"]["faces"]
+    for axis in (1, 2):                     # y0 and z0 planes of both blocks hold the sideways motion
+        for f in faces:
+            if abs(f["centroid"][axis]) < 1e-9:
+                ch[f"boundaries.{f['key']}.role"] = "symmetry"
+    cid = p["case"]["case_id"]
+    C.update_case(cid, p["case"]["revision"], ch)
+    res = C.run_simulation(cid, "preview", wait_s=300)["results"]
+    assert res["gates"]["converged"]
+    # uniaxial stress 10 MPa: elongation = 10e6 * (0.1/205e9 + 0.1/69e9)
+    du = C.probe_results(cid, points=[[199.999, 25, 25]])["points"][0]["values"]["ux"]
+    assert du == pytest.approx(10e6 * (0.1 / 205e9 + 0.1 / 69e9) * 1e3, rel=2e-3)
+
+
+def test_clone_and_sweep_scale_linearly():
+    from novastudio import jobs
+    p = C.create_case("cantilever")
+    cid = p["case"]["case_id"]
+    c = C.clone_case(cid, {"boundaries.x1.force": "50 N"}, "variant")
+    assert c["case"]["case_id"] != cid and c["case"]["revision"] == 2
+    assert C.describe_case(cid)["revision"] == p["case"]["revision"]          # the original is untouched
+    s = C.run_sweep(cid, "boundaries.x1.force", ["100 N", "200 N"], mode="preview")
+    tips = []
+    for row in s["cases"]:
+        assert jobs.wait(row["job_id"], 300)["state"] == "done"
+        cards = {k["key"]: k["value"] for k in C.get_results(row["case_id"])["cards"]}
+        tips.append(cards["tip_disp"])
+    assert tips[1] / tips[0] == pytest.approx(2.0, rel=1e-3)
+    rows = C.compare_runs([x["case_id"] for x in s["cases"]])["rows"]
+    assert all(r["gates"]["ran"] for r in rows)
+    with pytest.raises(StudioError):
+        C.run_sweep(cid, "boundaries.x1.force", [f"{i} N" for i in range(1, 10)])
 
 
 def test_plate_hole_heywood():

@@ -15,6 +15,7 @@ from mcp.types import CallToolResult, ImageContent, TextContent, ToolAnnotations
 
 from . import __version__
 from . import commands as C
+from . import templates
 from .store import StudioError
 
 Lang = Literal["ja", "en", "zh"]
@@ -22,6 +23,8 @@ Lang = Literal["ja", "en", "zh"]
 INSTRUCTIONS = """NovaSolver Studio runs engineering simulations (structural FEM, CFD) on this computer.
 Workflow: list_templates -> create_case (or import_geometry for the user's CAD file) -> describe_case -> update_case (fill the schema) -> validate_case
 -> run_simulation(mode="preview") -> job_status until done -> get_results / verify_case -> render_view.
+Read values at a point, along a line or over a face with probe_results. Design variants: clone_case, or run_sweep
+over one parameter, then compare_runs.
 Rules:
 1. Never claim a result is correct unless verify_case reports gates.verified = true. Report 'ran', 'converged' and
    'verified' separately. If verification is not applicable, say so and explain what reference is missing.
@@ -119,25 +122,43 @@ async def create_case(template: str, changes: dict[str, Any] | None = None, lang
 
 
 @mcp.tool(annotations=WRITE)
-async def import_geometry(path: str, physics: Literal["structural", "thermal"], units: Literal["mm", "m", "inch"] = "mm",
-                          language: Lang = "ja") -> CallToolResult:
+async def import_geometry(path: str, physics: Literal["structural", "thermal", "flow", "external", "conjugate"],
+                          units: Literal["mm", "m", "inch"] = "mm", language: Lang = "ja") -> CallToolResult:
     """Create a case from a CAD file on this computer (STEP .step/.stp, IGES .iges/.igs, BREP .brep, or a mesh STL .stl
     such as a Blender export). STEP/IGES/BREP carry their own units; for STL say the units the file was written in
     (Blender exports metres unless the scene unit scale was changed; most CAD STL exports are mm). Returns the faces with number, surface type, area and centroid so you can pick which faces to fix, load,
     heat or cool (by position: e.g. the face with the lowest centroid z is the bottom). Then set roles with update_case
-    using paths like boundaries.f12.role. Structural roles: free, fixed, load (force + direction), pressure.
-    Thermal roles: insulated, temperature, heat-flux, convection (h + tinf)."""
+    using paths like boundaries.f12.role.
+    physics: structural (free, fixed, symmetry = flat cut face normal to x/y/z: only the normal displacement is held,
+    so a half/quarter/eighth model of a symmetric part needs far fewer elements; constraint = components "x"/"xy"/...
+    held at zero on any face, e.g. a guide or slider; load = force + direction, pressure) | thermal (insulated, temperature, heat-flux,
+    convection = h + tinf) | flow = internal flow, the solid is the fluid volume (wall, inlet = speed, outlet; one inlet
+    and one outlet at least) | external = flow around the part (faces are wall; set flow.speed and flow.direction) |
+    conjugate = water through solids, two or more bodies (bodies.<key>.role fluid|solid, bodies.<key>.material;
+    fluid faces water-wall, water-inlet = speed + temperature, water-outlet; solid faces as thermal)."""
     r, e = await _call(C.import_geometry, language, physics, path, None, path, language, units=units)
     if e:
         return e
     c = r["case"]
     faces = [{"key": f["key"], "n": f["n"], "type": f.get("type"), "area_mm2": round(f["area"] * 1e6, 2),
-              "centroid_mm": [round(x * 1e3, 2) for x in f["centroid"]]} for f in c["geometry"]["faces"]]
+              "centroid_mm": [round(x * 1e3, 2) for x in f["centroid"]]}
+             for f in c["geometry"]["faces"] if not f.get("interface")]
     bb = [[round(x * 1e3, 2) for x in p] for p in c["geometry"]["bbox"]]
-    return _ok(f"Imported {c['geometry']['name']} as {c['case_id']} (rev {c['revision']}): {len(faces)} faces, "
-               f"bounding box {bb[0]} - {bb[1]} mm. All faces start as "
-               f"'{'free' if physics == 'structural' else 'insulated'}'.",
-               {"case_id": c["case_id"], "revision": c["revision"], "faces": faces, "bbox_mm": bb})
+    data = {"case_id": c["case_id"], "revision": c["revision"], "faces": faces, "bbox_mm": bb}
+    s = (f"Imported {c['geometry']['name']} as {c['case_id']} (rev {c['revision']}): {len(faces)} faces, "
+         f"bounding box {bb[0]} - {bb[1]} mm. All faces start as '{templates.DEFAULT_ROLE[physics]}'.")
+    if c.get("body_materials"):
+        geo = {b["key"]: b for b in c["geometry"].get("bodies", [])}
+        data["bodies"] = {b: {"material": m, "volume_mm3": round(geo[b]["volume"] * 1e9, 3),
+                              "centroid_mm": [round(x * 1e3, 2) for x in geo[b]["centroid"]]}
+                          for b, m in c["body_materials"].items()}
+        s += (f" Assembly of {len(data['bodies'])} bodies, all '{next(iter(c['body_materials'].values()))}' for now: "
+              f"set body_materials.<body> per body (identify them by volume and centroid).")
+    if c.get("bodies"):
+        data["bodies"] = c["bodies"]
+        s += " Bodies: " + ", ".join(f"{k}={v['role']} ({v['material']})" for k, v in c["bodies"].items()) + \
+             " (guess: the smallest body is the water - check it)."
+    return _ok(s, data)
 
 
 @mcp.tool(annotations=RO)
@@ -158,7 +179,11 @@ async def update_case(case_id: str, expected_revision: int, changes: dict[str, A
     """Change case fields. `changes` = {dotted.path: value}. Paths: geometry.params.<name> (templates),
     boundaries.<face>.role (faces x0..z1 for templates, f<n> for imported shapes),
     boundaries.<face>.force + .direction (-z,+z,-y,+y,-x,+x,normal) | .pressure | .speed | .temperature | .flux | .h + .tinf,
-    materials.solid.preset|E|nu|sy|k, materials.fluid.preset|nu, mesh.size (coarse|normal|fine), run.mode (preview|final).
+    materials.solid.preset|E|nu|sy|k, materials.fluid.preset|nu, mesh.size (coarse|normal|fine), run.mode (preview|final),
+    mesh.refine.<face> = element size on that face of an imported part, e.g. "0.3 mm" for a small fillet or notch where
+    the peak stress sits (scaled x1.6 / x1 / x0.625 for coarse / normal / fine; "none" removes it).
+    Assemblies (STEP with several bodies, structural/thermal): body_materials.<body> = a preset (steel, aluminium,
+    concrete, insulation, glass, wood, fr4, silicon, ...), body_props.<body>.k|E|nu overrides one value, e.g. "0.12 W/mK".
     Set the role first (same call is fine); value fields must match the role.
     Values with units: "5 mm", "2 kN", "70 GPa" or {"value": 5, "unit": "mm"}. Returns the diff and new readiness."""
     r, e = await _call(C.update_case, language, case_id, expected_revision, changes, language)
@@ -301,6 +326,67 @@ async def render_view(case_id: str, quantity: str = "", language: Lang = "ja") -
     except StudioError as e:
         return _err(e, language)
     return _ok(f"{meta['quantity']} range {meta['range'][0]:.4g} .. {meta['range'][1]:.4g} {meta['unit']}", meta, [png])
+
+
+@mcp.tool(annotations=RO)
+async def probe_results(case_id: str, points: list[list[float]] | None = None, line: dict[str, Any] | None = None,
+                        faces: list[str] | None = None, run_id: str | None = None, language: Lang = "ja") -> CallToolResult:
+    """Read result values where you ask, in mm: `points` = [[x, y, z], ...]; `line` = {"from": [x,y,z], "to": [x,y,z],
+    "n": 50} (values along it, with min/max); `faces` = face keys (e.g. ["f3", "f7"]): area-weighted mean, min, max per
+    quantity and, for flow, the volume flow out through the face (negative = into the fluid; exact solver fluxes on
+    inlets and outlets, nodal estimate elsewhere).
+    Quantities: structural disp ux uy uz (mm), vm, sxx syy szz sxy syz szx, s1 s3 (max/min principal) (MPa); thermal temp (°C); flow speed ux uy uz (m/s), p (Pa); conjugate temp, speed.
+    Values inside elements are interpolated (quadratic on tet10). A point outside the part gets inside=false and the
+    nearest node's value. Up to 500 points in one call. Not available for 2D template grids or snappyHexMesh runs."""
+    r, e = await _call(C.probe_results, language, case_id, points, line, faces, run_id, language)
+    if e:
+        return e
+    u = r["quantities"]
+    fmt = lambda vals: ", ".join(f"{q} {v:.5g} {u[q]}" for q, v in vals.items())
+    lines = [f"run {r['run_id']} ({r['kind']}){' STALE' if r['stale'] else ''}"]
+    for p in r.get("points", []):
+        lines.append(f"{p['at_mm']}{'' if p['inside'] else ' (outside: nearest node)'}: {fmt(p['values'])}")
+    if r.get("line"):
+        ln = r["line"]
+        lines.append(f"line {ln['from_mm']} -> {ln['to_mm']}, {len(ln['samples'])} samples, "
+                     f"{round(100 * ln['inside_fraction'])}% inside")
+        if ln["min"]:
+            lines.append(f"  min: {fmt(ln['min'])}\n  max: {fmt(ln['max'])}")
+    for f in r.get("faces", []):
+        s = f"{f['key']} ({f['area_mm2']:.4g} mm2) mean: {fmt(f['mean'])}; max: {fmt(f['max'])}"
+        if "flow_out_lmin" in f:
+            s += f"; flow out {f['flow_out_lmin']:.5g} L/min"
+        lines.append(s)
+    return _ok("\n".join(lines), r)
+
+
+@mcp.tool(annotations=WRITE)
+async def clone_case(case_id: str, changes: dict[str, Any] | None = None, title: str | None = None,
+                     language: Lang = "ja") -> CallToolResult:
+    """Copy a case (geometry, face roles, materials, settings - not its runs) under a new case_id and apply optional
+    `changes` ({dotted.path: value}, as in update_case). Use it to try a design variant without losing the original."""
+    r, e = await _call(C.clone_case, language, case_id, changes, title, language)
+    if e:
+        return e
+    c = r["case"]
+    return _ok(f"Cloned {case_id} -> {c['case_id']} (rev {c['revision']}). ready={r['ready']}",
+               {"case_id": c["case_id"], "revision": c["revision"], "cloned_from": case_id, "ready": r["ready"]})
+
+
+@mcp.tool(annotations=WRITE)
+async def run_sweep(case_id: str, path: str, values: list[Any], mode: Literal["preview", "final"] | None = None,
+                    study: Literal["single", "convergence"] = "single", language: Lang = "ja") -> CallToolResult:
+    """Parameter study: one clone of the case per value of `path` (e.g. path="boundaries.f5.force",
+    values=["100 N", "200 N", "400 N"]; or materials.solid.preset, mesh.size, boundaries.f2.speed), each started as a
+    background job (they run one after another). study="convergence" runs a mesh study for each, so every variant can
+    be verified. Up to 8 values. Poll each job_id with job_status, then compare_runs on the case_ids."""
+    r, e = await _call(C.run_sweep, language, case_id, path, values, mode, study, language)
+    if e:
+        return e
+    s = "\n".join(f"{c['value']}: {c['case_id']} " + (f"job {c['job_id']}" if c["job_id"] else
+                                                       "BLOCKED: " + "; ".join(c["blocked"])) for c in r["cases"])
+    return _ok(f"Sweep of {path} on {case_id} ({r['study']}):\n{s}\nPoll with job_status after {r['poll_after_s']} s, "
+               f"then compare_runs.", r)
 
 
 @mcp.tool(annotations=RO)

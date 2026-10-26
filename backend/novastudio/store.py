@@ -115,6 +115,8 @@ def editable_paths(case: dict) -> list[str]:
         paths += ["flow.speed", "flow.direction"]
     for b in case.get("bodies", {}):
         paths += [f"bodies.{b}.role", f"bodies.{b}.material"]
+    for b in case.get("body_materials", {}):           # multi-material assembly (structural / thermal)
+        paths += [f"body_materials.{b}"] + [f"body_props.{b}.{p}" for p in templates.BODY_PROPS]
     mats = case["materials"]
     if "solid" in mats:
         paths += ["materials.solid.preset", "materials.solid.E", "materials.solid.nu", "materials.solid.sy",
@@ -126,6 +128,8 @@ def editable_paths(case: dict) -> list[str]:
             continue
         paths.append(f"boundaries.{face}.role")
         paths += [f"boundaries.{face}.{k}" for k in templates.VALUE_FIELDS]
+        if tp.get("import") and case["mesh"].get("method") == "gmsh":
+            paths.append(f"mesh.refine.{face}")      # local element size on this face (a fillet, a notch)
     return sorted(set(paths))
 
 
@@ -172,6 +176,42 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             if value not in allowed_m:
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(allowed_m)})")
             nv = value
+        elif parts[0] == "body_materials":
+            if value not in templates.MATERIALS_SOLID:
+                raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(templates.MATERIALS_SOLID)})")
+            nv = value
+            new.get("body_props", {}).pop(parts[1], None)     # a new preset drops the old overrides
+        elif parts[0] == "body_props":
+            if value in (None, "", "none"):                    # back to the preset's value
+                parent.pop(key, None)
+                diff.append({"path": path, "old": old, "new": None})
+                continue
+            try:
+                nv = units.normalize(value, old if isinstance(old, dict) else
+                                     {"value": 1.0, "unit": templates.BODY_PROPS[key]})
+                si = units.to_si(nv)
+            except (units.UnitError, TypeError, ValueError) as e:
+                raise StudioError("err.unit", 400, msg=str(e))
+            if not (si > 0 and (key != "nu" or si < 0.5)):
+                raise StudioError("err.range", 400, path=path, lo="0", hi="0.5" if key == "nu" else "-")
+        elif parts[:2] == ["mesh", "refine"]:
+            if value in (None, "", "none", 0):         # back to the automatic size
+                parent.pop(key, None)
+                diff.append({"path": path, "old": old, "new": None})
+                continue
+            try:
+                nv = units.normalize(value, {"value": 1.0, "unit": "mm"})
+                si = units.to_si(nv)
+            except (units.UnitError, TypeError, ValueError) as e:
+                raise StudioError("err.unit", 400, msg=str(e))
+            if not si > 0:
+                raise StudioError("err.range", 400, path=path, lo="0 mm", hi="-")
+        elif key == "components":                      # constraint role: which displacement components are held
+            if new["boundaries"].get(parts[1], {}).get("role") != "constraint":
+                raise StudioError("err.path", 400, path=f"{path} (only the 'constraint' role has components)")
+            if not (isinstance(value, str) and value and set(value) <= set("xyz") and len(set(value)) == len(value)):
+                raise StudioError("err.path", 400, path=f"{path}={value} (one or more of x, y, z, e.g. \"xy\")")
+            nv = "".join(c for c in "xyz" if c in value)
         elif key == "direction":
             if value not in templates.DIRECTIONS:
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(templates.DIRECTIONS)})")

@@ -107,7 +107,7 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     quantities = [{"id": q, "label": t(f"qty.{q}", lang), "unit": u, "kind": k} for q, u, k in QUANTITIES[r["kind"]]]
     warnings = []
     sy = (case["materials"].get("solid") or {}).get("sy")
-    if r["kind"] == "structural" and sy and m.get("max_vm_pa"):
+    if r["kind"] == "structural" and sy and m.get("max_vm_pa") and not case.get("body_materials"):
         sy_pa = units.to_si(sy)
         if m["max_vm_pa"] > sy_pa:
             warnings.append({"code": "yield", "message": t("result.yield", lang, vm=m["max_vm_pa"] / 1e6, sy=sy_pa / 1e6)})

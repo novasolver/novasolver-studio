@@ -108,8 +108,8 @@ export function roleColor(theme: ViewerTheme, role: string | null | undefined, l
   return groupColor(theme, roleGroup(role));
 }
 
-/** Roles that hold a value fixed (displacement, temperature). */
-export const FIXED_ROLES = new Set(["fixed", "temperature"]);
+/** Roles that hold a value fixed (displacement, temperature; symmetry holds the normal displacement). */
+export const FIXED_ROLES = new Set(["fixed", "symmetry", "constraint", "temperature"]);
 /** Roles that drive the problem (force, pressure, heat input, inflow, moving wall). */
 export const LOADED_ROLES = new Set(["load", "pressure", "heat-flux", "inlet", "moving-wall"]);
 /** Roles that exchange with the surroundings (convection, outflow). */

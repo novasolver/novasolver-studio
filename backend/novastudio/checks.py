@@ -39,7 +39,7 @@ def run(case: dict, lang: str) -> list[dict]:
         if ms["exists"] and ms["stale"]:
             add("warn", "mesh_stale", "mesh", fix="generate_mesh(case_id)")
     elif tp["physics"] == "structural":
-        if not any(v["role"] == "fixed" for v in b.values()):
+        if not any(v["role"] in ("fixed", "symmetry", "constraint") for v in b.values()):
             add("error", "no_fixed", "boundaries", fix='update_case(changes={"boundaries.x0.role": "fixed"})')
         if not any(v["role"] in ("load", "pressure") for v in b.values()):
             add("error", "no_load", "boundaries", fix='update_case(changes={"boundaries.x1.role": "load"})')

@@ -80,6 +80,7 @@
   "bc.role.load": "Load",
   "bc.role.pressure": "Pressure",
   "bc.role.symmetry": "Symmetry",
+  "bc.role.constraint": "Constraint (components)",
   "bc.role.inlet": "Inlet",
   "bc.role.outlet": "Outlet",
   "bc.role.wall": "Wall",

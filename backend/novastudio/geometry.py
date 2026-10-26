@@ -33,7 +33,7 @@ def dims(case: dict) -> list[float]:
     raise ValueError(kind)
 
 
-MESHER_VERSION = 12          # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
+MESHER_VERSION = 14        # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
 
 
 def _canon(o):
@@ -146,6 +146,7 @@ THIN_LEVEL = {"coarse": 0.5, "normal": 1.0, "fine": 1.6}
 STL_SURF_DIV = 40                     # STL surface triangles at the normal level: min(diagonal / this, thinnest wall)
 STL_SURF_FACTOR = {"coarse": 1.6, "normal": 1.0, "fine": 0.7}   # x that size per convergence level
 REFINE_DIVS = {"coarse": 50, "normal": 100, "fine": 160}     # element size near loaded faces = diagonal / this
+REFINE_LEVEL = {"coarse": 1.6, "normal": 1.0, "fine": 0.625}  # x the size set on a face (mesh.refine) per level
 
 
 def structural_refinement(case: dict) -> dict:
@@ -178,6 +179,9 @@ def generate_mesh(case: dict) -> dict:
         near = [f["key"] for f in case["geometry"]["faces"] if set(f.get("bodies", [])) & fluid]
         kw = {"msh": True, "h": mesh_size(case), "refine_faces": near}   # fine around the water, coarse elsewhere
     kw.update(structural_refinement(case))
+    if case["mesh"].get("refine"):                  # element size the user set on chosen faces (a fillet, a notch)
+        kw["refine_spots"] = [{"faces": [face], "h": units.to_si(q) * REFINE_LEVEL[case["mesh"]["size"]]}
+                              for face, q in sorted(case["mesh"]["refine"].items())]
     if case["template"] in THIN_THROUGH:          # imported solids: enough elements across thin walls
         # never coarser than the wall itself: a surface element wider than a fin cannot be remeshed
         kw["thin_n"] = max(1.0, THIN_THROUGH[case["template"]] * THIN_LEVEL[case["mesh"]["size"]])
