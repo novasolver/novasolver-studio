@@ -70,6 +70,8 @@ export interface State {
   logOpen: boolean;
   logs: LogEntry[];
   toast: Toast | null;
+  brandMark: boolean; // small "NovaSolver Studio" mark in the viewport corner (shows in screenshots)
+  shareProgress: number | null; // turntable export 0..1 while running
 }
 
 function initialTheme(): { theme: "light" | "dark"; explicit: boolean } {
@@ -119,7 +121,26 @@ let state: State = {
   logOpen: false,
   logs: [],
   toast: null,
+  brandMark: initialBrandMark(),
+  shareProgress: null,
 };
+
+function initialBrandMark(): boolean {
+  try {
+    return localStorage.getItem("nss.brandMark") !== "off";
+  } catch {
+    return true;
+  }
+}
+export function toggleBrandMark() {
+  const brandMark = !state.brandMark;
+  setState({ brandMark });
+  try {
+    localStorage.setItem("nss.brandMark", brandMark ? "on" : "off");
+  } catch {
+    /* ignore */
+  }
+}
 
 const subs = new Set<() => void>();
 export function getState() {
@@ -151,6 +172,9 @@ export function useT() {
 let viewer: Viewer | null = null;
 export function registerViewer(v: Viewer | null) {
   viewer = v;
+}
+export function getViewer(): Viewer | null {
+  return viewer;
 }
 export function viewCmd(name: ViewName) {
   viewer?.view(name);
@@ -206,6 +230,7 @@ export async function boot() {
   unsubscribeEvents?.();
   unsubscribeEvents = connectEvents(onEvent, (c) => setState({ wsConnected: c }));
   setState({ boot: "ready" });
+  void openFromLink();
 }
 
 /** Revisions produced by this GUI's own PATCHes; a WS "case" event for them is not external. */
@@ -310,6 +335,41 @@ export async function createCase(template: string) {
   } catch (e) {
     log("error", t("log.error", { message: errMsg(e) }));
     toast(errMsg(e), "error");
+  } finally {
+    setState({ creating: null });
+  }
+}
+
+/**
+ * "Solve this in 3D" links from novasolver.jp open http://127.0.0.1:<port>/?template=<id>&set.<path>=<value>…
+ * Only a template id and a few value overrides under known sections are read; the case is created, never run.
+ */
+const LINK_PREFIXES = ["geometry.params.", "materials.", "boundaries.", "physics."];
+async function openFromLink() {
+  const q = new URLSearchParams(location.search);
+  const template = q.get("template");
+  if (!template) return;
+  history.replaceState(null, "", location.pathname);
+  if (!state.templates.some((x) => x.id === template)) {
+    toast(t("open.failed", { message: template }), "error");
+    return;
+  }
+  const params: Record<string, string> = {};
+  for (const [k, v] of q) {
+    if (!k.startsWith("set.")) continue;
+    const path = k.slice(4);
+    if (Object.keys(params).length >= 24 || v.length > 64 || !/^[\w.-]+$/.test(path)) continue;
+    if (LINK_PREFIXES.some((p) => path.startsWith(p))) params[path] = v;
+  }
+  setState({ creating: template });
+  try {
+    const p = await api.createCase(template, Object.keys(params).length ? params : undefined);
+    openPayload(p);
+    log("ok", t("log.caseCreated", { title: pick(state.lang, p.case.title) }));
+    toast(t("open.created"));
+  } catch (e) {
+    log("error", t("log.error", { message: errMsg(e) }));
+    toast(t("open.failed", { message: errMsg(e) }), "error");
   } finally {
     setState({ creating: null });
   }

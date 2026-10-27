@@ -1,4 +1,4 @@
-import { FileUp, FolderOpen, ShieldCheck, TriangleAlert } from "lucide-react";
+import { FileUp, FolderOpen, MessagesSquare, ShieldCheck, TriangleAlert } from "lucide-react";
 import { createCase, createSample, openCase, useStore, useT } from "../state/store";
 import { pick } from "../i18n";
 import type { Lang, Sample, Template } from "../api/types";
@@ -439,7 +439,20 @@ export function StartScreen() {
                   ],
             )}
         </p>
+        <p className="prose-ui mt-2 flex flex-wrap items-center gap-x-1.5 text-label text-fg-3">
+          <MessagesSquare size={14} className="shrink-0" />
+          {t("start.community")}
+          <a href={communityUrl(lang, "start")} target="_blank" rel="noreferrer" className="text-accent-text hover:underline">
+            {t("start.communityLink")}
+          </a>
+        </p>
       </div>
     </main>
   );
+}
+
+/** The NovaSolver community page (Discord invite lives there, so an expired invite is fixed in one place). */
+export function communityUrl(lang: string, from: string) {
+  const prefix = lang === "en" ? "/en" : lang === "zh" ? "/zh" : "";
+  return `https://novasolver.jp${prefix}/community/?utm_source=studio_app&utm_medium=${from}&utm_campaign=community`;
 }

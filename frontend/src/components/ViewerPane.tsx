@@ -14,8 +14,10 @@ import {
   useT,
   viewCmd,
 } from "../state/store";
-import type { ResultCard, ResultsPayload } from "../api/types";
+import type { ResultCard } from "../api/types";
+import { splitCards } from "../lib/resultCards";
 import { ColorBar } from "./ColorBar";
+import { BrandMark, ShareButton, ShareProgress } from "./ShareMenu";
 import { Tooltip } from "./ui/Tooltip";
 import { Spinner } from "./ui/misc";
 import { cn } from "./ui/cn";
@@ -38,8 +40,12 @@ function ViewButtons() {
     { id: "top" as const, icon: <PanelTop size={16} />, label: t("view.top") },
     { id: "fit" as const, icon: <Maximize size={16} />, label: t("view.fit"), key: "F" },
   ];
+  const share = useStore((s) => s.step === "results" && !!s.field);
   return (
-    <div className="hud absolute bottom-3 right-3 flex items-center gap-0.5 rounded-[8px] p-1">
+    <div className="absolute bottom-3 right-3 flex items-center gap-3">
+    <BrandMark />
+    <div className="hud flex items-center gap-0.5 rounded-[8px] p-1">
+      {share && <ShareButton />}
       {items.map((it) => (
         <Tooltip key={it.id} content={it.label} shortcut={it.key} side="top">
           <button
@@ -53,28 +59,11 @@ function ViewButtons() {
         </Tooltip>
       ))}
     </div>
+    </div>
   );
 }
 
 // ------------------------------------------------------------------ results strip
-
-/** Inputs echoed back as cards (not results). */
-const INPUT_KEYS = new Set(["re"]);
-/** Bookkeeping numbers (quiet group at the end). */
-const META_KEYS = new Set(["nodes", "elements", "iterations"]);
-/** Near-duplicates of the colour-bar maximum. */
-const DUP_KEYS = new Set(["max_disp"]);
-
-function splitCards(r: ResultsPayload) {
-  const v = r.verification;
-  const close = (a: number, b: number) => Math.abs(a - b) <= Math.max(Math.abs(a), Math.abs(b)) * 2e-3;
-  const inputs = r.cards.filter((c) => INPUT_KEYS.has(c.key));
-  const meta = r.cards.filter((c) => META_KEYS.has(c.key));
-  let outputs = r.cards.filter((c) => !INPUT_KEYS.has(c.key) && !META_KEYS.has(c.key) && !DUP_KEYS.has(c.key));
-  const lead = (v && outputs.find((c) => close(c.value, v.computed))) || outputs[0] || null;
-  outputs = outputs.filter((c) => c !== lead);
-  return { inputs, lead, outputs: outputs.slice(0, 3), meta: meta.slice(0, 1), compared: !!(v && lead && close(lead.value, v.computed)) };
-}
 
 function Unit({ u }: { u: string }) {
   const s = unitLabel(u);
@@ -464,6 +453,7 @@ export function ViewerPane() {
       )}
 
       <ViewButtons />
+      <ShareProgress />
       <ToastView />
     </div>
   );

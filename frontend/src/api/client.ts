@@ -142,7 +142,8 @@ export const api = {
     const r = await request<{ cases?: CaseSummary[] } | CaseSummary[]>("GET", "/api/cases");
     return Array.isArray(r) ? r : (r.cases ?? []);
   },
-  createCase: (template: string) => request<CasePayload>("POST", "/api/cases", { template }),
+  createCase: (template: string, params?: Record<string, string>) =>
+    request<CasePayload>("POST", "/api/cases", params ? { template, params } : { template }),
   getCase: (id: string) => request<CasePayload>("GET", `/api/cases/${encodeURIComponent(id)}`),
   patchCase: (id: string, expected_revision: number, changes: Record<string, unknown>) =>
     request<CasePayload>("PATCH", `/api/cases/${encodeURIComponent(id)}`, { expected_revision, changes }),

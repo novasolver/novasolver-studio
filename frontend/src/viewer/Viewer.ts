@@ -607,6 +607,70 @@ export class Viewer {
   }
 
   /**
+   * Render the current view at w × h device pixels into a new 2D canvas (transparent background), for share images
+   * and videos. The horizontal extent the user sees is kept when the aspect is narrower; `orbit` turns the camera
+   * that many radians about the vertical (Z) axis through the orbit target. The on-screen view is left as it was.
+   */
+  snapshot(w: number, h: number, orbit = 0): HTMLCanvasElement {
+    this.beginCapture(w, h);
+    const out = document.createElement("canvas");
+    out.width = w;
+    out.height = h;
+    out.getContext("2d")!.drawImage(this.captureFrame(orbit), 0, 0);
+    this.endCapture();
+    return out;
+  }
+
+  private capture: { size: THREE.Vector2; ratio: number; pos: THREE.Vector3; aspect: number; offset: THREE.Vector3 } | null =
+    null;
+
+  /** Start an off-screen capture at w × h (see snapshot); frames come from captureFrame, endCapture restores the view. */
+  beginCapture(w: number, h: number): void {
+    if (this.capture) this.endCapture();
+    const half = THREE.MathUtils.degToRad(this.camera.fov) / 2;
+    const hNow = Math.atan(Math.tan(half) * this.camera.aspect);
+    const hNew = Math.atan(Math.tan(half) * (w / h));
+    this.capture = {
+      size: this.renderer.getSize(new THREE.Vector2()),
+      ratio: this.renderer.getPixelRatio(),
+      pos: this.camera.position.clone(),
+      aspect: this.camera.aspect,
+      offset: this.camera.position.clone().sub(this.controls.target).multiplyScalar(Math.max(1, Math.tan(hNow) / Math.tan(hNew))),
+    };
+    this.tween = null;
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    for (const m of [this.selMat, this.hoverMat, this.flowMat]) m.resolution.set(w, h);
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(w, h, false);
+  }
+
+  /** Render one capture frame turned `orbit` radians about Z; the returned canvas is overwritten by the next frame. */
+  captureFrame(orbit = 0): HTMLCanvasElement {
+    const c = this.capture;
+    if (!c) throw new Error("beginCapture first");
+    const offset = c.offset.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), orbit);
+    this.camera.position.copy(this.controls.target).add(offset);
+    this.camera.lookAt(this.controls.target);
+    this.renderer.render(this.scene, this.camera);
+    return this.renderer.domElement;
+  }
+
+  endCapture(): void {
+    const c = this.capture;
+    if (!c) return;
+    this.capture = null;
+    this.renderer.setPixelRatio(c.ratio);
+    this.renderer.setSize(c.size.x, c.size.y, false);
+    this.camera.position.copy(c.pos);
+    this.camera.lookAt(this.controls.target);
+    this.camera.aspect = c.aspect;
+    this.camera.updateProjectionMatrix();
+    for (const m of [this.selMat, this.hoverMat, this.flowMat]) m.resolution.set(c.size.x, c.size.y);
+    this.dirty = true;
+  }
+
+  /**
    * External flow: draw the free-stream direction as arrows in front of the body
    * (e.g. [1,0,0] = flow toward +X). null hides it. Hidden while a result field is shown.
    */
@@ -1077,6 +1141,7 @@ export class Viewer {
       if (u >= 1) this.tween = null;
       this.dirty = true;
     }
+    if (this.capture) return; // a share capture owns the renderer and camera until endCapture
     if (this.controls.update()) this.dirty = true;
 
     if (this.pendingHover && this.pickingEnabled) {

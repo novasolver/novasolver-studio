@@ -14,6 +14,7 @@ import {
   Rocket,
   Search,
   ScrollText,
+  Stamp,
 } from "lucide-react";
 import { Dialog } from "./ui/Dialog";
 import { Kbd } from "./ui/misc";
@@ -27,6 +28,7 @@ import {
   runCase,
   setLang,
   STEPS,
+  toggleBrandMark,
   toggleTheme,
   ui,
   useStore,
@@ -95,6 +97,7 @@ export function CommandPalette() {
       { id: "import-external", group: t("palette.group.app"), label: t("cmd.import", { physics: t("physics.external") }), icon: <FileUp size={15} />, run: () => pickCadFile("external") },
       { id: "new", group: t("palette.group.app"), label: t("cmd.newCase"), icon: <Plus size={15} />, run: () => closeCase() },
       { id: "theme", group: t("palette.group.app"), label: t("cmd.theme"), icon: <MoonStar size={15} />, run: () => toggleTheme() },
+      { id: "brand", group: t("palette.group.app"), label: t("brand.toggle"), icon: <Stamp size={15} />, run: () => toggleBrandMark() },
       ...(["ja", "en", "zh"] as Lang[])
         .filter((l) => l !== lang)
         .map((l) => ({

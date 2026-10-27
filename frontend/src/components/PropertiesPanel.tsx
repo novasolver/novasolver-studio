@@ -42,7 +42,7 @@ import {
   EMPTY,
 } from "../state/store";
 import type { ConvergenceStudy, StepId, UiFace, UiParam } from "../api/types";
-import { renderUrl } from "../api/client";
+import { exportImage } from "./ShareMenu";
 import { groupColor, roleGroup } from "../viewer";
 import { Button } from "./ui/Button";
 import { NumberInput } from "./ui/Input";
@@ -1437,16 +1437,14 @@ function ResultsStep() {
       {caseId && quantity && !offline && (
         <Section className="pb-4">
           <div className="flex items-center gap-3">
-            <a
-              href={renderUrl(caseId, quantity)}
-              target="_blank"
-              rel="noreferrer"
-              download
+            <button
+              type="button"
+              onClick={() => void exportImage("wide", false)}
               className="inline-flex h-8 items-center gap-2 rounded-[6px] border border-line-strong px-3 text-body font-medium text-fg hover:bg-hover"
             >
               <ImageDown size={14} />
               {t("results.export")}
-            </a>
+            </button>
             {r.wall_s != null && (
               <span className="tnum min-w-0 truncate text-label text-fg-3">
                 {r.engine}
