@@ -269,6 +269,7 @@
   "import.as.flow": "流速と圧力損失を求めます",
   "run.flowOnlyFinal": "取り込んだ形状の流れ解析は OpenFOAM の本計算だけで解きます。数分かかります。",
   "physics.external": "物体まわりの流れ",
+  "physics.conjugate": "水冷（連成）",
   "physics.kind.external-steady": "外部流れ・定常",
   "import.as.external": "空気や水の中に置いた物体の抗力と揚力を求めます",
   "run.externalOnlyFinal": "物体まわりの流れは OpenFOAM の本計算だけで解きます。数分かかります。",

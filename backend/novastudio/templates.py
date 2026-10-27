@@ -446,7 +446,7 @@ TEMPLATES["capacitor"] = _electric_template(
      "z1": {"role": "voltage", "voltage": {"value": 100, "unit": "V"}}},
     ("parallel-plate-capacitance", "capacitance"), _box_fields + [("boundaries.z1.voltage", "param.voltage", "voltage", -1e6, 1e6), _eps_field])
 TEMPLATES["coax"] = _electric_template(
-    "electrostatic", "ptfe", {p: {"value": v, "unit": "mm"} for p, v in (("a", 1), ("b", 3.5), ("length", 100))},
+    "electrostatic", "ptfe", {p: {"value": v, "unit": "mm"} for p, v in (("a", 1), ("b", 3.5), ("length", 10))},
     {"inner": {"role": "voltage", "voltage": {"value": 1000, "unit": "V"}},
      "outer": {"role": "voltage", "voltage": {"value": 0, "unit": "V"}}, "z0": {"role": "open"}, "z1": {"role": "open"}},
     ("coax-capacitance", "capacitance"), [(f"geometry.params.{p}", f"param.{p}", "length", 0.01, 5000) for p in ("a", "b", "length")] +
@@ -457,7 +457,7 @@ TEMPLATES["coax"]["nova_tool"] = "https://novasolver.jp/tools/coaxial-cable-impe
 TEMPLATES["busbar"] = _electric_template(
     "dc-current", "copper", {p: {"value": v, "unit": "mm"} for p, v in zip(("length", "width", "height"), (200, 20, 5))},
     {f: {"role": "voltage" if f in ("x0", "x1") else "insulated",
-         **({"voltage": {"value": 2 if f == "x0" else 0, "unit": "mV"}} if f in ("x0", "x1") else {}),
+         **({"voltage": {"value": 20 if f == "x0" else 0, "unit": "mV"}} if f in ("x0", "x1") else {}),
          "thermal": {"role": "temperature", "temperature": {"value": 20, "unit": "degC"}} if f in ("x0", "x1") else {"role": "insulated"}}
      for f in FACE_KEYS}, ("busbar-joule-rise", "t_rise"),
     _box_fields + [("boundaries.x0.voltage", "param.voltage", "voltage", -1e6, 1e6), _sigma_field, _k_field])

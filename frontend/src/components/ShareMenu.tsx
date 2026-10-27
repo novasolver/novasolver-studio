@@ -201,7 +201,8 @@ export function BrandMark() {
   const on = useStore((s) => s.brandMark);
   if (!on) return null;
   return (
-    <div className="pointer-events-none flex select-none items-center gap-1.5 text-micro text-fg-3 max-md:hidden">
+    // hidden in narrow windows: next to the view buttons it would run into the colour bar on the left
+    <div className="pointer-events-none flex select-none items-center gap-1.5 text-micro text-fg-3 max-xl:hidden">
       <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden>
         <path d="M12 1.5 22.5 12 12 22.5 1.5 12Z" fill="var(--accent-fill)" />
         <path d="M12 7.2 16.8 12 12 16.8 7.2 12Z" fill="var(--vp-bottom)" />

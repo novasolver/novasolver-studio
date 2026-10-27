@@ -269,6 +269,7 @@
   "import.as.flow": "Find velocities and pressure drop",
   "run.flowOnlyFinal": "Flow on an imported shape runs only as a final OpenFOAM job. It takes a few minutes.",
   "physics.external": "Flow around a body",
+  "physics.conjugate": "Water cooling (conjugate)",
   "physics.kind.external-steady": "External flow, steady",
   "import.as.external": "Drag and lift on a body placed in air or water",
   "run.externalOnlyFinal": "Flow around a body is solved only by the OpenFOAM final run. It takes several minutes.",

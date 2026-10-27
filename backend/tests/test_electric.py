@@ -84,7 +84,7 @@ def test_02_permittivity_scales_capacitance(capacitor):
 def test_03_coax_capacitance_and_peak_field():
     _, _, r = solve("coax")
     m = r["metrics"]
-    ref = 2 * math.pi * EPS0 * 2.1 * 0.1 / math.log(3.5)
+    ref = 2 * math.pi * EPS0 * 2.1 * 0.01 / math.log(3.5)
     eref = 1000 / (0.001 * math.log(3.5))
     number("coax_C_F", m["capacitance_f"], ref)
     number("coax_Emax_V_m", m["e_max_v_m"], eref)
@@ -137,7 +137,7 @@ def test_05_busbar_coupled_power_and_temperature():
     cid, jd, r = solve("busbar")
     m = r["metrics"]
     rref = 0.2 / (5.96e7 * 0.02 * 0.005)
-    tref = 5.96e7 * 0.002 ** 2 / (8 * 390)
+    tref = 5.96e7 * 0.02 ** 2 / (8 * 390)
     c = store.load(cid)
     vi = sum(units.to_si(c["boundaries"][f]["voltage"]) * i for f, i in m["face_current_a"].items())
     for name, value, ref in (("busbar_R_ohm", m["resistance_ohm"], rref), ("busbar_power_W", m["power_w"], vi),

@@ -269,6 +269,7 @@
   "import.as.flow": "求流速和压力损失",
   "run.flowOnlyFinal": "导入形状的流动分析只能用 OpenFOAM 正式计算，需要几分钟。",
   "physics.external": "绕流",
+  "physics.conjugate": "水冷（共轭传热）",
   "physics.kind.external-steady": "外流·定常",
   "import.as.external": "求放在空气或水中的物体的阻力和升力",
   "run.externalOnlyFinal": "绕流只用 OpenFOAM 正式计算求解，需要几分钟。",

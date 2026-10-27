@@ -8,7 +8,19 @@ import { cn } from "./ui/cn";
 
 const WIDTH = 200;
 
-function EditableValue({ value, onCommit, className }: { value: number; onCommit: (v: number) => void; className?: string }) {
+/** Tick labels. A narrow range far from zero (20.00 … 20.08 °C) needs fixed decimals from the tick step: three or
+ * four significant digits would print every tick as "20". */
+function tickFormat(lo: number, hi: number): (v: number, sig: number) => string {
+  const step = (hi - lo) / 4;
+  const mag = Math.max(Math.abs(lo), Math.abs(hi));
+  if (!(step > 0) || mag >= 1e6 || step / mag > 0.01) return (v, sig) => fmt(v, sig);
+  const dec = Math.min(8, Math.max(0, Math.ceil(-Math.log10(step))));
+  return (v) => (v === 0 ? "0" : v.toFixed(dec).replace(/^-/, "−"));
+}
+
+function EditableValue({ value, onCommit, className, format = fmt }: {
+  value: number; onCommit: (v: number) => void; className?: string; format?: (v: number, sig: number) => string;
+}) {
   const t = useT();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
@@ -41,7 +53,7 @@ function EditableValue({ value, onCommit, className }: { value: number; onCommit
       }}
       className={cn("tnum h-5 rounded-[4px] px-0.5 text-micro text-fg-2 hover:bg-hover hover:text-fg", className)}
     >
-      {fmt(value, 3)}
+      {format(value, 3)}
     </button>
   );
 }
@@ -85,13 +97,14 @@ export function ColorBar() {
     inner[1] = { u: -lo / (hi - lo), v: 0 };
   }
   const unit = unitLabel(field.unit);
+  const tf = tickFormat(lo, hi);
   // drop an inner label that would collide with the editable end values
   const w = (s: string) => s.length * 6.4 + 6;
-  const loW = w(fmt(lo, 3));
-  const hiW = w(fmt(hi, 3));
+  const loW = w(tf(lo, 3));
+  const hiW = w(tf(hi, 3));
   const visible = inner.map((x) => {
     const c = x.u * WIDTH;
-    const half = w(fmt(x.v, 2)) / 2;
+    const half = w(tf(x.v, 2)) / 2;
     return c - half > loW + 2 && c + half < WIDTH - hiW - 2;
   });
 
@@ -133,17 +146,17 @@ export function ColorBar() {
         {[0, ...inner.map((x) => x.u), 1].map((u, i) => (
           <span key={i} className="absolute top-0 h-1 w-px bg-hud-line" style={{ left: `calc(${u * 100}% - ${u === 1 ? 1 : 0}px)` }} />
         ))}
-        <EditableValue value={lo} onCommit={(v) => set(v, hi)} className="absolute left-[-2px] top-1" />
+        <EditableValue value={lo} format={tf} onCommit={(v) => set(v, hi)} className="absolute left-[-2px] top-1" />
         {inner.map((x, i) => visible[i] && (
           <span
             key={i}
             className="tnum absolute top-1 -translate-x-1/2 text-micro text-fg-2"
             style={{ left: `${x.u * 100}%` }}
           >
-            {fmt(x.v, 2)}
+            {tf(x.v, 2)}
           </span>
         ))}
-        <EditableValue value={hi} onCommit={(v) => set(lo, v)} className="absolute right-[-2px] top-1" />
+        <EditableValue value={hi} format={tf} onCommit={(v) => set(lo, v)} className="absolute right-[-2px] top-1" />
       </div>
     </div>
   );

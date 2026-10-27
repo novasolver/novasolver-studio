@@ -92,9 +92,10 @@ function ResultsStrip() {
   const v = results.verification;
   return (
     <div className="pointer-events-none absolute left-3 right-[88px] top-3 flex flex-wrap items-start gap-2">
-      <div className="hud hud-blur anim-in pointer-events-auto flex max-w-full items-stretch rounded-[8px] px-3.5 py-2.5">
+      <div className="hud hud-blur anim-in pointer-events-auto flex max-w-full items-stretch overflow-hidden rounded-[8px] px-3.5 py-2.5">
         {lead && (
-          <div className="min-w-0 pr-3.5">
+          // the lead figure never shrinks: in a narrow view the other cells clip instead of sliding under it
+          <div className="shrink-0 pr-3.5">
             <div className="truncate text-micro text-fg-2">{lead.label}</div>
             <div className="tnum mt-0.5 whitespace-nowrap text-lead font-semibold text-fg">
               {fmt(lead.value, 4)}
