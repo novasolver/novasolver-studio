@@ -32,6 +32,7 @@ $ccx = Get-ChildItem (Join-Path $root "solvers\calculix") -Recurse -Filter ccx_s
 if ($ccx) { New-Item -ItemType Directory -Force "$app\solvers\calculix" | Out-Null; Copy-Item $ccx.FullName "$app\solvers\calculix\" }
 $mpi = Join-Path $env:LOCALAPPDATA "NovaSolverStudio\solvers\msmpi"
 if (Test-Path "$mpi\msmpi.dll") { New-Item -ItemType Directory -Force "$app\solvers\msmpi" | Out-Null; Copy-Item "$mpi\*" "$app\solvers\msmpi\" }
+& (Join-Path $root "prune_bundle.ps1") $app
 Copy-Item (Join-Path $root "LICENSE"), (Join-Path $root "THIRD_PARTY_NOTICES.md"), (Join-Path $root "README.md") $app
 @"
 NovaSolver Studio $version
