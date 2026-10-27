@@ -191,6 +191,8 @@
   "qty.study.dp": "圧力損失",
   "qty.study.cd": "抗力係数",
   "qty.study.umin_center": "中心線の最小 u",
+  "qty.study.umax_outlet": "出口の最大流速",
+  "qty.study.t_solid_rise": "固体の温度上昇",
   "card.cd": "抗力係数 Cd",
   "card.drag": "抗力",
   "card.cl": "揚力係数 Cl",

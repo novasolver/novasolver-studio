@@ -70,6 +70,10 @@ class _Locator:
                 L = self.bary(int(e), x)
             except np.linalg.LinAlgError:
                 continue
+            if self.tets.shape[1] >= 10 and L.min() > -0.25:
+                # a curved element: inside or outside is decided by its own (quadratic) map, not the straight corners,
+                # which both admit points beyond an inward-bowed face and refuse points inside an outward-bowed one
+                L = self.curved(int(e), x, L)
             if L.min() >= -1e-9:
                 return int(e), L
             if L.min() > best_min:
@@ -117,6 +121,40 @@ class _Locator:
         if len(conn) == 4:
             return conn, L
         return conn[:10], self._shape(L, self._pairs(conn))
+
+
+# 6-point degree-4 rule on the reference triangle (Dunavant): area coordinates and weights summing to 1
+_QA, _QB = 0.445948490915965, 0.091576213509771
+_QL = np.array([[_QA, _QA, 1 - 2 * _QA], [_QA, 1 - 2 * _QA, _QA], [1 - 2 * _QA, _QA, _QA],
+                [_QB, _QB, 1 - 2 * _QB], [_QB, 1 - 2 * _QB, _QB], [1 - 2 * _QB, _QB, _QB]])
+_QW = np.array([0.223381589678011] * 3 + [0.109951743655322] * 3)
+
+
+def _face_quadrature(nodes: np.ndarray, tri: np.ndarray):
+    """Surface integration on the face triangles, curved tri6 included (CAD meshes put midside nodes on the true
+    surface, so a corner-triangle area weighs a bowed triangle wrongly). Returns (shape values (Q, k), node index of
+    each column (T, k), area vector per point (T, Q, 3), unsigned) for k = 6 (tri6) or 3."""
+    if tri.shape[1] < 6:
+        N = _QL.copy()
+        P = nodes[tri[:, :3]]
+        a = np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]) / 2
+        return N, tri[:, :3], a[:, None, :] * _QW[None, :, None]
+    c = nodes[tri[:, :3]]
+    # which corner pair each midside column sits between (gmsh: 01, 12, 20; checked rather than assumed)
+    pairs = [(0, 1), (1, 2), (2, 0)]
+    order = []
+    for j in range(3, 6):
+        d = [np.linalg.norm((c[:, a] + c[:, b]) / 2 - nodes[tri[:, j]], axis=1).sum() for a, b in pairs]
+        order.append(pairs[int(np.argmin(d))])
+    L = _QL                                                       # (Q, 3)
+    N = np.column_stack([L * (2 * L - 1)] + [4 * L[:, a] * L[:, b] for a, b in order])        # (Q, 6)
+    dL = np.array([[-1.0, -1.0], [1.0, 0.0], [0.0, 1.0]])          # d(L0, L1, L2)/d(xi, eta)
+    dN = np.stack([(4 * L[:, i] - 1)[:, None] * dL[i] for i in range(3)]
+                  + [4 * (L[:, a][:, None] * dL[b] + L[:, b][:, None] * dL[a]) for a, b in order], axis=1)   # (Q, 6, 2)
+    X = nodes[tri[:, :6]]                                          # (T, 6, 3)
+    t1 = np.einsum("qk,tkd->tqd", dN[:, :, 0], X)
+    t2 = np.einsum("qk,tkd->tqd", dN[:, :, 1], X)
+    return N, tri[:, :6], np.cross(t1, t2) / 2 * _QW[None, :, None]
 
 
 def _tri_owner_side(tri: np.ndarray, tets: np.ndarray, nodes: np.ndarray) -> np.ndarray:
@@ -207,30 +245,31 @@ def probe(case: dict, points: list | None = None, line: dict | None = None, face
             if arr not in mesh.files:
                 raise StudioError("err.path", 400, path=f"faces: {key} (not a face of this mesh)")
             tri = mesh[arr]
-            P = nodes[tri[:, :3]]
-            area_v = _tri_owner_side(tri, tets, nodes)
-            A = np.linalg.norm(area_v, axis=1)
-            At = float(A.sum())
+            area_v = _tri_owner_side(tri, tets, nodes)                     # outward side of each triangle
+            # area, centroid and means by quadrature of the (curved) tri6 interpolant over the true face
+            N, idx, dA_v = _face_quadrature(nodes, tri)
+            out_sign = np.sign(np.einsum("tqd,td->tq", dA_v, area_v))
+            dA_v = dA_v * np.where(out_sign == 0, 1.0, out_sign)[:, :, None]
+            dA = np.linalg.norm(dA_v, axis=2)                              # (T, Q)
+            At = float(dA.sum())
+            xq = np.einsum("qk,tkd->tqd", N, nodes[idx])
             st = {"key": key, "area_mm2": round(At * 1e6, 4),
-                  "centroid_mm": ((P.mean(axis=1) * A[:, None]).sum(0) / At * 1e3).round(4).tolist(),
+                  "centroid_mm": ((xq * dA[:, :, None]).sum((0, 1)) / At * 1e3).round(4).tolist(),
                   "mean": {}, "min": {}, "max": {}}
             fn = np.unique(tri)
             for metric, key_out in (("face_charge_c", "charge_c"), ("face_current_a", "current_a")):
                 if key in r.get("metrics", {}).get(metric, {}):
                     st[key_out] = r["metrics"][metric][key]
-            # area mean of the interpolant: on a tri6 the corner shape functions integrate to 0 and each midside one
-            # to A/3, so the mean of a triangle is the mean of its midside values (corners only on linear tri3)
-            avg_nodes = tri[:, 3:6] if tri.shape[1] >= 6 else tri[:, :3]
             for q, (v, _) in F.items():
-                st["mean"][q] = float((v[avg_nodes].mean(axis=1) * A).sum() / At)
+                st["mean"][q] = float((np.einsum("qk,tk->tq", N, v[idx]) * dA).sum() / At)
                 st["min"][q], st["max"][q] = float(v[fn].min()), float(v[fn].max())
             if "U" in data.files:
                 exact = (r.get("metrics") or {}).get("face_flux_m3s", {})
                 if key in exact:                  # the solver's own face fluxes (inlets and outlets)
                     q_out = exact[key]
                 else:                             # elsewhere from nodal velocities: low on coarse meshes
-                    Ut = data["U"][avg_nodes].mean(axis=1)
-                    q_out = float(np.einsum("ij,ij->", Ut, area_v))
+                    Uq = np.einsum("qk,tkd->tqd", N, data["U"][idx])
+                    q_out = float(np.einsum("tqd,tqd->", Uq, dA_v))
                 st["flow_out_m3s"] = q_out
                 st["flow_out_lmin"] = q_out * 6e4
             stats.append(st)

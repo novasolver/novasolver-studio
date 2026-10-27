@@ -9,7 +9,7 @@ export function AiPanel() {
   const t = useT();
   const open = useStore((s) => s.ai);
   // the backend says how this installation starts its MCP server (packaged exe or a source checkout)
-  const [launch, setLaunch] = useState<{ command: string; args: string[] } | null>(null);
+  const [launch, setLaunch] = useState<{ command: string; args: string[]; env?: Record<string, string> } | null>(null);
   const [copied, setCopied] = useState(false);
   const root = launch?.command ?? null;
 
@@ -18,8 +18,11 @@ export function AiPanel() {
     api
       .env()
       .then((env) => {
-        const m = (env as { mcp_command?: { command?: unknown; args?: unknown } }).mcp_command;
-        if (m && typeof m.command === "string" && Array.isArray(m.args)) setLaunch({ command: m.command, args: m.args.map(String) });
+        const m = (env as { mcp_command?: { command?: unknown; args?: unknown; env?: unknown } }).mcp_command;
+        if (m && typeof m.command === "string" && Array.isArray(m.args)) {
+          const e = m.env && typeof m.env === "object" ? Object.fromEntries(Object.entries(m.env).map(([k, v]) => [k, String(v)])) : undefined;
+          setLaunch({ command: m.command, args: m.args.map(String), ...(e ? { env: e } : {}) });
+        }
       })
       .catch(() => {});
   }, [open, launch]);

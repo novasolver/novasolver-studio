@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import platform
 import sys
+from pathlib import Path
 
 from . import __version__, checks, geometry, jobs, results, store, templates, units
 from .config import engines, workspace
@@ -23,6 +24,13 @@ def environment_check(lang: str = "ja") -> dict:
     # runs the module with the interpreter that is serving now
     frozen = bool(getattr(sys, "frozen", False))
     mcp_command = {"command": sys.executable, "args": ["mcp"] if frozen else ["-m", "novastudio", "mcp"]}
+    # an MCP client starts the server itself and does not inherit this process: a source checkout needs its backend
+    # folder on the path, and a workspace override must follow so the AI sees the same cases as the UI
+    env = {} if frozen else {"PYTHONPATH": str(Path(__file__).resolve().parents[1])}
+    if os.environ.get("NOVASTUDIO_WORKSPACE"):
+        env["NOVASTUDIO_WORKSPACE"] = str(workspace())
+    if env:
+        mcp_command["env"] = env
     return {"studio_version": __version__, "workspace": str(workspace()), "os": platform.platform(),
             "cpu_count": os.cpu_count(), "mcp_command": mcp_command,
             "engines": [{"id": k, "name": ENGINE_NAMES[k], "available": v["available"], "kind": v["kind"]}
