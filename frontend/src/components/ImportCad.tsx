@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, FileUp, Thermometer, Waves, Wind } from "lucide-react";
+import { Box, FileUp, Thermometer, Waves, Wind, Zap } from "lucide-react";
 import { CAD_EXTENSIONS, importFile, useStore, useT } from "../state/store";
 import { cn } from "./ui/cn";
 
-export type CadPhysics = "structural" | "thermal" | "flow" | "external";
+export type CadPhysics = "structural" | "thermal" | "flow" | "external" | "electrostatic" | "current";
 
 /** The four import choices, in the order they are offered. */
-export const CAD_PHYSICS: CadPhysics[] = ["structural", "thermal", "flow", "external"];
+export const CAD_PHYSICS: CadPhysics[] = ["structural", "thermal", "flow", "external", "electrostatic", "current"];
 
 /** Internal flow (pipes, channels) = waves; flow around a body = wind. */
-export const PHYSICS_ICON = { structural: Box, thermal: Thermometer, cfd: Waves, flow: Waves, external: Wind } as const;
+export const PHYSICS_ICON = { structural: Box, thermal: Thermometer, cfd: Waves, flow: Waves, external: Wind, electric: Zap, electrostatic: Zap, current: Zap } as const;
 
 /** Backend physics name -> the import choice that re-imports a file for the same analysis. */
 export function cadPhysicsOf(physics: string): CadPhysics {
+  if (physics === "dc-current") return "current";
+  if (physics === "electric") return "electrostatic";
   return physics === "cfd" ? "flow" : (CAD_PHYSICS as string[]).includes(physics) ? (physics as CadPhysics) : "structural";
 }
 
@@ -93,7 +95,7 @@ export function DropOverlay() {
           over === physics ? "border-[var(--focus)] bg-accent-soft text-fg" : "border-line-strong text-fg-2",
         )}
       >
-        <Icon size={20} className={over === physics ? "text-accent-text" : "text-fg-3"} />
+        <Icon size={20} strokeWidth={1.5} className={over === physics ? "text-accent-text" : "text-fg-3"} />
         <span className="text-em font-medium">{t(`physics.${physics}`)}</span>
         <span className="text-label text-fg-3">{t(`import.as.${physics}`)}</span>
       </div>
@@ -101,12 +103,12 @@ export function DropOverlay() {
   };
   return (
     <div className="anim-in fixed inset-0 z-[85] flex items-center justify-center bg-black/30 dark:bg-black/55">
-      <div className="anim-rise w-[min(800px,calc(100vw-32px))] rounded-[8px] bg-overlay p-4 shadow-overlay">
+      <div className="anim-rise w-[min(1000px,calc(100vw-32px))] rounded-[8px] bg-overlay p-4 shadow-overlay">
         <div className="mb-3 flex items-center gap-2">
           <FileUp size={16} className="text-fg-2" />
           <span className="text-em font-semibold text-fg">{t("import.dropTitle")}</span>
         </div>
-        <div className="flex gap-3">
+        <div className="grid grid-cols-3 gap-3">
           {CAD_PHYSICS.map((ph) => (
             <div key={ph} className="flex min-w-0 flex-1">
               {target(ph)}

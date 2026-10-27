@@ -44,7 +44,23 @@ MATERIALS_SOLID = {
     "silicon": {"E": {"value": 130, "unit": "GPa"}, "nu": {"value": 0.28, "unit": "-"}, "rho": {"value": 2330, "unit": "kg/m3"},
                 "sy": {"value": 120, "unit": "MPa"}, "k": {"value": 148, "unit": "W/mK"}},
 }
-BODY_PROPS = {"k": "W/mK", "E": "GPa", "nu": "-"}       # per-body overrides of a preset (body_props.<b>.<prop>)
+# Room-temperature, isotropic nominal values. Air/water elastic values are numerical placeholders for other templates.
+for _name, _E, _nu, _rho, _k, _eps, _sigma in [
+    ("air", 0.00014, 0.0, 1.2, 0.026, 1.0006, 1e-15),
+    ("ptfe", 0.5, 0.46, 2200, 0.25, 2.1, 1e-16),
+    ("alumina", 300, 0.22, 3950, 30, 9.8, 1e-14),
+    ("epoxy", 3, 0.35, 1200, 0.2, 3.6, 1e-14),
+    ("water_deionised", 0.0022, 0.0, 998, 0.6, 80, 5.5e-6),
+]:
+    MATERIALS_SOLID[_name] = {p: {"value": v, "unit": u} for p, v, u in
+                             (("E", _E, "GPa"), ("nu", _nu, "-"), ("rho", _rho, "kg/m3"),
+                              ("k", _k, "W/mK"), ("eps_r", _eps, "-"), ("sigma", _sigma, "S/m"))}
+for _name, _mat in MATERIALS_SOLID.items():
+    _mat.setdefault("eps_r", {"value": {"pla": 3, "petg": 3.2, "abs": 2.8, "concrete": 5,
+                                      "insulation": 1.05, "wood": 2, "glass": 5, "fr4": 4.4, "silicon": 11.7}.get(_name, 1), "unit": "-"})
+    _mat.setdefault("sigma", {"value": {"copper": 5.96e7, "aluminium": 3.77e7, "steel": 6.99e6,
+                                      "alloy_steel": 4e6, "titanium": 2.38e6, "silicon": 4.3e-4}.get(_name, 1e-12), "unit": "S/m"})
+BODY_PROPS = {"k": "W/mK", "E": "GPa", "nu": "-", "eps_r": "-", "sigma": "S/m"}
 
 
 def solid_props(case: dict, body: str | None = None) -> dict:
@@ -54,7 +70,7 @@ def solid_props(case: dict, body: str | None = None) -> dict:
     mat = case["materials"]["solid"]
     if body is not None and body in case.get("body_materials", {}):
         mat = {**MATERIALS_SOLID[case["body_materials"][body]], **case.get("body_props", {}).get(body, {})}
-    return {p: units.to_si(mat[p]) for p in ("E", "nu", "k") if p in mat}
+    return {p: units.to_si(mat[p]) for p in BODY_PROPS if p in mat}
 
 
 def element_groups(case: dict, tet_body) -> list[tuple]:
@@ -95,10 +111,15 @@ MATERIALS_FLUID = {
 STRUCT_ROLES = ["free", "fixed", "symmetry", "constraint", "load", "pressure"]
 FLOW_ROLES = ["wall", "moving-wall", "inlet", "outlet", "plane2d"]
 THERMAL_ROLES = ["insulated", "temperature", "heat-flux", "convection"]
+ELECTROSTATIC_ROLES = ["open", "voltage", "surface-charge"]
+CURRENT_ROLES = ["insulated", "voltage", "current"]
 DIRECTIONS = ["-z", "+z", "-y", "+y", "-x", "+x", "normal"]   # load direction; "normal" = pushes into the face
 
 # value fields each role carries (path suffix -> default quantity)
 ROLE_FIELDS = {
+    "voltage": {"voltage": {"value": 0, "unit": "V"}},
+    "surface-charge": {"charge": {"value": 1e-6, "unit": "C/m2"}},
+    "current": {"current": {"value": 1, "unit": "A"}},
     "load": {"force": {"value": 100, "unit": "N"}, "direction": "-z"},
     "constraint": {"components": "xy"},        # displacement held at zero along these axes (any face, flat or curved)
     "pressure": {"pressure": {"value": 1, "unit": "MPa"}},
@@ -403,8 +424,54 @@ TEMPLATES: dict[str, dict] = {
     },
 }
 
+def _electric_template(kind, material, params, boundaries, reference, fields, faces=FACE_KEYS):
+    return {"physics": "electric", "analysis": kind, "engines": ["builtin-fem"], "default_engine": "builtin-fem",
+            "roles": ELECTROSTATIC_ROLES if kind == "electrostatic" else CURRENT_ROLES,
+            "faces": list(faces), "face_labels": {f: f"face.{f}" for f in faces}, "locked_faces": [],
+            "case": {"geometry": {"kind": "box", "params": params},
+                     "physics": {"kind": kind, **({"joule_heating": True} if kind == "dc-current" else {})},
+                     "materials": {"solid": {"preset": material, **copy.deepcopy(MATERIALS_SOLID[material])}},
+                     "boundaries": boundaries, "mesh": {"method": "gmsh", "size": "normal", "order": 2},
+                     "reference": {"kind": "analytic", "id": reference[0], "quantity": reference[1], "tolerance_pct": 1.0}},
+            "params": fields}
+
+
+_box_fields = [(f"geometry.params.{p}", f"param.{p}", "length", 0.01, 5000) for p in ("length", "width", "height")]
+_eps_field = ("materials.solid.eps_r", "param.eps_r", "dimensionless", 1, 10000)
+_sigma_field = ("materials.solid.sigma", "param.sigma", "electrical_conductivity", 1e-18, 1e9)
+_k_field = ("materials.solid.k", "param.k", "conductivity", 0.001, 5000)
+TEMPLATES["capacitor"] = _electric_template(
+    "electrostatic", "ptfe", {p: {"value": v, "unit": "mm"} for p, v in zip(("length", "width", "height"), (50, 50, 2))},
+    {**{f: {"role": "open"} for f in FACE_KEYS}, "z0": {"role": "voltage", "voltage": {"value": 0, "unit": "V"}},
+     "z1": {"role": "voltage", "voltage": {"value": 100, "unit": "V"}}},
+    ("parallel-plate-capacitance", "capacitance"), _box_fields + [("boundaries.z1.voltage", "param.voltage", "voltage", -1e6, 1e6), _eps_field])
+TEMPLATES["coax"] = _electric_template(
+    "electrostatic", "ptfe", {p: {"value": v, "unit": "mm"} for p, v in (("a", 1), ("b", 3.5), ("length", 100))},
+    {"inner": {"role": "voltage", "voltage": {"value": 1000, "unit": "V"}},
+     "outer": {"role": "voltage", "voltage": {"value": 0, "unit": "V"}}, "z0": {"role": "open"}, "z1": {"role": "open"}},
+    ("coax-capacitance", "capacitance"), [(f"geometry.params.{p}", f"param.{p}", "length", 0.01, 5000) for p in ("a", "b", "length")] +
+    [("boundaries.inner.voltage", "param.voltage", "voltage", -1e6, 1e6), _eps_field], ("inner", "outer", "z0", "z1"))
+TEMPLATES["coax"]["case"]["geometry"]["kind"] = "tube"
+TEMPLATES["capacitor"]["nova_tool"] = "https://novasolver.jp/tools/capacitor-energy.html"
+TEMPLATES["coax"]["nova_tool"] = "https://novasolver.jp/tools/coaxial-cable-impedance.html"
+TEMPLATES["busbar"] = _electric_template(
+    "dc-current", "copper", {p: {"value": v, "unit": "mm"} for p, v in zip(("length", "width", "height"), (200, 20, 5))},
+    {f: {"role": "voltage" if f in ("x0", "x1") else "insulated",
+         **({"voltage": {"value": 2 if f == "x0" else 0, "unit": "mV"}} if f in ("x0", "x1") else {}),
+         "thermal": {"role": "temperature", "temperature": {"value": 20, "unit": "degC"}} if f in ("x0", "x1") else {"role": "insulated"}}
+     for f in FACE_KEYS}, ("busbar-joule-rise", "t_rise"),
+    _box_fields + [("boundaries.x0.voltage", "param.voltage", "voltage", -1e6, 1e6), _sigma_field, _k_field])
+for _id, _kind, _mat, _fields in [("electrostatic", "electrostatic", "ptfe", [_eps_field]),
+                                  ("current", "dc-current", "copper", [_sigma_field, _k_field])]:
+    _tp = _electric_template(_kind, _mat, {}, {}, ("none", ""), _fields)
+    _tp.update({"import": True, "face_labels": {}})
+    _tp["case"]["geometry"] = {"kind": "import"}
+    _tp["case"]["reference"] = {"kind": "none"}
+    TEMPLATES[f"import-{_id}"] = _tp
+
+
 DEFAULT_ROLE = {"structural": "free", "thermal": "insulated", "cfd": "wall", "flow": "wall", "external": "wall",
-                "conjugate": "insulated"}
+                "conjugate": "insulated", "electric": "open", "electrostatic": "open", "current": "insulated"}
 
 
 def face_keys(case: dict) -> list[str]:

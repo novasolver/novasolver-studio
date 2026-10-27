@@ -16,6 +16,12 @@ UNITS: dict[str, tuple[float, str]] = {
     "W/m2K": (1.0, "heat_transfer_coeff"),
     "W/mK": (1.0, "conductivity"),
     "W": (1.0, "power"), "kW": (1e3, "power"),
+    "V": (1.0, "voltage"), "kV": (1e3, "voltage"), "mV": (1e-3, "voltage"),
+    "C/m2": (1.0, "surface_charge"),
+    "A": (1.0, "current"), "mA": (1e-3, "current"),
+    "S/m": (1.0, "electrical_conductivity"),
+    "F": (1.0, "capacitance"), "pF": (1e-12, "capacitance"), "nF": (1e-9, "capacitance"), "uF": (1e-6, "capacitance"),
+    "ohm": (1.0, "resistance"), "mohm": (1e-3, "resistance"),
     "-": (1.0, "dimensionless"),
 }
 # affine units: SI = value * factor + offset

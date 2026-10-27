@@ -46,7 +46,7 @@ def _mesh_for_run(case: dict, jd: Path, prog):
     return m
 
 
-PASSIVE_ROLES = {None, "free", "insulated", "wall"}   # the default role of each physics: no condition to lose
+PASSIVE_ROLES = {None, "free", "insulated", "wall", "open"}   # the default role of each physics: no condition to lose
 
 
 def check_condition_faces(case: dict, m: dict) -> None:
@@ -54,7 +54,9 @@ def check_condition_faces(case: dict, m: dict) -> None:
     support or load and report a converged but meaningless answer (seen when a remesh lost a face's name)."""
     from .store import StudioError
     lost = sorted(k for k, b in case.get("boundaries", {}).items()
-                  if b.get("role") not in PASSIVE_ROLES and len(m.get(f"face_{k}", ())) == 0)
+                  if (b.get("role") not in PASSIVE_ROLES or
+                      (case.get("physics", {}).get("joule_heating", True) and b.get("thermal", {}).get("role", "insulated") not in PASSIVE_ROLES))
+                  and len(m.get(f"face_{k}", ())) == 0)
     if lost:
         raise StudioError("err.face_lost", 500, faces=", ".join(lost))
 
@@ -161,9 +163,11 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
             "converged_detail": {"imbalance": r["imbalance"], "limit": 5e-3}, "reference": ref}
 
 
-def thermal_groups(case: dict, m: dict):
+def thermal_groups(case: dict, m: dict, nested=False):
     fixed, fluxes, conv, order = [], [], [], {"fixed": [], "flux": [], "convection": []}
     for face, b in case["boundaries"].items():
+        if nested:
+            b = b.get("thermal", {"role": "insulated"})
         tri = m.get(f"face_{face}")
         if tri is None:
             continue
@@ -194,6 +198,143 @@ def run_thermal_builtin(case: dict, jd: Path, prog) -> dict:
         {"applicable": False, "why": "no analytic reference for this shape; compare a 'fine' mesh run to check convergence"}
     return {"kind": "thermal", "metrics": metrics, "converged": bool(r["imbalance"] < 1e-3 and np.isfinite(T).all()),
             "converged_detail": {"heat_balance_error": r["imbalance"], "limit": 1e-3}, "reference": ref}
+
+
+EPS0 = 8.8541878128e-12
+
+
+def run_electric_builtin(case: dict, jd: Path, prog) -> dict:
+    from . import fem_tet10 as fem
+    from .templates import element_prop, element_groups
+    from .store import StudioError
+    m = _mesh_for_run(case, jd, prog)
+    nodes, tets = m["nodes"], m["tets"]
+    current = case["physics"]["kind"] == "dc-current"
+    coeff = element_prop(case, m, "sigma" if current else "eps_r") * (1 if current else EPS0)
+    fixed, fluxes, names, flux_names, volts = [], [], [], [], {}
+    for face, b in case["boundaries"].items():
+        tri = m.get(f"face_{face}")
+        if tri is None:
+            continue
+        if b["role"] == "voltage":
+            v = units.to_si(b["voltage"])
+            fixed.append((tri, v)); names.append(face); volts[face] = v
+        elif b["role"] in ("current", "surface-charge"):
+            q = units.to_si(b["current"] if current else b["charge"])
+            if current:
+                q /= fem.tri_areas(nodes, tri).sum()
+            fluxes.append((tri, q)); flux_names.append(face)
+    if not fixed:
+        raise StudioError("err.no_voltage", 400)
+    r = fem.solve_scalar(nodes, tets, coeff, fixed, fluxes, [], progress=prog)
+    V = r["value"]
+    Eg = -r["gradient"]
+    E = fem.gauss_to_nodes(r["tets"], Eg, len(nodes))
+    qg = np.broadcast_to(coeff, len(tets))[:, None] * np.sum(Eg ** 2, axis=2)
+    integral = float(np.sum(qg * r["weights"]))
+    emag = np.linalg.norm(E, axis=1)
+    imax = int(np.argmax(emag))
+    flows = {f: v for f, v in zip(names + flux_names, r["flows"]["fixed"] + r["flows"]["flux"])}
+    metrics = {"nodes": len(nodes), "elements": len(tets), "imbalance": r["imbalance"],
+               "e_max_v_m": float(emag[imax]), "e_max_at_m": nodes[imax].tolist()}
+    fields = {"V": V, "E": E}
+    levels = sorted(set(volts.values()))
+    dv = levels[-1] - levels[0]
+    high_flow = sum(flows[f] for f in names if volts[f] == levels[-1])
+    converged = r["imbalance"] < 1e-3 and np.isfinite(V).all()
+    detail = {"electric_balance_error": r["imbalance"], "limit": 1e-3}
+    if current:
+        J = fem.gauss_to_nodes(r["tets"], np.broadcast_to(coeff, len(tets))[:, None, None] * Eg, len(nodes))
+        fields.update(J=J, q=fem.gauss_to_nodes(r["tets"], qg, len(nodes)))
+        metrics.update(face_current_a=flows, current_a=high_flow, power_w=integral,
+                       j_max_a_m2=float(np.linalg.norm(J, axis=1).max()))
+        if len(levels) == 2 and high_flow != 0:
+            metrics["resistance_ohm"] = dv / high_flow
+        if case["physics"].get("joule_heating", True):
+            tf, tq, tc, order = thermal_groups(case, m, nested=True)
+            tr = fem.solve_thermal(nodes, tets, element_prop(case, m, "k"), tf, tq, tc, progress=prog, source=qg)
+            T = tr["T"]
+            fields["T"] = T
+            metrics.update(t_max_k=float(T.max()), t_min_k=float(T.min()), q_joule_w=tr["source_total"],
+                           heat_imbalance=tr["imbalance"], q_in_w=tr["total_in"],
+                           face_flows_w={f: q for g in order for f, q in zip(order[g], tr["flows"][g])})
+            # Convection-only cases use the minimum solved temperature as the study datum.
+            metrics["t_rise_k"] = float(T.max() - min((t for _, t in tf), default=float(T.min())))
+            converged = converged and tr["imbalance"] < 1e-3 and np.isfinite(T).all()
+            detail["heat_balance_error"] = tr["imbalance"]
+    else:
+        metrics.update(face_charge_c=flows, energy_j=integral / 2)
+        if len(levels) == 2:
+            metrics["capacitance_f"] = abs(high_flow) / dv
+    air_elements = []
+    body_mats = case.get("body_materials", {})
+    for idx, _ in element_groups(case, m.get("tet_body", np.zeros(len(tets), int))):
+        if not body_mats and case["materials"]["solid"].get("preset") == "air":
+            air_elements.append(idx)
+    for body, preset in body_mats.items():
+        if preset == "air":
+            air_elements.append(np.where(m["tet_body"] == int(body[1:]))[0])
+    if air_elements:
+        nds = np.unique(tets[np.concatenate(air_elements)])
+        metrics["air_e_max_v_m"] = float(emag[nds].max())
+    ref = reference_electric(case, metrics)
+    np.savez_compressed(jd / "results.npz", **fields)
+    return {"kind": "current" if current else "electrostatic", "metrics": metrics, "converged": bool(converged),
+            "converged_detail": detail, "reference": ref}
+
+
+def reference_electric(case, metrics):
+    b = case["boundaries"]
+    tid = case["template"]
+    p = case["geometry"].get("params", {})
+    na = {"applicable": False, "why_key": "verify.electric_pattern_reason"}
+    if case.get("body_materials") or tid not in ("capacitor", "coax", "busbar"):
+        return na
+    ends = ("inner", "outer") if tid == "coax" else ("z0", "z1") if tid == "capacitor" else ("x0", "x1")
+    if not all(b[f]["role"] == "voltage" for f in ends):
+        return na
+    passive = "insulated" if tid == "busbar" else "open"
+    if not all(v["role"] == passive for f, v in b.items() if f not in ends):
+        return na
+    dv = abs(units.to_si(b[ends[0]]["voltage"]) - units.to_si(b[ends[1]]["voltage"]))
+    if dv == 0:
+        return na
+    mat = case["materials"]["solid"]
+    if tid == "busbar":
+        if not case["physics"].get("joule_heating", True):
+            return na
+        tb = {f: v.get("thermal", {"role": "insulated"}) for f, v in b.items()}
+        if not (all(tb[f]["role"] == "temperature" for f in ends) and
+                all(v["role"] == "insulated" for f, v in tb.items() if f not in ends)):
+            return na
+        ts = [units.to_si(tb[f]["temperature"]) for f in ends]
+        if abs(ts[0] - ts[1]) > 1e-9:
+            return na
+        L, w, h = (units.to_si(p[k]) for k in ("length", "width", "height"))
+        sigma, k = units.to_si(mat["sigma"]), units.to_si(mat["k"])
+        resistance = L / (sigma * w * h)
+        metrics.update(resistance_reference_ohm=resistance, current_reference_a=dv / resistance)
+        ref, computed, quantity, unit = sigma * dv ** 2 / (8 * k), metrics["t_rise_k"], "t_rise", "K"
+        formula = "T_max - T0 = sigma dV^2 / (8 k)"
+    else:
+        eps = EPS0 * units.to_si(mat["eps_r"])
+        if tid == "capacitor":
+            L, w, h = (units.to_si(p[k]) for k in ("length", "width", "height"))
+            ref = eps * L * w / h
+            formula = "C = eps0 eps_r L W / d"
+        else:
+            a, bb, L = (units.to_si(p[k]) for k in ("a", "b", "length"))
+            ref = 2 * math.pi * eps * L / math.log(bb / a)
+            metrics["e_max_reference_v_m"] = dv / (a * math.log(bb / a))
+            metrics["e_max_error_pct"] = (metrics["e_max_v_m"] / metrics["e_max_reference_v_m"] - 1) * 100
+            formula = "C = 2 pi eps0 eps_r L / ln(b/a)"
+        computed, quantity, unit = metrics.get("capacitance_f"), "capacitance", "F"
+        if computed is None:
+            return na
+    err = (computed / ref - 1) * 100
+    tol = case["reference"]["tolerance_pct"]
+    return {"applicable": True, "quantity": quantity, "reference": ref, "computed": computed, "unit": unit,
+            "error_pct": err, "tolerance_pct": tol, "pass": abs(err) <= tol, "formula": formula}
 
 
 def reference_thermal_block(case: dict, face_flows: dict) -> dict:
@@ -320,6 +461,16 @@ def primary_quantity(case: dict, res: dict) -> tuple[str, float, str]:
     """The one number a mesh study tracks (name, value in SI, unit)."""
     m = res["metrics"]
     k = res["kind"]
+    if k == "electrostatic":
+        if "capacitance_f" in m:
+            return ("capacitance", m["capacitance_f"], "F")
+        return ("charge", max(abs(q) for q in m["face_charge_c"].values()), "C")
+    if k == "current":
+        if "t_rise_k" in m:
+            return ("t_rise", m["t_rise_k"], "K")
+        if "resistance_ohm" in m:
+            return ("resistance", m["resistance_ohm"], "ohm")
+        return ("current", m["current_a"], "A")
     if k == "structural":
         return ("max_disp", m["max_disp_m"], "m")
     if k == "thermal":
@@ -382,6 +533,8 @@ def run_study(req: dict, jd: Path, prog) -> dict:
     eng = req["engine"]
     if eng == "builtin-fem" and tpl(case["template"])["physics"] == "thermal":
         eng = "builtin-thermal"
+    if eng == "builtin-fem" and tpl(case["template"])["physics"] == "electric":
+        eng = "builtin-electric"
     fn = ENGINES.get(eng)
     levels = []
     for i, size in enumerate(("coarse", "normal", "fine")):
@@ -433,7 +586,8 @@ def run_study(req: dict, jd: Path, prog) -> dict:
                              "tolerance_pct": tol, "pass": passed, "metric": "GCI (fine mesh)"}
     return fine
 
-ENGINES = {"builtin-fem": run_structural_builtin, "builtin-cavity": run_cavity_builtin, "builtin-thermal": run_thermal_builtin}
+ENGINES = {"builtin-fem": run_structural_builtin, "builtin-cavity": run_cavity_builtin,
+           "builtin-thermal": run_thermal_builtin, "builtin-electric": run_electric_builtin}
 
 
 def _acquire_solver_slot(jd: Path) -> Path:
@@ -487,6 +641,8 @@ def main(job_dir: str) -> None:
         eng = req["engine"]
         if eng == "builtin-fem" and _tp(req["case"]["template"])["physics"] == "thermal":
             eng = "builtin-thermal"
+        if eng == "builtin-fem" and _tp(req["case"]["template"])["physics"] == "electric":
+            eng = "builtin-electric"
         fn = ENGINES.get(eng)
         if req.get("study") == "convergence":
             res = run_study(req, jd, prog)

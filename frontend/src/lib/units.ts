@@ -53,6 +53,11 @@ const FACTORS: Record<string, [dim: string, toSI: number]> = {
   "W/mK": ["K", 1],
   W: ["P_W", 1],
   kW: ["P_W", 1e3],
+  V: ["VOLT", 1], kV: ["VOLT", 1e3], mV: ["VOLT", 1e-3],
+  A: ["AMP", 1], mA: ["AMP", 1e-3],
+  "C/m2": ["CHARGE_AREA", 1], "S/m": ["SIGMA", 1],
+  F: ["CAP", 1], pF: ["CAP", 1e-12], nF: ["CAP", 1e-9], uF: ["CAP", 1e-6],
+  ohm: ["RES", 1], mohm: ["RES", 1e-3],
   // temperature is affine: handled in convert()
 };
 
@@ -61,6 +66,8 @@ export function unitLabel(u: string | undefined | null): string {
   if (!u || u === "-") return "";
   const map: Record<string, string> = {
     degC: "°C",
+    "C/m2": "C/m²", "A/mm2": "A/mm²", "W/cm3": "W/cm³",
+    ohm: "Ω", mohm: "mΩ", uF: "µF",
     "W/m2": "W/m²",
     "kW/m2": "kW/m²",
     "W/m2K": "W/(m²·K)",

@@ -28,6 +28,13 @@ def _fields(kind: str, data) -> dict[str, tuple[np.ndarray, str]]:
             out["s1"], out["s3"] = (ev[:, 2], "MPa"), (ev[:, 0], "MPa")
         return out
     out = {}
+    if "V" in data.files:
+        E = data["E"]
+        out.update(v=(data["V"], "V"), emag=(np.linalg.norm(E, axis=1), "V/m"))
+        for i, q in enumerate(("ex", "ey", "ez")):
+            out[q] = (E[:, i], "V/m")
+        if "J" in data.files:
+            out.update(jmag=(np.linalg.norm(data["J"], axis=1), "A/m2"), q=(data["q"], "W/m3"))
     if "T" in data.files:
         out["temp"] = (data["T"] - 273.15, "°C")
     if "U" in data.files:
@@ -208,6 +215,9 @@ def probe(case: dict, points: list | None = None, line: dict | None = None, face
                   "centroid_mm": ((P.mean(axis=1) * A[:, None]).sum(0) / At * 1e3).round(4).tolist(),
                   "mean": {}, "min": {}, "max": {}}
             fn = np.unique(tri)
+            for metric, key_out in (("face_charge_c", "charge_c"), ("face_current_a", "current_a")):
+                if key in r.get("metrics", {}).get(metric, {}):
+                    st[key_out] = r["metrics"][metric][key]
             # area mean of the interpolant: on a tri6 the corner shape functions integrate to 0 and each midside one
             # to A/3, so the mean of a triangle is the mean of its midside values (corners only on linear tri3)
             avg_nodes = tri[:, 3:6] if tri.shape[1] >= 6 else tri[:, :3]

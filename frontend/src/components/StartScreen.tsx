@@ -15,6 +15,20 @@ const D = "var(--text-3)";
 
 function Illustration({ id, physics }: { id: string; physics: string }) {
   const common = { viewBox: "0 0 240 110", className: "h-full w-full", "aria-hidden": true } as const;
+  if (physics === "electric") {
+    return (
+      <svg {...common}>
+        {id === "coax" ? <>
+          <circle cx="120" cy="55" r="36" fill="none" stroke={D} strokeWidth="1.5" />
+          <circle cx="120" cy="55" r="12" fill="none" stroke={D} strokeWidth="1.5" />
+          {[0, 60, 120, 180, 240, 300].map((a) => <path key={a} d="M137 55 H151 M147 52 L151 55 L147 58" transform={`rotate(${a} 120 55)`} fill="none" stroke={D} strokeWidth="1.5" />)}
+        </> : <>
+          <path d={id === "busbar" ? "M42 39 H198 V71 H42 Z M42 35 V75 M198 35 V75" : "M60 32 H180 M60 78 H180"} fill="none" stroke={D} strokeWidth="1.5" />
+          {[90, 120, 150].map((x) => <path key={x} d={`M${x} 40 V69 M${x - 3} 65 L${x} 69 L${x + 3} 65`} fill="none" stroke={D} strokeWidth="1.5" />)}
+        </>}
+      </svg>
+    );
+  }
   if (id === "sphere-drag" || physics === "external") {
     // body in a free stream: streamlines part around it, a dashed wake behind
     const lines = [
@@ -198,7 +212,7 @@ function PhysicsChip({ physics }: { physics: string }) {
   const Icon = PHYSICS_ICON[physics as keyof typeof PHYSICS_ICON] ?? PHYSICS_ICON.structural;
   return (
     <Chip>
-      <Icon size={12} className="text-fg-3" />
+      <Icon size={12} strokeWidth={1.5} className="text-fg-3" />
       {t(physics === "external" ? "physics.short.external" : `physics.${physics}`)}
     </Chip>
   );
@@ -324,14 +338,14 @@ function ImportPanel() {
             <Spinner /> {t("import.busy", { name: importing })}
           </div>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 text-label text-fg-3">{t("import.analyseAs")}</span>
             {CAD_PHYSICS.map((ph) => {
               const Icon = PHYSICS_ICON[ph];
               return (
                 <Tooltip key={ph} content={mock ? t("import.needsBackend") : t(`import.as.${ph}`)} side="top">
                   <Button variant="secondary" size="lg" disabled={mock} onClick={() => pickCadFile(ph)}>
-                    <Icon size={14} />
+                    <Icon size={14} strokeWidth={1.5} />
                     {t(`physics.${ph}`)}
                   </Button>
                 </Tooltip>
@@ -374,10 +388,16 @@ export function StartScreen() {
             <ImportPanel />
             <h2 className="mb-3 mt-10 text-label font-medium text-fg-2">{t("start.templates")}</h2>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-              {templates.map((tpl) => (
+              {templates.filter((tpl) => tpl.physics !== "electric").map((tpl) => (
                 <TemplateCard key={tpl.id} tpl={tpl} />
               ))}
             </div>
+            {templates.some((tpl) => tpl.physics === "electric") && <section className="mt-8">
+              <h2 className="mb-3 text-label font-medium text-fg-2">{t("physics.electric")}</h2>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+                {templates.filter((tpl) => tpl.physics === "electric").map((tpl) => <TemplateCard key={tpl.id} tpl={tpl} />)}
+              </div>
+            </section>}
           </>
         )}
 

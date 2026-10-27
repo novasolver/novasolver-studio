@@ -208,7 +208,7 @@ function GeometryStep() {
       )}
       {physics && (
         <Section>
-          <Button variant="ghost" size="sm" className="-ml-2.5" onClick={() => pickCadFile(cadPhysicsOf(physics))}>
+          <Button variant="ghost" size="sm" className="-ml-2.5" onClick={() => pickCadFile(cadPhysicsOf(physics === "electric" ? p.case.physics?.kind ?? physics : physics))}>
             <FileBox size={14} />
             {t(p.ui.imported ? "geometry.importOther" : "geometry.importInstead")}
           </Button>
@@ -291,6 +291,13 @@ function PhysicsStep() {
         </Well>
       </Section>
       {p.ui.flow && <FlowSection />}
+      {physicsKind === "dc-current" && <Section>
+        <label className="flex items-center gap-2 text-body text-fg">
+          <input type="checkbox" checked={p.case.physics?.joule_heating !== false}
+            onChange={(e) => change("physics.joule_heating", e.target.checked)} />
+          {t("physics.jouleHeating")}
+        </label>
+      </Section>}
       <Section title={t("physics.material")}>
         <div className="flex flex-col gap-4">
           {p.ui.materials.length > 0 && (
@@ -747,6 +754,7 @@ function SelectionEditor() {
           })}
           {legacyParams.length > 0 && <ParamList params={legacyParams} />}
           {fields && fields.length === 0 && commonRole && <p className="text-label text-fg-3">{t("bc.noValues")}</p>}
+          {p.case.physics?.kind === "dc-current" && p.case.physics.joule_heating !== false && <ThermalEditor faces={sel} />}
         </div>
       </div>
       {similar.length > 1 && (
@@ -756,6 +764,33 @@ function SelectionEditor() {
       )}
     </Section>
   );
+}
+
+function ThermalEditor({ faces }: { faces: UiFace[] }) {
+  const t = useT();
+  const ui = useStore((s) => s.payload!.ui);
+  const errors = useStore((s) => s.fieldErrors);
+  const role = faces.every((f) => f.thermal?.role === faces[0].thermal?.role) ? faces[0].thermal?.role ?? "insulated" : null;
+  const fields = role ? ui.role_fields?.[role] ?? [] : [];
+  return <div className="mt-2 flex flex-col gap-4">
+    <SectionLabel>{t("bc.thermalCondition")}</SectionLabel>
+    <Select value={role} ariaLabel={t("bc.thermalCondition")} placeholder={t("bc.mixed")}
+      options={(ui.thermal_roles ?? []).map((r) => ({ value: r.id, label: r.label }))}
+      onChange={(v) => { for (const f of faces) change(`boundaries.${f.key}.thermal.role`, v); }} />
+    {fields.map((field) => {
+      const values = faces.map((f) => f.thermal?.[field]);
+      const mixed = !values.every((v) => sameValue(v, values[0]));
+      const value = values.find((v) => v && typeof v !== "string") as { value: number; unit: string } | undefined;
+      const units = ui.field_units?.[field] ?? [];
+      const label = ui.field_labels?.[field] ?? field;
+      const err = faces.map((f) => errors[`boundaries.${f.key}.thermal.${field}`]).find(Boolean);
+      return <Field key={field} label={label} hint={mixed ? t("bc.mixedValues") : undefined}>
+        <NumberInput ariaLabel={label} value={value?.value ?? NaN} unit={value?.unit ?? units[0]} units={units}
+          onCommit={(v, u) => { for (const f of faces) change(`boundaries.${f.key}.thermal.${field}`, { value: v, unit: u ?? value?.unit ?? units[0] }); }} />
+        {err && <FieldError text={err} />}
+      </Field>;
+    })}
+  </div>;
 }
 
 function describeValues(f: UiFace, directions?: { id: string; label: string }[]): string {
@@ -936,7 +971,7 @@ function RunStep() {
   // offer only modes that have an engine (imported flow runs only as "final")
   const withEngine = allModes.filter((m) => m.engine);
   const modes = withEngine.length ? withEngine : allModes;
-  const engine = modes.find((m) => m.id === mode)?.engine ?? null;
+  const engine = modes.find((m) => m.id === mode)?.engine ?? (modes.length === 1 ? modes[0].engine : null);
   const errors = p.checks.filter((c) => c.level === "error");
   const ready = p.ready ?? errors.length === 0;
   const active = isActive(job);

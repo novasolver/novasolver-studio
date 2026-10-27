@@ -74,6 +74,21 @@ def _dshape(g):
 
 
 DSHAPE = np.stack([_dshape(g) for g in GAUSS])  # (4,3,10)
+LG = np.column_stack([1 - GAUSS.sum(axis=1), GAUSS])
+SHAPE = np.column_stack([LG * (2 * LG - 1), 4 * LG[:, EDGES[:, 0]] * LG[:, EDGES[:, 1]]])
+
+
+def gauss_to_nodes(tets, values, n):
+    """Linear extrapolation to corners, nodal average, then edge means (also for vector fields)."""
+    values = np.asarray(values)
+    tail = values.shape[2:]
+    corners = np.einsum("cg,egk->eck", np.linalg.inv(LG), values.reshape(len(tets), 4, -1))
+    acc = np.zeros((n, corners.shape[2])); cnt = np.zeros(n)
+    np.add.at(acc, tets[:, :4].ravel(), corners.reshape(-1, corners.shape[2]))
+    np.add.at(cnt, tets[:, :4].ravel(), 1)
+    out = np.divide(acc, cnt[:, None], out=np.zeros_like(acc), where=cnt[:, None] > 0)
+    out[tets[:, 4:].ravel()] = 0.5 * (out[tets[:, EDGES[:, 0]].ravel()] + out[tets[:, EDGES[:, 1]].ravel()])
+    return out.reshape((n,) + tail)
 
 
 def elasticity_matrix(E: float, nu: float) -> np.ndarray:
@@ -240,28 +255,40 @@ TRI6_M = np.array([[6, -1, -1, 0, -4, 0], [-1, 6, -1, 0, 0, -4], [-1, -1, 6, -4,
                    [0, 0, -4, 32, 16, 16], [-4, 0, 0, 16, 32, 16], [0, -4, 0, 16, 16, 32]], float)
 
 
-def solve_thermal(nodes, tets, k, fixed: list[tuple[np.ndarray, float]], fluxes: list[tuple[np.ndarray, float]],
+def solve_scalar(nodes, tets, k, fixed: list[tuple[np.ndarray, float]], fluxes: list[tuple[np.ndarray, float]],
                   convection: list[tuple[np.ndarray, float, float]],
-                  progress: Callable[[str, float], None] = lambda *_: None) -> dict:
-    """Steady conduction with quadratic tetrahedra.
-    fixed: (tri6, T [K]); fluxes: (tri6, q [W/m2], positive = into the body); convection: (tri6, h [W/m2K], Tinf [K]).
-    Returns nodal T and the heat flow through each boundary group (positive = into the body)."""
+                  progress: Callable[[str, float], None] = lambda *_: None, source=None) -> dict:
+    """Scalar diffusion on tet10; surface flux and source (E,4) are positive into the body.
+    Returns the scalar, Gauss gradients/weights and the reactions of the prescribed faces."""
     tets = canonical_tets(nodes, tets)
     n = len(nodes)
-    X = nodes[tets]
     progress("job.assembling", 0.10)
-    Ke = np.zeros((len(tets), 10, 10))
-    for g in range(4):
-        J = np.einsum("ik,ekj->eij", DSHAPE[g], X)
-        detJ = np.linalg.det(J)
-        if np.any(detJ <= 0):
-            raise ValueError("inverted element (negative Jacobian)")
-        dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(tets), 3, 10)))
-        Ke += GW[g] * detJ[:, None, None] * np.reshape(k, (-1, 1, 1)) * np.einsum("eki,ekj->eij", dNdx, dNdx)
-    rows = np.repeat(tets, 10, axis=1).ravel()
-    cols = np.tile(tets, (1, 10)).ravel()
-    K = sp.csr_matrix((Ke.ravel(), (rows, cols)), shape=(n, n))
+    K = sp.csr_matrix((n, n))
     f = np.zeros(n)
+    weights = np.empty((len(tets), 4))
+    source = np.zeros((len(tets), 4)) if source is None else np.broadcast_to(source, (len(tets), 4))
+    coeff = np.broadcast_to(k, len(tets))
+    # The finest thin-plate mesh has hundreds of thousands of tets; keep element matrices in bounded blocks.
+    for start in range(0, len(tets), ASSEMBLY_CHUNK):
+        sl = slice(start, start + ASSEMBLY_CHUNK)
+        conn = tets[sl]
+        X = nodes[conn]
+        Ke = np.zeros((len(conn), 10, 10))
+        fe = np.zeros((len(conn), 10))
+        for g in range(4):
+            J = np.einsum("ik,ekj->eij", DSHAPE[g], X)
+            detJ = np.linalg.det(J)
+            if np.any(detJ <= 0):
+                raise ValueError("inverted element (negative Jacobian)")
+            dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(conn), 3, 10)))
+            weights[sl, g] = GW[g] * detJ
+            Ke += (weights[sl, g] * coeff[sl])[:, None, None] * np.einsum("eki,ekj->eij", dNdx, dNdx)
+            fe += (weights[sl, g] * source[sl, g])[:, None] * SHAPE[g]
+        rows = np.repeat(conn, 10, axis=1).ravel()
+        cols = np.tile(conn, (1, 10)).ravel()
+        K = K + sp.csr_matrix((Ke.ravel(), (rows, cols)), shape=(n, n))
+        np.add.at(f, conn.ravel(), fe.ravel())
+    del Ke, fe, rows, cols, X
 
     def surface_load(tri, q):
         a = tri_areas(nodes, tri)
@@ -307,6 +334,23 @@ def solve_thermal(nodes, tets, k, fixed: list[tuple[np.ndarray, float]], fluxes:
         # integral of h (Tinf - T) over the face
         intT = float(np.einsum("eij,ej->", Me, T[tri]))
         flows["convection"].append(float(h * (tinf * a.sum() - intT)))
-    total_in = sum(v for vs in flows.values() for v in vs if v > 0)
-    net = sum(v for vs in flows.values() for v in vs)
-    return {"T": T, "flows": flows, "imbalance": abs(net) / max(total_in, 1e-30), "total_in": total_in}
+    source_total = float(np.sum(weights * source))
+    total_in = sum(v for vs in flows.values() for v in vs if v > 0) + max(source_total, 0)
+    net = sum(v for vs in flows.values() for v in vs) + source_total
+    grad = np.empty((len(tets), 4, 3))
+    for start in range(0, len(tets), ASSEMBLY_CHUNK):
+        sl = slice(start, start + ASSEMBLY_CHUNK)
+        conn = tets[sl]
+        X = nodes[conn]
+        for g in range(4):
+            J = np.einsum("ik,ekj->eij", DSHAPE[g], X)
+            dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(conn), 3, 10)))
+            grad[sl, g] = np.einsum("eij,ej->ei", dNdx, T[conn])
+    return {"value": T, "gradient": grad, "weights": weights, "tets": tets, "source_total": source_total,
+            "flows": flows, "imbalance": abs(net) / max(total_in, 1e-30), "total_in": total_in}
+
+
+def solve_thermal(nodes, tets, k, fixed, fluxes, convection, progress=lambda *_: None, source=None):
+    """Steady conduction; source is the volumetric heating at the four Gauss points of each element."""
+    r = solve_scalar(nodes, tets, k, fixed, fluxes, convection, progress, source)
+    return {**r, "T": r["value"]}
