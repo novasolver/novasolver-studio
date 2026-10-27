@@ -324,7 +324,10 @@ def primary_quantity(case: dict, res: dict) -> tuple[str, float, str]:
         return ("max_disp", m["max_disp_m"], "m")
     if k == "thermal":
         n_fixed = sum(1 for b in case["boundaries"].values() if b.get("role") == "temperature")
-        if n_fixed >= 2 and m.get("q_in_w") is not None:
+        if n_fixed >= 2:
+            # the temperature span is imposed by the two fixed faces: only the heat flow measures the solution
+            if m.get("q_in_w") is None:
+                raise ValueError("no heat-flow metric for a case with two fixed temperatures")
             return ("q_in", m["q_in_w"], "W")
         return ("t_rise", m["t_max_k"] - m["t_min_k"], "K")
     if k == "flow3d":
@@ -333,6 +336,10 @@ def primary_quantity(case: dict, res: dict) -> tuple[str, float, str]:
         return ("cd", m["cd"], "-")
     if k in ("cavity", "cavity_of"):
         return ("umin_center", m["umin_center"], "m/s")
+    if k == "channel_of":
+        return ("umax_outlet", m["umax_outlet"], "m/s")
+    if k == "conjugate":
+        return ("t_solid_rise", m["t_solid_max_k"] - m["t_inlet_k"], "K")
     raise ValueError(f"no study quantity for {k}")
 
 
@@ -355,7 +362,9 @@ def gci(levels: list[dict], fs: float = 1.25) -> dict:
     else:
         p, fs = 2.0, 3.0                         # oscillatory or exact: conservative safety factor
     denom = r32 ** p - 1
-    rel = abs(e32 / f3) if f3 else 0.0
+    # relative to the size of the quantity, not to f3 alone: a final value of 0 must not hide a large change
+    scale = max(abs(f1), abs(f2), abs(f3))
+    rel = abs(e32) / scale if scale > 0 else 0.0
     gci_fine = fs * rel / denom * 100 if denom > 0 else rel * 100
     f_ext = f3 + e32 / denom if denom > 0 else f3
     if not asymptotic:
@@ -398,13 +407,16 @@ def run_study(req: dict, jd: Path, prog) -> dict:
     tol = 5.0
     # a study only means something if the mesh really got finer; identical meshes would "agree" perfectly
     refined = all(b["elements"] >= 1.3 * a["elements"] for a, b in zip(levels, levels[1:]))
-    passed = all(l["converged"] for l in levels) and g["gci_pct"] <= tol and refined
+    # a monotone sequence whose changes do not shrink (p < 1) is not converging, however small one step looks;
+    # it may only pass when the last change is already negligible
+    settled = g["asymptotic"] or not g["monotone"] or g["rel_change_pct"] <= 0.1
+    passed = all(l["converged"] for l in levels) and g["gci_pct"] <= tol and refined and settled
     fine = json.loads((jd / "levels" / "fine" / "results.json").read_text(encoding="utf-8"))
     for f in ("results.npz", "mesh.npz"):
         if (jd / "levels" / "fine" / f).is_file():
             shutil.copyfile(jd / "levels" / "fine" / f, jd / f)
     conv = {"quantity": name, "unit": unit, "levels": levels, **g, "tolerance_pct": tol, "pass": passed,
-            "refined": refined}
+            "refined": refined, "settled": settled}
     peaks = [l.get("peak_vm_pa") for l in levels]
     if all(peaks):
         # a peak that keeps rising with every refinement is a stress singularity (sharp re-entrant corner, edge of a

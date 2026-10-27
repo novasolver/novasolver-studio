@@ -163,6 +163,8 @@ TEMPLATES: dict[str, dict] = {
         "engines": ["builtin-cavity", "openfoam"],
         "default_engine": "builtin-cavity",
         "roles": FLOW_ROLES,
+        # the solvers for this benchmark build its walls and lid themselves: a changed role would be ignored silently
+        "fixed_roles": True,
         "face_labels": {"x0": "face.cavity.wall", "x1": "face.cavity.wall", "y0": "face.cavity.wall",
                         "y1": "face.cavity.lid", "z0": "face.plane", "z1": "face.plane"},
         "locked_faces": ["z0", "z1"],
@@ -190,6 +192,7 @@ TEMPLATES: dict[str, dict] = {
         "engines": ["openfoam"],
         "default_engine": "openfoam",
         "roles": FLOW_ROLES,
+        "fixed_roles": True,
         "face_labels": {"x0": "face.channel.inlet", "x1": "face.channel.outlet", "y0": "face.channel.wall",
                         "y1": "face.channel.wall", "z0": "face.plane", "z1": "face.plane"},
         "locked_faces": ["z0", "z1"],

@@ -328,5 +328,6 @@
   "open.failed": "リンクの条件でケースを作れませんでした：{message}",
   "start.community": "どんな解析をしているか、困りごと、欲しい機能を、使っている人どうしで共有できます。",
   "start.communityLink": "コミュニティ（Discord）",
-  "share.community": "作例をコミュニティで共有する"
+  "share.community": "作例をコミュニティで共有する",
+  "bc.fixedRoles": "検証用の問題のため、役割は変えられません"
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import re
 import secrets
@@ -73,6 +74,38 @@ def create(template_id: str) -> dict:
 
 def load(case_id: str) -> dict:
     return json.loads((case_dir(case_id) / "case.json").read_text(encoding="utf-8"))
+
+
+class case_lock:
+    """Per-case lock shared by every process (the UI server and the MCP server are separate processes), so that
+    load -> check revision -> apply -> save is one step and a second writer gets 409 instead of erasing the first."""
+
+    def __init__(self, case_id: str, timeout: float = 10.0, stale: float = 30.0):
+        self.path = case_dir(case_id) / ".lock"
+        self.timeout, self.stale = timeout, stale
+
+    def __enter__(self):
+        t0 = time.time()
+        while True:
+            try:
+                os.close(os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+                return self
+            except FileExistsError:
+                try:
+                    if time.time() - self.path.stat().st_mtime > self.stale:   # a writer that died mid-save
+                        self.path.unlink()
+                        continue
+                except FileNotFoundError:
+                    continue
+                if time.time() - t0 > self.timeout:
+                    raise StudioError("err.busy", 409)
+                time.sleep(0.02)
+
+    def __exit__(self, *exc):
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def save(case: dict, bump: bool = True) -> dict:
@@ -163,13 +196,15 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             if value not in ENUMS[path]:
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(ENUMS[path])})")
             nv = value
-        elif key == "role":
-            if value not in tp["roles"] or value == "plane2d":
-                raise StudioError("err.role", 400, role=value, roles=", ".join(r for r in tp["roles"] if r != "plane2d"))
-            nv = value
-        elif parts[0] == "bodies" and key == "role":
+        elif parts[0] == "bodies" and key == "role":     # before the face-role branch, which would swallow it
             if value not in ("fluid", "solid"):
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: fluid, solid)")
+            nv = value
+        elif key == "role":
+            if tp.get("fixed_roles") and value != old:
+                raise StudioError("err.fixed_roles", 400, path=path)
+            if value not in tp["roles"] or value == "plane2d":
+                raise StudioError("err.role", 400, role=value, roles=", ".join(r for r in tp["roles"] if r != "plane2d"))
             nv = value
         elif parts[0] == "bodies" and key == "material":
             allowed_m = list(templates.FLUID_PROPS) if new["bodies"][parts[1]]["role"] == "fluid" else list(templates.SOLID_PROPS)
@@ -242,6 +277,12 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                     unit = nv["unit"]
                     raise StudioError("err.range", 400, path=path, lo=f"{units.from_si(lo, unit):g} {unit}",
                                       hi=f"{units.from_si(hi, unit):g} {unit}")
+            if path.startswith("materials.") and not isinstance(si, list):
+                # physical range for every template (a negative modulus solves "fine" and mirrors the answer)
+                poisson = parts[1] == "solid" and key == "nu"
+                ok = math.isfinite(si) and ((0 <= si < 0.5) if poisson else si > 0)
+                if not ok:
+                    raise StudioError("err.range", 400, path=path, lo="0", hi="0.5" if poisson else "-")
             if path.startswith("materials.") and parts[1] in new["materials"]:
                 new["materials"][parts[1]]["preset"] = "custom"
         parent[key] = nv

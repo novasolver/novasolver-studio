@@ -104,6 +104,8 @@ export interface CaseUi {
   modes?: { id: "preview" | "final"; engine: string | null }[];
   physics?: Physics;
   imported?: boolean;
+  /** benchmark templates whose boundary pattern is built by the solver: roles cannot change */
+  fixed_roles?: boolean;
   source_file?: string | null;
   role_fields?: Record<string, string[]>;
   field_labels?: Record<string, string>;

@@ -365,6 +365,7 @@ function Swatch({ f, size = 10 }: { f: UiFace; size?: number }) {
 function FaceRow({ f, selected, hovered }: { f: UiFace; selected: boolean; hovered: boolean }) {
   const t = useT();
   const roles = useStore((s) => s.payload?.ui.roles ?? EMPTY);
+  const fixedRoles = useStore((s) => !!s.payload?.ui.fixed_roles);
   const flash = useStore((s) => s.flashFaces.includes(f.key));
   const ref = useRef<HTMLDivElement>(null);
   const single = useStore((s) => s.selectedFaces.length === 1);
@@ -411,6 +412,7 @@ function FaceRow({ f, selected, hovered }: { f: UiFace; selected: boolean; hover
         <span onClick={(e) => e.stopPropagation()} className="w-[118px] shrink-0">
           <Select
             variant="ghost"
+            disabled={fixedRoles}
             value={f.role}
             placeholder={<span className="text-orange">{t("bc.unassigned")}</span>}
             ariaLabel={`${f.label} ${t("bc.role")}`}
@@ -658,8 +660,9 @@ function SelectionEditor() {
           </div>
         )}
         <div className="flex flex-col gap-4">
-          <Field label={t("bc.role")}>
+          <Field label={t("bc.role")} hint={ui.fixed_roles ? t("bc.fixedRoles") : undefined}>
             <Select
+              disabled={!!ui.fixed_roles}
               value={commonRole}
               placeholder={<span className={sel.some((f) => !f.role) ? "text-orange" : "text-fg-3"}>{sel.some((f) => !f.role) ? t("bc.unassigned") : t("bc.mixed")}</span>}
               ariaLabel={t("bc.role")}
@@ -688,6 +691,38 @@ function SelectionEditor() {
                       for (const k of keys) change(`boundaries.${k}.${field}`, v);
                     }}
                   />
+                  {err && <FieldError text={err} />}
+                </Field>
+              );
+            }
+            if (field === "components") {
+              // constraint: which displacement components are held, a non-empty subset of "xyz"
+              const cur = mixed || typeof vals[0] !== "string" ? "" : (vals[0] as string);
+              return (
+                <Field key={field} label={label} hint={mixed ? t("bc.mixedValues") : undefined}>
+                  <div className="flex gap-1" role="group" aria-label={label}>
+                    {(["x", "y", "z"] as const).map((c) => {
+                      const on = cur.includes(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => {
+                            const next = "xyz".split("").filter((d) => (d === c ? !on : cur.includes(d))).join("");
+                            if (!next) return; // at least one component stays held
+                            for (const k of keys) change(`boundaries.${k}.${field}`, next);
+                          }}
+                          className={cn(
+                            "h-8 w-10 rounded-[6px] border text-body font-medium uppercase transition-colors duration-[var(--dur-1)]",
+                            on ? "border-line-strong bg-active text-fg" : "border-line text-fg-3 hover:bg-hover hover:text-fg",
+                          )}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
                   {err && <FieldError text={err} />}
                 </Field>
               );

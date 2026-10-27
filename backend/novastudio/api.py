@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from pathlib import Path
 
 from fastapi import Body, FastAPI, Query, Request, WebSocket, WebSocketDisconnect
@@ -19,6 +20,29 @@ from .i18n import lang_of
 from .store import StudioError
 
 app = FastAPI(title="NovaSolver Studio", docs_url="/api/docs", openapi_url="/api/openapi.json")
+
+
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]")
+
+
+def _local(url_or_host: str | None) -> bool:
+    """True for this machine only. Binding to 127.0.0.1 keeps other computers out, not other web sites: a page on
+    any site can still send requests to 127.0.0.1 from the user's browser, so Origin and Host are checked too."""
+    if not url_or_host:
+        return True                           # no Origin = not a cross-site browser request (curl, the MCP bridge)
+    s = url_or_host.split("://", 1)[1] if "://" in url_or_host else url_or_host
+    host = s.split("/", 1)[0]
+    host = host.rsplit(":", 1)[0] if not host.endswith("]") else host
+    return host in LOCAL_HOSTS
+
+
+@app.middleware("http")
+async def _same_machine_only(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        if not _local(request.headers.get("host")) or not _local(request.headers.get("origin")):
+            return JSONResponse({"error": "err.forbidden", "message": "requests from other sites are not accepted"},
+                                status_code=403)
+    return await call_next(request)
 
 
 @app.exception_handler(StudioError)
@@ -36,8 +60,19 @@ async def _unexpected(request, exc: Exception):
                         status_code=500)
 
 
-def call(fn, *a, **kw):
-    return run_in_threadpool(fn, *a, **kw)
+def _finite(o):
+    """NaN / inf are not JSON: an unavailable metric goes out as null instead of failing the whole response."""
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_finite(v) for v in o]
+    return o
+
+
+async def call(fn, *a, **kw):
+    return _finite(await run_in_threadpool(fn, *a, **kw))
 
 
 @app.get("/api/env")
@@ -201,6 +236,9 @@ async def _start():
 
 @app.websocket("/ws")
 async def ws(websocket: WebSocket):
+    if not _local(websocket.headers.get("host")) or not _local(websocket.headers.get("origin")):
+        await websocket.close(code=1008)      # policy violation: job events only for pages served by this app
+        return
     await websocket.accept()
     hub.clients.add(websocket)
     try:

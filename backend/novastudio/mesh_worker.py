@@ -604,6 +604,28 @@ def face_area_centroid(gmsh, tag: int, discrete: bool):
     area = float(ar.sum())
     return area, ((ar[:, None] * (a + b + c) / 3).sum(0) / area).tolist() if area > 0 else [0.0, 0.0, 0.0]
 
+def face_perimeter(gmsh, group: list[int], discrete: bool) -> float:
+    """Outer boundary length [m] of a face (a group of surfaces), for the hydraulic diameter 4A/P of inlets."""
+    if not discrete:
+        curves = gmsh.model.getBoundary([(2, g) for g in group], combined=True, oriented=False)
+        return float(sum(gmsh.model.occ.getMass(1, abs(c)) for _, c in curves))
+    xs, tris = [], []
+    for g in group:
+        _, xyz, tri = surface_triangles(gmsh, g)
+        tris.append(tri + sum(len(x) for x in xs))
+        xs.append(xyz)
+    xyz, tri = np.vstack(xs), np.vstack(tris)
+    # merge coincident vertices of neighbouring surfaces, then keep the edges used by one triangle only
+    _, inv = np.unique(np.round(xyz / max(float(np.ptp(xyz)), 1e-30), 9), axis=0, return_inverse=True)
+    t = inv.reshape(-1)[tri]
+    e = np.sort(np.concatenate([t[:, [0, 1]], t[:, [1, 2]], t[:, [2, 0]]]), axis=1)
+    edges, cnt = np.unique(e, axis=0, return_counts=True)
+    first = {int(v): int(i) for i, v in enumerate(inv.reshape(-1))}
+    p = np.array([xyz[first[v]] for v in range(int(inv.max()) + 1)])
+    b = edges[cnt == 1]
+    return float(np.linalg.norm(p[b[:, 0]] - p[b[:, 1]], axis=1).sum())
+
+
 def body_volume_centroid(gmsh, tag: int, discrete: bool):
     """Volume [m3] and centroid of a body; for STL input from its closed surface (divergence theorem)."""
     if not discrete:
@@ -701,7 +723,11 @@ def mesh_job(job: dict) -> None:
                 for g in group:
                     keys[g] = k
                 gmsh.model.addPhysicalGroup(2, group, tag=tag, name=k)
-                face_info.append({"key": k, "n": n, "area": area, "centroid": cen,
+                try:
+                    perim = face_perimeter(gmsh, group, stl)
+                except Exception:                       # the perimeter only refines inlet sizing; never fail on it
+                    perim = None
+                face_info.append({"key": k, "n": n, "area": area, "centroid": cen, "perimeter": perim,
                                   "type": "Discrete" if stl else gmsh.model.getType(2, tag),
                                   "bodies": [f"b{int(v)}" for v in up], "interface": len(up) > 1})
             diag = float(np.linalg.norm([lx, ly, lz]))
@@ -721,7 +747,8 @@ def mesh_job(job: dict) -> None:
         else:
             lx, ly, lz = job["dims"]
             bbox = [[0, 0, 0], [lx, ly, lz]]
-            tol = 1e-5 * max(lx, ly, lz)   # gmsh pads bounding boxes by ~1e-7 relative
+            # OCC pads bounding boxes by its absolute precision (~1e-7 m): a 1 mm box needs the 1 um floor
+            tol = max(1e-5 * max(lx, ly, lz), 1e-6)
             box = gmsh.model.occ.addBox(0, 0, 0, lx, ly, lz)
             hole_d = job.get("hole_d")
             if hole_d:                                           # plate with a central through-hole (stress concentration)

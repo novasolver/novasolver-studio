@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import sys
 
 from . import __version__, checks, geometry, jobs, results, store, templates, units
 from .config import engines, workspace
@@ -18,8 +19,12 @@ ENGINE_NAMES = {"builtin-fem": "Built-in FEM (preview)", "builtin-cavity": "Buil
 
 def environment_check(lang: str = "ja") -> dict:
     eng = engines()
+    # how an MCP client starts this very installation: the packaged exe has an `mcp` subcommand, a source checkout
+    # runs the module with the interpreter that is serving now
+    frozen = bool(getattr(sys, "frozen", False))
+    mcp_command = {"command": sys.executable, "args": ["mcp"] if frozen else ["-m", "novastudio", "mcp"]}
     return {"studio_version": __version__, "workspace": str(workspace()), "os": platform.platform(),
-            "cpu_count": os.cpu_count(),
+            "cpu_count": os.cpu_count(), "mcp_command": mcp_command,
             "engines": [{"id": k, "name": ENGINE_NAMES[k], "available": v["available"], "kind": v["kind"]}
                         for k, v in eng.items()],
             "how_to_install": {
@@ -121,6 +126,7 @@ def case_payload(case_id: str, lang: str = "ja") -> dict:
                                for fl in templates.ROLE_FIELDS.values() for k, v in fl.items() if isinstance(v, dict)},
                "directions": [{"id": d, "label": t(f"dir.{d}", lang)} for d in templates.DIRECTIONS],
                "physics": tp["physics"], "imported": case["geometry"]["kind"] == "import",
+               "fixed_roles": bool(tp.get("fixed_roles")),
                "flow": ({"direction": case["flow"]["direction"],
                          "directions": [{"id": d, "label": t(f"dir.{d}", lang)} for d in ("+x", "-x", "+y", "-y", "+z", "-z")]}
                         if case.get("flow") else None),
@@ -307,13 +313,15 @@ def describe_case(case_id: str, detail: str = "concise", lang: str = "ja") -> di
 
 
 def update_case(case_id: str, expected_revision: int, changes: dict, lang: str = "ja") -> dict:
-    case = store.load(case_id)
-    if int(expected_revision) != case["revision"]:
-        raise StudioError("err.revision", 409, current=case["revision"])
-    new, diff = store.apply_changes(case, changes)
-    diff = [d for d in diff if geometry._canon(d["old"]) != geometry._canon(d["new"])]
-    if diff:                                   # a no-op edit (e.g. 200 -> 200.0 from autosave) keeps the revision
-        store.save(new)
+    store.case_dir(case_id)                    # validates the id before a lock file is made from it
+    with store.case_lock(case_id):
+        case = store.load(case_id)
+        if int(expected_revision) != case["revision"]:
+            raise StudioError("err.revision", 409, current=case["revision"])
+        new, diff = store.apply_changes(case, changes)
+        diff = [d for d in diff if geometry._canon(d["old"]) != geometry._canon(d["new"])]
+        if diff:                               # a no-op edit (e.g. 200 -> 200.0 from autosave) keeps the revision
+            store.save(new)
     pl = case_payload(case_id, lang)
     pl["diff"] = diff
     return pl

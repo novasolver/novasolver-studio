@@ -256,9 +256,10 @@ async def check_convergence(case_id: str, language: Lang = "ja") -> CallToolResu
     if r["done"] and r.get("results"):
         res = r["results"]
         c = res.get("convergence") or {}
-        lv = ", ".join(f"{l['size']} {l['value']:.5g}" for l in c.get("levels", []))
-        s = (f"{c.get('label')}: {lv} {c.get('unit')} -> extrapolated {c.get('extrapolated', 0):.5g}, "
-             f"GCI {c.get('gci_pct', 0):.2f}% (order {c.get('observed_order', 0):.2f}) -> "
+        num = lambda v, f: "n/a" if v is None else format(v, f)       # null = not available (e.g. no extrapolation)
+        lv = ", ".join(f"{l['size']} {num(l.get('value'), '.5g')}" for l in c.get("levels", []))
+        s = (f"{c.get('label')}: {lv} {c.get('unit')} -> extrapolated {num(c.get('extrapolated'), '.5g')}, "
+             f"GCI {num(c.get('gci_pct'), '.2f')}% (order {num(c.get('observed_order'), '.2f')}) -> "
              f"{'PASS' if c.get('pass') else 'FAIL'}. {_gates_line(res['gates'])}")
         return _ok(s, {"done": True, "job_id": r["job"]["job_id"], "results": res})
     if r["done"]:

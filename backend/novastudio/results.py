@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -24,10 +25,16 @@ QUANTITIES = {
 }
 
 
+RUN_ID = re.compile(r"^r_\d{8}_\d{6}_[0-9a-f]{4}$")
+
+
 def latest_done_run(case_id: str, run_id: str | None = None) -> Path | None:
     rd = case_dir(case_id) / "run"
     if not rd.is_dir():
         return None
+    if run_id and not RUN_ID.match(run_id):
+        # only an id this case generated; "../../other_case/run/..." would show another case's verified result here
+        raise StudioError("err.path", 400, path=f"run_id={run_id}")
     runs = [rd / run_id] if run_id else sorted(rd.glob("r_*"), reverse=True)
     for jd in runs:
         if (jd / "results.json").is_file():

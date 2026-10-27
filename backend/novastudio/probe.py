@@ -69,18 +69,47 @@ class _Locator:
                 best, best_min = (int(e), L), L.min()
         return None if best is None else (*best, False)
 
+    def _pairs(self, conn) -> list[tuple[int, int]]:
+        """tet10: the two corners each edge node sits between (independent of the node ordering)."""
+        corners = self.nodes[conn[:4]]
+        pairs = [(a, b) for a in range(4) for b in range(a + 1, 4)]
+        return [min(pairs, key=lambda p: np.linalg.norm((corners[p[0]] + corners[p[1]]) / 2 - self.nodes[j]))
+                for j in conn[4:10]]
+
+    @staticmethod
+    def _shape(L, pairs) -> np.ndarray:
+        return np.array([*(L * (2 * L - 1)), *(4 * L[a] * L[b] for a, b in pairs)])
+
+    def curved(self, e: int, x: np.ndarray, L: np.ndarray) -> np.ndarray:
+        """Volume coordinates of x in a curved tet10 (CAD meshes put midside nodes on the true surface): Newton on the
+        quadratic map, started from the straight-sided answer. A field linear in x is then read back exactly."""
+        conn = self.tets[e]
+        if len(conn) < 10:
+            return L
+        pairs, X = self._pairs(conn), self.nodes[conn[:10]]
+        xi = L[1:].copy()
+        for _ in range(8):
+            Lf = np.array([1 - xi.sum(), *xi])
+            r = self._shape(Lf, pairs) @ X - x
+            if np.linalg.norm(r) < 1e-12 * max(1.0, float(np.ptp(X))):
+                break
+            J = np.empty((3, 3))
+            for k in range(3):
+                d = xi.copy()
+                d[k] += 1e-7
+                Ld = np.array([1 - d.sum(), *d])
+                J[:, k] = (self._shape(Ld, pairs) @ X - x - r) / 1e-7
+            try:
+                xi = xi - np.linalg.solve(J, r)
+            except np.linalg.LinAlgError:
+                return L
+        return np.array([1 - xi.sum(), *xi])
+
     def weights(self, e: int, L: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         conn = self.tets[e]
         if len(conn) == 4:
             return conn, L
-        # tet10: match each edge node to the pair of corners it sits between (independent of the node ordering)
-        corners = self.nodes[conn[:4]]
-        w = list(L * (2 * L - 1))
-        for j in conn[4:10]:
-            pairs = [(a, b) for a in range(4) for b in range(a + 1, 4)]
-            a, b = min(pairs, key=lambda p: np.linalg.norm((corners[p[0]] + corners[p[1]]) / 2 - self.nodes[j]))
-            w.append(4 * L[a] * L[b])
-        return conn[:10], np.array(w)
+        return conn[:10], self._shape(L, self._pairs(conn))
 
 
 def _tri_owner_side(tri: np.ndarray, tets: np.ndarray, nodes: np.ndarray) -> np.ndarray:
@@ -143,7 +172,7 @@ def probe(case: dict, points: list | None = None, line: dict | None = None, face
             x = p_mm * 1e-3
             hit = loc.locate(x)
             if hit is not None and len(hit) == 2:
-                idx, w = loc.weights(*hit)
+                idx, w = loc.weights(hit[0], loc.curved(hit[0], x, hit[1]))
                 vals = {q: float(v[idx] @ w) for q, (v, _) in F.items()}
                 res.append({"at_mm": p_mm.round(4).tolist(), "inside": True, "values": vals})
             else:
@@ -179,15 +208,18 @@ def probe(case: dict, points: list | None = None, line: dict | None = None, face
                   "centroid_mm": ((P.mean(axis=1) * A[:, None]).sum(0) / At * 1e3).round(4).tolist(),
                   "mean": {}, "min": {}, "max": {}}
             fn = np.unique(tri)
+            # area mean of the interpolant: on a tri6 the corner shape functions integrate to 0 and each midside one
+            # to A/3, so the mean of a triangle is the mean of its midside values (corners only on linear tri3)
+            avg_nodes = tri[:, 3:6] if tri.shape[1] >= 6 else tri[:, :3]
             for q, (v, _) in F.items():
-                st["mean"][q] = float((v[tri[:, :3]].mean(axis=1) * A).sum() / At)
+                st["mean"][q] = float((v[avg_nodes].mean(axis=1) * A).sum() / At)
                 st["min"][q], st["max"][q] = float(v[fn].min()), float(v[fn].max())
             if "U" in data.files:
                 exact = (r.get("metrics") or {}).get("face_flux_m3s", {})
                 if key in exact:                  # the solver's own face fluxes (inlets and outlets)
                     q_out = exact[key]
                 else:                             # elsewhere from nodal velocities: low on coarse meshes
-                    Ut = data["U"][tri[:, :3]].mean(axis=1)
+                    Ut = data["U"][avg_nodes].mean(axis=1)
                     q_out = float(np.einsum("ij,ij->", Ut, area_v))
                 st["flow_out_m3s"] = q_out
                 st["flow_out_lmin"] = q_out * 6e4

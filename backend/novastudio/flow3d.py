@@ -25,8 +25,11 @@ def _faces(case):
     return {f["key"]: f for f in case["geometry"].get("faces", [])}
 
 
-def _hyd_diameter(area: float) -> float:
-    return math.sqrt(4 * area / math.pi)
+def _hyd_diameter(face: dict) -> float:
+    """4A/P. A 100 x 1 mm slot is 2 mm, not the 11 mm of a circle with its area (that would put Re 5.7x too high and
+    switch on the turbulence model). Faces imported before the perimeter was recorded fall back to the circle."""
+    a, p = face["area"], face.get("perimeter")
+    return 4 * a / p if p else math.sqrt(4 * a / math.pi)
 
 
 def inlet_reynolds(case: dict) -> float | None:
@@ -35,19 +38,19 @@ def inlet_reynolds(case: dict) -> float | None:
     res = []
     for k, b in case["boundaries"].items():
         if b.get("role") == "inlet" and k in faces and nu > 0:
-            res.append(units.to_si(b["speed"]) * _hyd_diameter(faces[k]["area"]) / nu)
+            res.append(units.to_si(b["speed"]) * _hyd_diameter(faces[k]) / nu)
     return max(res) if res else None
 
 
 def mesh_size(case: dict) -> float:
     faces = _faces(case)
-    ends = [faces[k]["area"] for k, b in case["boundaries"].items()
+    ends = [_hyd_diameter(faces[k]) for k, b in case["boundaries"].items()
             if b.get("role") in ("inlet", "outlet", "water-inlet", "water-outlet") and k in faces]
     (x0, y0, z0), (x1, y1, z1) = case["geometry"]["bbox"]
     diag = math.dist((x0, y0, z0), (x1, y1, z1))
     h = diag / 30
     if ends:
-        h = min(h, _hyd_diameter(min(ends)) / MESH_DIV[case["mesh"]["size"]])
+        h = min(h, min(ends) / MESH_DIV[case["mesh"]["size"]])
     return h
 
 
@@ -124,7 +127,7 @@ relaxationFactors { equations { U 0.7; ".*" 0.7; } fields { p 0.3; } }
                     "type inletOutlet; inletValue uniform 1e-4; value uniform 1e-4;"
             elif field == "omega":
                 s = "type omegaWallFunction; value uniform 1;" if role == "wall" else \
-                    f"type turbulentMixingLengthFrequencyInlet; mixingLength {0.07 * _hyd_diameter(faces[key]['area']):.6g}; value uniform 1;" \
+                    f"type turbulentMixingLengthFrequencyInlet; mixingLength {0.07 * _hyd_diameter(faces[key]):.6g}; value uniform 1;" \
                     if role == "inlet" else "type inletOutlet; inletValue uniform 1; value uniform 1;"
             else:  # nut: Spalding's law holds at any y+; tet/dual meshes put the first cell in the buffer layer
                 # (y+ 7..33 in a 10 mm pipe at Re 2e4), where nutkWallFunction gave 57 % too little friction (Spalding 38 %)
@@ -219,8 +222,7 @@ def snappy_internal_files(case: dict, mesh: dict) -> tuple[dict[str, str], dict]
                        "\n".join(f"   vertex {x:.9e} {y:.9e} {z:.9e}" for x, y, z in p) + "\n  endloop\n endfacet")
         stl.append(f"endsolid {key}")
     faces = _faces(case)
-    ends = [faces[k]["area"] for k, r in roles.items() if r in ("inlet", "outlet") and k in faces]
-    dh = min(_hyd_diameter(a) for a in ends)
+    dh = min(_hyd_diameter(faces[k]) for k, r in roles.items() if r in ("inlet", "outlet") and k in faces)
     h = dh / SNAPPY_ACROSS[case["mesh"]["size"]]
     lo, hi = nodes.min(axis=0) - 2 * h, nodes.max(axis=0) + 2 * h
     n = np.maximum(np.ceil((hi - lo) / h).astype(int), 1)
@@ -913,11 +915,13 @@ def run_conjugate(case: dict, jd: Path, prog, proc) -> dict:
     solid_nodes = np.unique(tets[np.isin(tbody, [int(r[1:]) for r in regions if case["bodies"][r]["role"] == "solid"])])
     log = (wd / "log.cht").read_text(errors="replace")
     resid = [float(x) for x in re.findall(r"Solving for h, Initial residual = ([0-9.eE+-]+)", log)]
-    balance = abs(q_water - q_in) / q_in if q_in > 0 else float("nan")
+    # heat can also enter through a fixed-temperature or convection face: then there is no flux to balance against
+    balance = abs(q_water - q_in) / q_in if q_in > 0 else None
     metrics = {"t_solid_max_k": float(nodal[solid_nodes, 0].max()), "t_outlet_k": t_outlet, "t_inlet_k": t_in,
                "q_in_w": q_in, "q_water_w": q_water, "heat_balance": balance, "mass_flow_kgs": m_dot,
                "residual": resid[-1] if resid else 1.0, "nodes": int(len(nodes)), "elements": int(len(tets))}
-    converged = bool(np.isfinite(t_outlet) and (q_in == 0 or balance < 0.05))
+    final_res = resid[-1] if resid else 1.0
+    converged = bool(np.isfinite(t_outlet) and (balance < 0.05 if balance is not None else final_res < 1e-3))
     return {"kind": "conjugate", "metrics": metrics, "converged": converged,
             "converged_detail": {"heat_balance": balance, "limit": 0.05,
                                  "note": "heat carried away by the water vs heat put in (ignores surface cooling)"},

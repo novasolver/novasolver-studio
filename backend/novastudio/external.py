@@ -81,19 +81,49 @@ def _solver_progress(log: Path, cwd: Path, jd: Path) -> None:
         pass
 
 
+# A solver that writes nothing for this long is hung (a stuck MPI rank, a dialog nobody sees). Real runs can take
+# hours, so a fixed wall-time limit would kill good jobs; silence is the signal. Every solver here logs at least
+# once per iteration or per assembly step.
+SILENT_LIMIT_S = 3600
+
+
+def _kill_tree(p: subprocess.Popen) -> None:
+    """Stop the solver and everything it started (mpiexec ranks), so the machine-wide solver slot is really free."""
+    try:
+        import psutil
+        procs = psutil.Process(p.pid).children(recursive=True)
+    except Exception:
+        procs = []
+    for c in procs:
+        try:
+            c.kill()
+        except Exception:
+            pass
+    p.kill()
+
+
 def _proc_once(argv: list[str], cwd: Path, log: Path, jd: Path, env: dict | None = None) -> int:
     import time as _time
     with open(log, "w", encoding="utf-8", errors="replace") as fh:
         p = subprocess.Popen(argv, cwd=str(cwd), stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                              creationflags=NO_WINDOW, env=env)
         last = 0.0
+        size, quiet_since = -1, _time.time()
         while p.poll() is None:
             if log.name in SOLVER_LOGS and _time.time() - last > 3:
                 last = _time.time()
                 _solver_progress(log, cwd, jd)
             if (jd / "STOP").exists():
-                p.terminate()
+                _kill_tree(p)
                 break
+            now_size = log.stat().st_size if log.exists() else 0
+            if now_size != size:
+                size, quiet_since = now_size, _time.time()
+            elif _time.time() - quiet_since > SILENT_LIMIT_S:
+                _kill_tree(p)
+                p.wait()
+                fh.write(f"\nNovaSolver Studio: stopped, no solver output for {SILENT_LIMIT_S // 60} min (hung)\n")
+                return -2
             try:
                 p.wait(timeout=0.5)
             except subprocess.TimeoutExpired:
@@ -265,6 +295,10 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
         metrics = {"t_max_k": float(T.max()), "t_min_k": float(T.min()), "face_flows_w": flows, **common}
         all_flows = _fixed_face_flows(case, mesh, T, flows)
         metrics["face_flows_w"] = all_flows
+        # same bookkeeping as the built-in solver: a mesh study tracks q_in, never the imposed temperature span
+        total_in = sum(v for v in all_flows.values() if v > 0)
+        metrics["q_in_w"] = total_in
+        metrics["imbalance"] = abs(sum(all_flows.values())) / max(total_in, 1e-30)
         from .run_worker import reference_fin
         ref = reference_thermal_block(case, all_flows) if case["template"] == "thermal-block" else \
             reference_fin(case, all_flows) if case["template"] == "fin" else no_ref

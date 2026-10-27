@@ -113,7 +113,7 @@
   "err.solver": "The solver failed: {detail}",
   "err.face_lost": "The face(s) {faces} carrying a condition are missing from the mesh, so that condition would be ignored. The run was stopped. Re-import the shape or pick the faces again.",
   "err.probe_unsupported": "Point and face values are not available for this kind of result ({kind}). Use get_results and render_view instead.",
-  "err.faceted_step":"This STEP is made of {faces} flat triangles (a mesh converted to STEP). Reading it would take minutes and give one face per triangle. Import the original STL instead (or export STL from Blender).",
+  "err.faceted_step": "This STEP is made of {faces} flat triangles (a mesh converted to STEP). Reading it would take minutes and give one face per triangle. Import the original STL instead (or export STL from Blender).",
   "result.stress_singular": "The peak stress keeps rising as the mesh is refined ({a:.0f} → {b:.0f} → {c:.0f} MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges.",
   "result.yplus": "The wall cells have an average y+ of {yp:.0f}, outside the range where wall functions work (about 20-300). Turbulent pressure drop and wall friction may be off by several to tens of percent; check that a different mesh size gives the same answer.",
   "result.not_refined": "The three meshes have almost the same number of elements ({a} → {b} → {c}). Refinement did not really change the mesh, so the answer cannot be verified this way. The file's triangles may be too fine, or remeshing the surface may have failed.",
@@ -230,5 +230,8 @@
   "card.q_water": "Heat carried by the water",
   "check.need_fluid_and_solid": "At least one fluid body and one solid body are needed. Set the role of each body.",
   "err.need_two_bodies": "Conjugate heat transfer needs a file with two or more bodies, e.g. a cold plate and the water in its channel.",
-  "job.iterating_n": "Iterating ({it} / {end})"
+  "job.iterating_n": "Iterating ({it} / {end})",
+  "err.busy": "This case is being saved by another action. Try again in a moment.",
+  "err.fixed_roles": "This template is a fixed benchmark whose boundary pattern cannot change ({path}). To solve other conditions, import the geometry as a new case.",
+  "field.components": "Held directions"
 }

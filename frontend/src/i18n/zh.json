@@ -328,5 +328,6 @@
   "open.failed": "无法按链接中的条件创建案例：{message}",
   "start.community": "可以和其他用户分享你在分析什么、遇到的问题和想要的功能。",
   "start.communityLink": "社区（Discord）",
-  "share.community": "在社区分享你的作品"
+  "share.community": "在社区分享你的作品",
+  "bc.fixedRoles": "验证算例，类型不可更改"
 }

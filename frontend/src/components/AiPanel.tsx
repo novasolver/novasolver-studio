@@ -8,25 +8,25 @@ import { Button } from "./ui/Button";
 export function AiPanel() {
   const t = useT();
   const open = useStore((s) => s.ai);
-  const [root, setRoot] = useState<string | null>(null);
+  // the backend says how this installation starts its MCP server (packaged exe or a source checkout)
+  const [launch, setLaunch] = useState<{ command: string; args: string[] } | null>(null);
   const [copied, setCopied] = useState(false);
+  const root = launch?.command ?? null;
 
   useEffect(() => {
-    if (!open || root) return;
+    if (!open || launch) return;
     api
       .env()
       .then((env) => {
-        const ws = typeof env.workspace === "string" ? env.workspace : null;
-        if (ws) setRoot(ws.replace(/[\\/]workspace[\\/]?$/, ""));
+        const m = (env as { mcp_command?: { command?: unknown; args?: unknown } }).mcp_command;
+        if (m && typeof m.command === "string" && Array.isArray(m.args)) setLaunch({ command: m.command, args: m.args.map(String) });
       })
       .catch(() => {});
-  }, [open, root]);
+  }, [open, launch]);
 
   if (!open) return null;
-  const path = root ?? "<path>";
-  const py = `${path}\\.venv\\Scripts\\python.exe`;
   const snippet = JSON.stringify(
-    { mcpServers: { "novasolver-studio": { command: py, args: ["-m", "novastudio.mcp_server"] } } },
+    { mcpServers: { "novasolver-studio": launch ?? { command: "<NovaSolverStudio.exe>", args: ["mcp"] } } },
     null,
     2,
   );

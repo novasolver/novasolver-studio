@@ -328,5 +328,6 @@
   "open.failed": "Could not create a case from the link: {message}",
   "start.community": "Share what you are analysing, where you are stuck and what you would like next with other users.",
   "start.communityLink": "Community (Discord)",
-  "share.community": "Share your example with the community"
+  "share.community": "Share your example with the community",
+  "bc.fixedRoles": "A benchmark: the roles are fixed"
 }

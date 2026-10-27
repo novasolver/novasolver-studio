@@ -296,7 +296,7 @@ export async function setLang(lang: Lang) {
   if (state.payload) {
     await refreshCase(false);
     void loadGeometry();
-    if (state.results) void loadResults(false);
+    if (state.results) void loadResults(false, true);
   }
 }
 
@@ -517,6 +517,8 @@ export function focusCheck(stepId: StepId, faces?: (string | number)[]) {
 
 // ------------------------------------------------------------------ PATCH (debounced, no Apply button)
 let pending: Record<string, unknown> = {};
+/** the case the queued edits belong to: a case switch inside the debounce must not send them to the next case */
+let pendingCase: string | null = null;
 let pendingFlush = false;
 let flushTimer = 0;
 let inFlight: Promise<void> | null = null;
@@ -560,7 +562,9 @@ function applyOptimistic(p: CasePayload, path: string, value: unknown): CasePayl
 export function change(path: string, value: unknown) {
   const p = state.payload;
   if (!p) return;
+  if (pendingCase && pendingCase !== p.case.case_id) void flush(); // edits of the previous case go out first
   pending[path] = value;
+  pendingCase = p.case.case_id;
   pendingFlush = true;
   const fe = { ...state.fieldErrors };
   delete fe[path];
@@ -575,17 +579,18 @@ export function setFaceRole(faceKey: string, role: string) {
 
 async function flush(): Promise<void> {
   if (inFlight) await inFlight;
-  const p = state.payload;
   const changes = pending;
+  const caseId = pendingCase;
   pending = {};
-  if (!p || Object.keys(changes).length === 0) {
+  pendingCase = null;
+  if (!caseId || Object.keys(changes).length === 0) {
     pendingFlush = false;
     setState({ saving: false });
     return;
   }
   const run = async () => {
-    const caseId = p.case.case_id;
-    let rev = state.payload?.case.revision ?? p.case.revision;
+    // the revision of the case the edits were made in, also when another case is open by now
+    let rev = state.payload?.case.case_id === caseId ? state.payload.case.revision : (await api.getCase(caseId)).case.revision;
     try {
       let np: CasePayload;
       try {
@@ -602,21 +607,24 @@ async function flush(): Promise<void> {
       if (state.payload?.case.case_id !== caseId) return;
       // keep optimistic values for changes queued while this request was in flight
       let merged = np;
-      for (const [k, v] of Object.entries(pending)) merged = applyOptimistic(merged, k, v);
+      if (pendingCase === caseId) for (const [k, v] of Object.entries(pending)) merged = applyOptimistic(merged, k, v);
       setState({ payload: merged });
       log("info", t("log.saved", { rev: np.case.revision }));
       if (Object.keys(changes).some((k) => k.startsWith("geometry.") || k === "mesh.size" || k.endsWith(".role")))
         void loadGeometry();
       if (state.results) void loadResults(false);
     } catch (e) {
+      const here = state.payload?.case.case_id === caseId;
       if (e instanceof ApiError && e.status === 400) {
         // validation error: show the (already localized) message next to the field
-        const fe = { ...state.fieldErrors };
-        for (const k of Object.keys(changes)) fe[k] = e.message;
-        setState({ fieldErrors: fe });
+        if (here) {
+          const fe = { ...state.fieldErrors };
+          for (const k of Object.keys(changes)) fe[k] = e.message;
+          setState({ fieldErrors: fe });
+        }
         log("warn", `${Object.keys(changes).join(", ")}: ${e.message}`);
       } else log("error", t("log.error", { message: errMsg(e) }));
-      await refreshCase(false);
+      if (here) await refreshCase(false);
     }
   };
   inFlight = run();
@@ -784,7 +792,8 @@ export async function stopJob() {
 }
 
 // ------------------------------------------------------------------ results
-export async function loadResults(resetView: boolean) {
+/** `relabel`: the language changed, so the field (its label) is fetched again even for the same run */
+export async function loadResults(resetView: boolean, relabel = false) {
   const p = state.payload;
   if (!p) return;
   setState({ resultsLoading: true });
@@ -794,7 +803,8 @@ export async function loadResults(resetView: boolean) {
     const q = r.quantities.find((x) => x.id === state.quantity) ?? r.quantities[0];
     const sameRun = state.results?.run_id && state.results.run_id === r.run_id;
     setState({ results: r });
-    if (q && r.gates.ran && (!sameRun || !state.field || resetView)) await loadField(q.id, resetView || state.quantity !== q.id);
+    if (q && r.gates.ran && (!sameRun || !state.field || resetView || relabel))
+      await loadField(q.id, resetView || state.quantity !== q.id);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) setState({ results: null, field: null });
     else log("error", t("log.error", { message: errMsg(e) }));
@@ -803,11 +813,16 @@ export async function loadResults(resetView: boolean) {
   }
 }
 
+let fieldGen = 0;
 export async function loadField(quantity: string, reset = true) {
   const p = state.payload;
   if (!p) return;
+  // only the latest request of the open case may land: a slow answer for another case or quantity is dropped
+  const gen = ++fieldGen;
+  const stale = () => gen !== fieldGen || state.payload?.case.case_id !== p.case.case_id;
   try {
     const f = await api.field(p.case.case_id, quantity);
+    if (stale()) return;
     const kind = state.results?.quantities.find((x) => x.id === quantity)?.kind;
     setState({
       field: f,
@@ -815,6 +830,7 @@ export async function loadField(quantity: string, reset = true) {
       ...(reset ? { range: null, colormap: kind === "diverging" ? "coolwarm" : "viridis" } : {}),
     });
   } catch (e) {
+    if (stale()) return;
     // keep the choice visible in the quantity menu even when the field could not be loaded
     setState({ quantity, field: null });
     log("error", t("log.error", { message: errMsg(e) }));
