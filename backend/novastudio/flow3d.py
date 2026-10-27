@@ -190,6 +190,100 @@ def _boundary_values(path: Path, patch: str, vector: bool) -> np.ndarray | None:
     return None
 
 
+# turbulent: core cells across the smallest inlet/outlet; a ratio of about 1.4 between levels keeps the convergence
+# study readable (8/10/14 refined too little to separate the discretisation error from noise)
+SNAPPY_ACROSS = {"coarse": 7, "normal": 10, "fine": 14}
+WALL_YPLUS = 60          # first-layer target (sets ~30 at the wall cell centre: inside the wall-function range)
+WALL_LAYERS = 3
+
+
+def snappy_internal_files(case: dict, mesh: dict) -> tuple[dict[str, str], dict]:
+    """Turbulent internal flow: hex-dominant mesh with wall layers (snappyHexMesh) inside the fluid surface.
+    Each Studio face is an STL region named by its key, so patches keep the names compile_case uses. On the
+    dual-tet mesh a 10 mm pipe at Re 2e4 gave 38 % too little wall friction (y+ in the buffer layer, too few
+    cells across); this mesh gives Blasius within 3 % (2026-10-27)."""
+    nodes = mesh["nodes"]
+    roles = {k: b.get("role") for k, b in case["boundaries"].items()}
+    walls = [k for k, r in roles.items() if r == "wall"]
+    stl = []
+    for key in case["boundaries"]:
+        tri = mesh.get(f"face_{key}")
+        if tri is None:
+            continue
+        stl.append(f"solid {key}")
+        for t in tri[:, :3]:
+            p = nodes[t]
+            n = np.cross(p[1] - p[0], p[2] - p[0])
+            n = n / (np.linalg.norm(n) + 1e-30)
+            stl.append(f" facet normal {n[0]:.6e} {n[1]:.6e} {n[2]:.6e}\n  outer loop\n" +
+                       "\n".join(f"   vertex {x:.9e} {y:.9e} {z:.9e}" for x, y, z in p) + "\n  endloop\n endfacet")
+        stl.append(f"endsolid {key}")
+    faces = _faces(case)
+    ends = [faces[k]["area"] for k, r in roles.items() if r in ("inlet", "outlet") and k in faces]
+    dh = min(_hyd_diameter(a) for a in ends)
+    h = dh / SNAPPY_ACROSS[case["mesh"]["size"]]
+    lo, hi = nodes.min(axis=0) - 2 * h, nodes.max(axis=0) + 2 * h
+    n = np.maximum(np.ceil((hi - lo) / h).astype(int), 1)
+    nu = units.to_si(case["materials"]["fluid"]["nu"])
+    re_in = inlet_reynolds(case) or 1e4
+    utau = re_in * nu / dh * math.sqrt(0.316 * re_in ** -0.25 / 8)      # Blasius estimate of the friction velocity
+    # the same wall layer on every mesh level (only the core is refined): a convergence study must not move the
+    # first cell between the buffer layer and the log layer
+    y1 = min(2 * WALL_YPLUS * nu / utau, 0.08 * dh)
+    tets = mesh["tets"][:, :4]
+    vol = np.abs(np.einsum("ij,ij->i", np.cross(nodes[tets[:, 1]] - nodes[tets[:, 0]], nodes[tets[:, 2]] - nodes[tets[:, 0]]),
+                           nodes[tets[:, 3]] - nodes[tets[:, 0]]))
+    inside = nodes[tets[int(np.argmax(vol))]].mean(axis=0)              # centre of the biggest tet: deep in the fluid
+    hdr = lambda cls, obj: HEADER.format(cls=cls, obj=obj, cid=case["case_id"], rev=case["revision"])
+    v = lambda p: f"({p[0]:.9g} {p[1]:.9g} {p[2]:.9g})"
+    X0, Y0, Z0 = lo; X1, Y1, Z1 = hi
+    verts = [(X0, Y0, Z0), (X1, Y0, Z0), (X1, Y1, Z0), (X0, Y1, Z0), (X0, Y0, Z1), (X1, Y0, Z1), (X1, Y1, Z1), (X0, Y1, Z1)]
+    names = " ".join(f"{k} {{ name {k}; }}" for k in case["boundaries"])
+    regions = "\n".join(f"        {k} {{ level (0 0); patchInfo {{ type {'wall' if roles[k] == 'wall' else 'patch'}; }} }}"
+                        for k in case["boundaries"])
+    layers = "\n".join(f"        {k} {{ nSurfaceLayers {WALL_LAYERS}; }}" for k in walls)
+    files = {
+        "constant/triSurface/fluid.stl": "\n".join(stl) + "\n",
+        "system/blockMeshDict": hdr("dictionary", "blockMeshDict") + "scale 1;\nvertices\n(\n" + "\n".join(
+            f"    {v(p)}" for p in verts) + f"\n);\nblocks\n(\n    hex (0 1 2 3 4 5 6 7) ({n[0]} {n[1]} {n[2]}) simpleGrading (1 1 1)\n);\n"
+            "boundary\n(\n    box { type patch; faces ((0 4 7 3) (1 2 6 5) (0 1 5 4) (3 7 6 2) (0 3 2 1) (4 5 6 7)); }\n);\n",
+        "system/surfaceFeatureExtractDict": hdr("dictionary", "surfaceFeatureExtractDict") +
+            "fluid.stl\n{\n    extractionMethod extractFromSurface;\n    extractFromSurfaceCoeffs { includedAngle 150; }\n"
+            "    writeObj no;\n}\n",
+        "system/meshQualityDict": hdr("dictionary", "meshQualityDict") + "#includeEtc \"caseDicts/meshQualityDict\"\n",
+        "system/snappyHexMeshDict": hdr("dictionary", "snappyHexMeshDict") + f"""
+castellatedMesh true; snap true; addLayers true;
+geometry {{ fluid.stl {{ type triSurfaceMesh; name fluid; regions {{ {names} }} }} }}
+castellatedMeshControls
+{{
+    maxLocalCells 3000000; maxGlobalCells 6000000; minRefinementCells 0; maxLoadUnbalance 0.1; nCellsBetweenLevels 2;
+    features ( {{ file "fluid.eMesh"; level 0; }} );
+    refinementSurfaces {{ fluid {{ level (0 0); regions {{
+{regions}
+    }} }} }}
+    resolveFeatureAngle 30; refinementRegions {{ }}
+    locationInMesh {v(inside)};
+    allowFreeStandingZoneFaces false;
+}}
+snapControls {{ nSmoothPatch 3; tolerance 2.0; nSolveIter 100; nRelaxIter 5; nFeatureSnapIter 10;
+               implicitFeatureSnap false; explicitFeatureSnap true; multiRegionFeatureSnap false; }}
+addLayersControls
+{{
+    relativeSizes false;
+    layers {{
+{layers}
+    }}
+    firstLayerThickness {y1:.6g}; expansionRatio 1.2; minThickness {0.3 * y1:.6g}; nGrow 0;
+    featureAngle 130; slipFeatureAngle 30; nRelaxIter 5; nSmoothSurfaceNormals 1; nSmoothNormals 3;
+    nSmoothThickness 10; maxFaceThicknessRatio 0.5; maxThicknessToMedialRatio 0.3; minMedialAxisAngle 90;
+    nBufferCellsNoExtrude 0; nLayerIter 50;
+}}
+meshQualityControls {{ #include "meshQualityDict" nSmoothScale 4; errorReduction 0.75; }}
+mergeTolerance 1e-6;
+"""}
+    return files, {"cell_size_m": h, "first_layer_m": y1, "layers": WALL_LAYERS}
+
+
 def run(case: dict, jd: Path, prog, proc) -> dict:
     """proc(argv, cwd, log, jd, env) -> returncode (external._proc)."""
     from scipy.spatial import cKDTree
@@ -212,14 +306,29 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
     env = openfoam_env(foam)
     exe = lambda n: str(Path(foam["bin"]) / f"{n}.exe")
     prog("job.meshing", 0.08)
-    if proc([exe("gmshToFoam"), "-case", str(wd), str(wd / "mesh.msh")], wd, wd / "log.gmshToFoam", jd, env) != 0:
-        raise RuntimeError("gmshToFoam failed: see log.gmshToFoam")
     walls = {k for k, b in case["boundaries"].items() if b.get("role") == "wall"}
-    set_wall_types(wd / "constant" / "polyMesh" / "boundary", walls)
-    # one polyhedron per tet node: far more accurate wall friction than raw tetrahedra (see compile_case)
-    if proc([exe("polyDualMesh"), "-case", str(wd), "-overwrite", str(DUAL_FEATURE_ANGLE)], wd, wd / "log.polyDualMesh",
-            jd, env) != 0:
-        raise RuntimeError("polyDualMesh failed: see log.polyDualMesh")
+    wall_mesh = None
+    if meta["turbulent"]:
+        # wall layers: the Gmsh mesh stays for display and probes, the solver gets a snappyHexMesh mesh
+        sfiles, wall_mesh = snappy_internal_files(case, mesh)
+        for rel, text in sfiles.items():
+            p = wd / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text, encoding="utf-8", newline="\n")
+        for step, frac in (("blockMesh", 0.09), ("surfaceFeatureExtract", 0.1), ("snappyHexMesh", 0.11)):
+            prog("job.meshing", frac)
+            args = [exe(step), "-case", str(wd)] + (["-overwrite"] if step == "snappyHexMesh" else [])
+            if proc(args, wd, wd / f"log.{step}", jd, env) != 0:
+                tail = (wd / f"log.{step}").read_text(errors="replace").strip().splitlines()[-3:]
+                raise RuntimeError(f"{step} failed: " + " | ".join(tail))
+    else:
+        if proc([exe("gmshToFoam"), "-case", str(wd), str(wd / "mesh.msh")], wd, wd / "log.gmshToFoam", jd, env) != 0:
+            raise RuntimeError("gmshToFoam failed: see log.gmshToFoam")
+        set_wall_types(wd / "constant" / "polyMesh" / "boundary", walls)
+        # one polyhedron per tet node: far more accurate wall friction than raw tetrahedra (see compile_case)
+        if proc([exe("polyDualMesh"), "-case", str(wd), "-overwrite", str(DUAL_FEATURE_ANGLE)], wd,
+                wd / "log.polyDualMesh", jd, env) != 0:
+            raise RuntimeError("polyDualMesh failed: see log.polyDualMesh")
     set_wall_types(wd / "constant" / "polyMesh" / "boundary", walls)
     prog("job.solving", 0.15)
     rc = proc([exe("simpleFoam"), "-case", str(wd)], wd, wd / "log.simpleFoam", jd, env)
@@ -228,6 +337,14 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
         raise RuntimeError("simpleFoam failed: " + " | ".join(tail))
     prog("job.post", 0.9)
     proc([exe("postProcess"), "-case", str(wd), "-func", "writeCellCentres", "-latestTime"], wd, wd / "log.post", jd, env)
+    if wall_mesh is not None:                         # wall functions hold for y+ about 30..300: report what we got
+        proc([exe("simpleFoam"), "-case", str(wd), "-postProcess", "-func", "yPlus", "-latestTime"], wd,
+             wd / "log.yPlus", jd, env)
+        yp = re.findall(r"y\+ : min = ([0-9.eE+-]+), max = ([0-9.eE+-]+), average = ([0-9.eE+-]+)",
+                        (wd / "log.yPlus").read_text(errors="replace"))
+        if yp:
+            wall_mesh["yplus_avg"] = float(np.mean([float(a) for _, _, a in yp]))
+            wall_mesh["yplus_min"] = float(min(float(a) for a, _, _ in yp))
     times = sorted((d for d in wd.iterdir() if d.is_dir() and re.fullmatch(r"[0-9.eE+-]+", d.name) and d.name != "0"),
                    key=lambda d: float(d.name))
     if not times:
@@ -273,7 +390,6 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
             n = outward_normals(nodes, np.asarray(mesh["tets"]), tri)
             un = np.einsum("ij,ij->i", nodal[tri[:, :3], :3].mean(axis=1), n)
             q_out += float((un * tri_areas(nodes, tri)).sum())
-    balance = abs(q_in - q_out) / q_in if q_in > 0 else 1.0
     face_flux = {}                                      # exact volume flow out through each open face (phi)
     if (last / "phi").is_file():
         for key, b in case["boundaries"].items():
@@ -281,12 +397,20 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
                 phi = _boundary_values(last / "phi", key, False)
                 if phi is not None and len(phi) > 1:
                     face_flux[key] = float(phi.sum())
+    q_in_solver = -sum(q for k, q in face_flux.items() if case["boundaries"][k].get("role") == "inlet")
+    if q_in_solver > 0:
+        # the solver's own inflow: a snappyHexMesh inlet is snapped to the surface, not the Gmsh triangles
+        q_in = q_in_solver
+    balance = abs(q_in - q_out) / q_in if q_in > 0 else 1.0
     np.savez_compressed(jd / "results.npz", U=nodal[:, :3], p=nodal[:, 3] * rho)
     speed = np.linalg.norm(nodal[:, :3], axis=1)
     metrics = {"re": meta["re_inlet"], "turbulent": meta["turbulent"], "flow_rate_m3s": q_in, "outflow_m3s": q_out,
                "mass_balance": balance, "dp_pa": (max(p_in) if p_in else 0.0), "max_speed": float(speed.max()),
                "iterations": iters, "residual": converged_res, "nodes": int(len(nodes)), "elements": int(len(tets)),
-               "map_max_dist": float(dist.max()), "face_flux_m3s": face_flux}
+               "map_max_dist": float(dist.max()), "face_flux_m3s": face_flux,
+               "solver_cells": len(C), "mesher": "snappyHexMesh+layers" if wall_mesh else "gmsh+polyDualMesh"}
+    if wall_mesh:
+        metrics["wall_mesh"] = wall_mesh
     converged = bool(converged_res < 1e-3 and balance < 0.02 and np.isfinite(speed).all())
     return {"kind": "flow3d", "metrics": metrics, "converged": converged,
             "converged_detail": {"residual": converged_res, "limit": 1e-3, "mass_balance": balance, "balance_limit": 0.02},

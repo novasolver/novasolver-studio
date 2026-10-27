@@ -114,6 +114,9 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     if r["kind"] == "structural" and m.get("peak_on_support") and m.get("max_vm_away_pa"):
         warnings.append({"code": "peak_on_support",
                          "message": t("result.peak_on_support", lang, vm=m["max_vm_pa"] / 1e6, away=m["max_vm_away_pa"] / 1e6)})
+    wm = m.get("wall_mesh") or {}
+    if r["kind"] == "flow3d" and wm.get("yplus_avg") is not None and not 20 <= wm["yplus_avg"] <= 300:
+        warnings.append({"code": "yplus", "message": t("result.yplus", lang, yp=wm["yplus_avg"])})
     if (r.get("convergence") or {}).get("refined") is False:
         n = [l["elements"] for l in r["convergence"]["levels"]]
         warnings.append({"code": "not_refined", "message": t("result.not_refined", lang, a=n[0], b=n[1], c=n[2])})
@@ -356,6 +359,7 @@ def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None) 
     cb.set_label(f"{f['label']} [{f['unit']}]")
     fig.suptitle(f"{title} - {f['label']}   min {f['range'][0]:.4g} / max {f['range'][1]:.4g} {f['unit']}{note}",
                  fontsize=10, x=0.02, ha="left", y=0.98)
+    fig.text(0.995, 0.01, "NovaSolver Studio · novasolver.jp/studio", ha="right", va="bottom", fontsize=7.5, color="0.45")
     buf = io.BytesIO()
     fig.savefig(buf, format="png")
     plt.close(fig)

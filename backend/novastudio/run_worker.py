@@ -389,7 +389,8 @@ def run_study(req: dict, jd: Path, prog) -> dict:
         else:
             res = fn(snap, sub, sp)
         name, val, unit = primary_quantity(snap, res)
-        n = res["metrics"].get("elements") or 1
+        # the cells the solver really used (snappyHexMesh for turbulent internal flow), else the Gmsh elements
+        n = res["metrics"].get("solver_cells") or res["metrics"].get("elements") or 1
         levels.append({"size": size, "elements": n, "h": n ** (-1 / 3), "value": val, "converged": res["converged"],
                        "peak_vm_pa": res["metrics"].get("max_vm_pa")})
         _write_json(sub / "results.json", res)
