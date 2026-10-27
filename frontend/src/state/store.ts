@@ -347,6 +347,12 @@ export async function createCase(template: string) {
 const LINK_PREFIXES = ["geometry.params.", "materials.", "boundaries.", "physics."];
 async function openFromLink() {
   const q = new URLSearchParams(location.search);
+  const caseId = q.get("case");
+  if (caseId && /^c_\d{8}_\d{6}_[0-9a-f]{4}$/.test(caseId)) {
+    history.replaceState(null, "", location.pathname);
+    await openCase(caseId);                 // a saved case with its results (recordings, tutorials)
+    return;
+  }
   const template = q.get("template");
   if (!template) return;
   history.replaceState(null, "", location.pathname);
