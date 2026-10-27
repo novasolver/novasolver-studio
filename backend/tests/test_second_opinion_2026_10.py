@@ -24,13 +24,19 @@ def _levels(values, h=(1.0, 0.5, 0.25)):
 def test_gci_drifting_sequence_is_not_settled():
     g = run_worker.gci(_levels([100, 101, 102]))
     assert not g["asymptotic"] and g["monotone"]
-    assert g["rel_change_pct"] > 0.1                      # run_study then refuses to pass it (settled = False)
+    assert g["rel_change_pct"] > 0.5                      # run_study then refuses to pass it (settled = False, tol/10)
 
 
 def test_gci_zero_final_value_keeps_the_change():
     g = run_worker.gci(_levels([1.0, 0.5, 0.0]))
-    assert g["rel_change_pct"] == pytest.approx(50.0)
+    assert g["rel_change_pct"] == pytest.approx(100.0)
     assert g["gci_pct"] > 5.0
+
+
+@pytest.mark.parametrize("values", [[100, 1, 0.5], [100, 1, 0]])
+def test_gci_large_coarse_value_does_not_dilute(values):
+    # second review 2026-10-28 #1: dividing by the coarse value made a 100 % change look like 0.04 %
+    assert run_worker.gci(_levels(values))["gci_pct"] > 5.0
 
 
 def test_gci_converging_sequence_still_passes():

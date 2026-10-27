@@ -528,6 +528,8 @@ let pendingCase: string | null = null;
 let pendingFlush = false;
 let flushTimer = 0;
 let inFlight: Promise<void> | null = null;
+/** edits taken off `pending` with their case, sent one batch at a time in order */
+const batches: { caseId: string; changes: Record<string, unknown> }[] = [];
 
 function applyOptimistic(p: CasePayload, path: string, value: unknown): CasePayload {
   const np: CasePayload = { ...p, case: { ...p.case }, ui: { ...p.ui } };
@@ -584,63 +586,66 @@ export function setFaceRole(faceKey: string, role: string) {
 }
 
 async function flush(): Promise<void> {
-  if (inFlight) await inFlight;
-  const changes = pending;
-  const caseId = pendingCase;
+  // take the queued edits off with their case right now: awaiting first would let the next case's edits join them
+  if (pendingCase && Object.keys(pending).length) batches.push({ caseId: pendingCase, changes: pending });
   pending = {};
   pendingCase = null;
-  if (!caseId || Object.keys(changes).length === 0) {
-    pendingFlush = false;
-    setState({ saving: false });
-    return;
+  if (!inFlight) {
+    inFlight = (async () => {
+      while (batches.length) await send(batches.shift()!);
+    })().finally(() => {
+      inFlight = null;
+    });
   }
-  const run = async () => {
-    // the revision of the case the edits were made in, also when another case is open by now
-    let rev = state.payload?.case.case_id === caseId ? state.payload.case.revision : (await api.getCase(caseId)).case.revision;
-    try {
-      let np: CasePayload;
-      try {
-        np = await api.patchCase(caseId, rev, changes);
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 409) {
-          log("warn", t("log.conflict"));
-          const b = e.body as { current_revision?: number; current?: number } | null;
-          rev = b?.current_revision ?? b?.current ?? (await api.getCase(caseId)).case.revision;
-          np = await api.patchCase(caseId, rev, changes);
-        } else throw e;
-      }
-      ownRevisions.add(np.case.revision);
-      if (state.payload?.case.case_id !== caseId) return;
-      // keep optimistic values for changes queued while this request was in flight
-      let merged = np;
-      if (pendingCase === caseId) for (const [k, v] of Object.entries(pending)) merged = applyOptimistic(merged, k, v);
-      setState({ payload: merged });
-      log("info", t("log.saved", { rev: np.case.revision }));
-      if (Object.keys(changes).some((k) => k.startsWith("geometry.") || k === "mesh.size" || k.endsWith(".role")))
-        void loadGeometry();
-      if (state.results) void loadResults(false);
-    } catch (e) {
-      const here = state.payload?.case.case_id === caseId;
-      if (e instanceof ApiError && e.status === 400) {
-        // validation error: show the (already localized) message next to the field
-        if (here) {
-          const fe = { ...state.fieldErrors };
-          for (const k of Object.keys(changes)) fe[k] = e.message;
-          setState({ fieldErrors: fe });
-        }
-        log("warn", `${Object.keys(changes).join(", ")}: ${e.message}`);
-      } else log("error", t("log.error", { message: errMsg(e) }));
-      if (here) await refreshCase(false);
-    }
-  };
-  inFlight = run();
   await inFlight;
-  inFlight = null;
+  if (batches.length) return flush();        // queued after the loop had already finished
   if (Object.keys(pending).length) {
+    window.clearTimeout(flushTimer);
     flushTimer = window.setTimeout(() => void flush(), 50);
   } else {
     pendingFlush = false;
     setState({ saving: false });
+  }
+}
+
+/** One batch: never throws, so a failed batch cannot block the ones after it (or later edits). */
+async function send({ caseId, changes }: { caseId: string; changes: Record<string, unknown> }): Promise<void> {
+  try {
+    // the revision of the case the edits were made in, also when another case is open by now
+    let rev = state.payload?.case.case_id === caseId ? state.payload.case.revision : (await api.getCase(caseId)).case.revision;
+    let np: CasePayload;
+    try {
+      np = await api.patchCase(caseId, rev, changes);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        log("warn", t("log.conflict"));
+        const b = e.body as { current_revision?: number; current?: number } | null;
+        rev = b?.current_revision ?? b?.current ?? (await api.getCase(caseId)).case.revision;
+        np = await api.patchCase(caseId, rev, changes);
+      } else throw e;
+    }
+    ownRevisions.add(np.case.revision);
+    if (state.payload?.case.case_id !== caseId) return;
+    // keep optimistic values for changes queued while this request was in flight
+    let merged = np;
+    if (pendingCase === caseId) for (const [k, v] of Object.entries(pending)) merged = applyOptimistic(merged, k, v);
+    setState({ payload: merged });
+    log("info", t("log.saved", { rev: np.case.revision }));
+    if (Object.keys(changes).some((k) => k.startsWith("geometry.") || k === "mesh.size" || k.endsWith(".role")))
+      void loadGeometry();
+    if (state.results) void loadResults(false);
+  } catch (e) {
+    const here = state.payload?.case.case_id === caseId;
+    if (e instanceof ApiError && e.status === 400) {
+      // validation error: show the (already localized) message next to the field
+      if (here) {
+        const fe = { ...state.fieldErrors };
+        for (const k of Object.keys(changes)) fe[k] = e.message;
+        setState({ fieldErrors: fe });
+      }
+      log("warn", `${Object.keys(changes).join(", ")}: ${e.message}`);
+    } else log("error", t("log.error", { message: errMsg(e) }));
+    if (here) await refreshCase(false).catch(() => undefined);
   }
 }
 

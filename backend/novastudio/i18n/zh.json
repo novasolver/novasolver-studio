@@ -191,6 +191,8 @@
   "qty.study.dp": "压力损失",
   "qty.study.cd": "阻力系数",
   "qty.study.umin_center": "中心线最小 u",
+  "qty.study.umax_outlet": "出口最大流速",
+  "qty.study.t_solid_rise": "固体温升",
   "card.cd": "阻力系数 Cd",
   "card.drag": "阻力",
   "card.cl": "升力系数 Cl",

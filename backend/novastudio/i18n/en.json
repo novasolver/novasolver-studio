@@ -191,6 +191,8 @@
   "qty.study.dp": "pressure drop",
   "qty.study.cd": "drag coefficient",
   "qty.study.umin_center": "min centreline u",
+  "qty.study.umax_outlet": "max outlet velocity",
+  "qty.study.t_solid_rise": "solid temperature rise",
   "card.cd": "Drag coefficient Cd",
   "card.drag": "Drag force",
   "card.cl": "Lift coefficient Cl",

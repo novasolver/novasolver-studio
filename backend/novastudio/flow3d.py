@@ -817,6 +817,14 @@ def conjugate_fields(case: dict, region: str, patches: dict[str, str]) -> dict[s
     return out
 
 
+def final_energy_residual(log: str) -> float:
+    """The last iteration solves the energy equation of every region in turn: the worst of them, not the last one
+    printed (a solid region that settles at 1e-6 must not hide water still at 0.2)."""
+    last = log.rsplit("\nTime = ", 1)[-1]
+    resid = [float(x) for x in re.findall(r"Solving for h, Initial residual = ([0-9.eE+-]+)", last)]
+    return max(resid) if resid else 1.0
+
+
 def run_conjugate(case: dict, jd: Path, prog, proc) -> dict:
     from scipy.spatial import cKDTree
     from .config import find_openfoam, openfoam_env
@@ -914,13 +922,12 @@ def run_conjugate(case: dict, jd: Path, prog, proc) -> dict:
     q_water = m_dot * cp * (t_outlet - t_in) if cp and t_in is not None else float("nan")
     solid_nodes = np.unique(tets[np.isin(tbody, [int(r[1:]) for r in regions if case["bodies"][r]["role"] == "solid"])])
     log = (wd / "log.cht").read_text(errors="replace")
-    resid = [float(x) for x in re.findall(r"Solving for h, Initial residual = ([0-9.eE+-]+)", log)]
+    final_res = final_energy_residual(log)
     # heat can also enter through a fixed-temperature or convection face: then there is no flux to balance against
     balance = abs(q_water - q_in) / q_in if q_in > 0 else None
     metrics = {"t_solid_max_k": float(nodal[solid_nodes, 0].max()), "t_outlet_k": t_outlet, "t_inlet_k": t_in,
                "q_in_w": q_in, "q_water_w": q_water, "heat_balance": balance, "mass_flow_kgs": m_dot,
-               "residual": resid[-1] if resid else 1.0, "nodes": int(len(nodes)), "elements": int(len(tets))}
-    final_res = resid[-1] if resid else 1.0
+               "residual": final_res, "nodes": int(len(nodes)), "elements": int(len(tets))}
     converged = bool(np.isfinite(t_outlet) and (balance < 0.05 if balance is not None else final_res < 1e-3))
     return {"kind": "conjugate", "metrics": metrics, "converged": converged,
             "converged_detail": {"heat_balance": balance, "limit": 0.05,

@@ -362,8 +362,10 @@ def gci(levels: list[dict], fs: float = 1.25) -> dict:
     else:
         p, fs = 2.0, 3.0                         # oscillatory or exact: conservative safety factor
     denom = r32 ** p - 1
-    # relative to the size of the quantity, not to f3 alone: a final value of 0 must not hide a large change
-    scale = max(abs(f1), abs(f2), abs(f3))
+    # relative to the fine answer (Roache): a coarse value must not dilute the change (100 -> 1 -> 0.5 is a 100 %
+    # change of the fine answer, not 0.5 %). A fine answer of exactly 0 falls back to the medium one, so that the
+    # change still counts; a quantity that is nearly 0 gets a large GCI and fails, which is the honest outcome
+    scale = abs(f3) if f3 != 0 else abs(f2)
     rel = abs(e32) / scale if scale > 0 else 0.0
     gci_fine = fs * rel / denom * 100 if denom > 0 else rel * 100
     f_ext = f3 + e32 / denom if denom > 0 else f3
@@ -408,8 +410,9 @@ def run_study(req: dict, jd: Path, prog) -> dict:
     # a study only means something if the mesh really got finer; identical meshes would "agree" perfectly
     refined = all(b["elements"] >= 1.3 * a["elements"] for a, b in zip(levels, levels[1:]))
     # a monotone sequence whose changes do not shrink (p < 1) is not converging, however small one step looks;
-    # it may only pass when the last change is already negligible
-    settled = g["asymptotic"] or not g["monotone"] or g["rel_change_pct"] <= 0.1
+    # it may only pass when the last change is already negligible: below a tenth of the tolerance it is remeshing
+    # noise (a curved ring converged at 0.07 % then 0.15 %), while a drift like 100 -> 101 -> 102 (1 %) still fails
+    settled = g["asymptotic"] or not g["monotone"] or g["rel_change_pct"] <= tol / 10
     passed = all(l["converged"] for l in levels) and g["gci_pct"] <= tol and refined and settled
     fine = json.loads((jd / "levels" / "fine" / "results.json").read_text(encoding="utf-8"))
     for f in ("results.npz", "mesh.npz"):
