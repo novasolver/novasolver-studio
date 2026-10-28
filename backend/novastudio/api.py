@@ -192,14 +192,31 @@ async def verify(case_id: str, lang: str = "ja"):
 
 
 @app.get("/api/cases/{case_id}/field")
-async def field(case_id: str, quantity: str = "", lang: str = "ja"):
-    return await call(C.field, case_id, quantity, lang)
+async def field(case_id: str, quantity: str = "", lang: str = "ja", mode: int = 1,
+                section: str | None = None):
+    try:
+        plane = json.loads(section) if section else None
+    except ValueError:
+        raise StudioError('err.path',400,path='section')
+    return await call(C.field, case_id, quantity, lang, mode, plane)
 
 
 @app.get("/api/cases/{case_id}/render.png")
-async def render(case_id: str, quantity: str = "", lang: str = "ja", view: str = 'iso', highlight: list[str] = Query(default=[])):
-    png, _ = await call(C.render_view, case_id, quantity, lang, view, highlight or None)
+async def render(case_id: str, quantity: str = "", lang: str = "ja", view: str = 'iso', highlight: list[str] = Query(default=[]), mode: int = 1):
+    png, _ = await call(C.render_view, case_id, quantity, lang, view, highlight or None, mode)
     return Response(png, media_type="image/png")
+
+
+@app.get('/api/cases/{case_id}/export')
+async def export(case_id: str, format: str = 'vtu', lang: str = 'ja'):
+    r = await call(C.export_results,case_id,format,lang)
+    media = {'vtu':'application/xml','csv':'text/csv','report':'text/html'}[format]
+    return FileResponse(r['path'],media_type=media,filename=r['filename'])
+
+
+@app.post('/api/cases/{case_id}/probe')
+async def probe(case_id: str, body: dict = Body(...), lang: str = 'ja'):
+    return await call(C.probe_results,case_id,points=body.get('points'),line=body.get('line'),lang=lang,mode=body.get('mode',1))
 
 
 # ------------------------------------------------------------------ live updates

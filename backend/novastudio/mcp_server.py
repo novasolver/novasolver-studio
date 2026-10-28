@@ -198,6 +198,11 @@ async def update_case(case_id: str, expected_revision: int, changes: dict[str, A
     Assemblies (STEP with several bodies, structural/thermal/electric): body_materials.<body> = a preset (steel, aluminium,
     concrete, insulation, glass, wood, fr4, silicon, ptfe, alumina, ...), body_props.<body>.k|E|nu|eps_r|sigma overrides one value.
     Set the role first (same call is fine); value fields must match the role.
+    Structural: physics.analysis=modal|static, physics.modes=1..30; materials.solid.alpha (1/K), rho;
+    physics.T_ref (degC), physics.thermal_load.mode=none|uniform|solve and .temperature; solve uses thermal face fields.
+    physics.gravity.enabled, .g (m/s2), .direction; physics.rotation.enabled, .rpm, .axis=x|y|z, .axis_point=[mm].
+    Roles moment (torque in N-m + direction), bearing (force + direction perpendicular to cylinder axis),
+    remote-force (force + direction + point={value:[x,y,z],unit:mm}); body_props.<body>.alpha|rho.
     Values with units: "5 mm", "2 kN", "70 GPa" or {"value": 5, "unit": "mm"}. Returns the diff and new readiness."""
     r, e = await _call(C.update_case, language, case_id, expected_revision, changes, language, source='ai')
     if e:
@@ -342,6 +347,8 @@ async def get_results(case_id: str, run_id: str | None = None, language: Lang = 
         return e
     s = f"{_gates_line(r['gates'])}{' (STALE: case changed since this run)' if r['stale'] else ''}\n"
     s += "\n".join(f"{c['label']}: {c['value']} {c['unit']}" for c in r["cards"])
+    for m in r.get('modes',[]):
+        s += f"\nMode {m['mode']}: {m['frequency_hz']:.6g} Hz; effective mass x/y/z {m['effective_mass']}"
     required = ("capacitance",) if r.get("kind") == "electrostatic" else ("resistance", "t_max") if r.get("kind") == "current" else ()
     for key in required:
         if not any(c["key"] == key for c in r["cards"]):
@@ -368,17 +375,27 @@ async def verify_case(case_id: str, language: Lang = "ja") -> CallToolResult:
 
 @mcp.tool(annotations=RO)
 async def render_view(case_id: str, quantity: str = "", language: Lang = "ja", view: Literal['iso', 'iso_back', 'top', 'bottom', 'front', 'back', 'left', 'right'] = 'iso',
-                      highlight: list[str] | None = None) -> CallToolResult:
+                      highlight: list[str] | None = None, mode: int = 1) -> CallToolResult:
     """PNG of a result field with colour bar and units. quantity: disp | vm | uz (structural), speed | ux | psi (CFD),
     v | emag (electrostatic), temp | v | jmag | q (DC current / Joule heating).
     Empty = default. Read numbers from get_results rather than from the picture.
-    quantity="faces" confirms the setup with the person: numbered faces by role, or highlight face keys in accent."""
+    quantity="faces" confirms the setup with the person: numbered faces by role, or highlight face keys in accent.
+    quantity="mode", mode=n renders modal shape n (one-based, max displacement normalised to 1)."""
     try:
-        png, meta = await anyio.to_thread.run_sync(lambda: C.render_view(case_id, quantity, language, view, highlight))
+        png, meta = await anyio.to_thread.run_sync(lambda: C.render_view(case_id, quantity, language, view, highlight, mode))
     except StudioError as e:
         return _err(e, language)
     return _ok(t('render.faces', language) if quantity == 'faces' else
                f"{meta['quantity']} range {meta['range'][0]:.4g} .. {meta['range'][1]:.4g} {meta['unit']}", meta, [png])
+
+
+@mcp.tool(annotations=WRITE)
+async def export_results(case_id: str, format: Literal['vtu','csv','report'], language: Lang = 'ja') -> CallToolResult:
+    """Export the latest results to the case's exports folder: VTU for ParaView (tet10 and all nodal fields),
+    CSV (nodal fields or modal frequencies), or a self-contained printable HTML report with images and verification gates.
+    Returns the file path."""
+    r,e = await _call(C.export_results,language,case_id,format,language)
+    return e or _ok(t('export.saved',language,path=r['path']),r)
 
 
 @mcp.tool(annotations=RO)

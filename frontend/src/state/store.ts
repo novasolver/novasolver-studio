@@ -13,6 +13,7 @@ import type {
   Template,
   UiFace,
   WsMessage,
+  SectionPlane,
 } from "../api/types";
 import { detectLang, pick, translate } from "../i18n";
 import type { ColormapName, Viewer, ViewName } from "../viewer";
@@ -66,6 +67,10 @@ export interface State {
   colormap: ColormapName;
   range: [number, number] | null; // user override; null = auto
   deformScale: number | null; // null = auto
+  selectedMode: number;
+  modeAnimation: boolean;
+  section: SectionPlane | null;
+  probeValue: { at: number[]; value: number; unit: string } | null;
   job: Job | null;
   stopping: boolean;
   saving: boolean;
@@ -122,6 +127,7 @@ let state: State = {
   colormap: "viridis",
   range: null,
   deformScale: null,
+  selectedMode: 1, modeAnimation: false, section: null, probeValue: null,
   job: null,
   stopping: false,
   saving: false,
@@ -500,6 +506,7 @@ function openPayload(p: CasePayload) {
     results: null,
     field: null,
     quantity: null,
+    selectedMode: 1, modeAnimation: false, section: null, probeValue: null,
     range: null,
     deformScale: null,
     job: running,
@@ -681,6 +688,17 @@ function applyOptimistic(p: CasePayload, path: string, value: unknown): CasePayl
     return np;
   }
   if (path === "physics.joule_heating") np.case.physics = { kind: p.case.physics?.kind ?? "dc-current", ...p.case.physics, joule_heating: Boolean(value) };
+  if (path.startsWith('physics.')) {
+    const physics = structuredClone(np.case.physics ?? { kind: 'linear-static' });
+    const parts = path.split('.').slice(1);
+    let parent = physics as Record<string, unknown>;
+    for (const key of parts.slice(0,-1)) {
+      if (!parent[key] || typeof parent[key] !== 'object') parent[key] = {};
+      parent = parent[key] as Record<string,unknown>;
+    }
+    parent[parts.at(-1)!] = value;
+    np.case.physics = physics;
+  }
   const fv = path.match(/^boundaries\.([^.]+)\.([^.]+)$/);
   if (fv && p.ui.faces.some((f) => f.key === fv[1])) {
     np.ui.faces = p.ui.faces.map((f) =>
@@ -989,6 +1007,7 @@ export async function loadResults(resetView: boolean, relabel = false) {
     if (state.payload?.case.case_id !== p.case.case_id) return;
     const q = r.quantities.find((x) => x.id === state.quantity) ?? r.quantities[0];
     const sameRun = state.results?.run_id && state.results.run_id === r.run_id;
+    if (r.modes && state.selectedMode > r.modes.length) setState({selectedMode:1});
     setState({ results: r, ...(r.stale ? {} : { resultsBeforeUndo: false }) });
     if (q && r.gates.ran && (!sameRun || !state.field || resetView || relabel))
       await loadField(q.id, resetView || state.quantity !== q.id);
@@ -1008,7 +1027,7 @@ export async function loadField(quantity: string, reset = true) {
   const gen = ++fieldGen;
   const stale = () => gen !== fieldGen || state.payload?.case.case_id !== p.case.case_id;
   try {
-    const f = await api.field(p.case.case_id, quantity);
+    const f = await api.field(p.case.case_id, quantity, state.selectedMode, state.section);
     if (stale()) return;
     const kind = state.results?.quantities.find((x) => x.id === quantity)?.kind;
     setState({
@@ -1022,6 +1041,17 @@ export async function loadField(quantity: string, reset = true) {
     setState({ quantity, field: null });
     log("error", t("log.error", { message: errMsg(e) }));
   }
+}
+
+export async function selectMode(mode: number) {
+  setState({ selectedMode: mode, probeValue: null });
+  await loadField('mode', false);
+}
+let sectionTimer = 0;
+export function setSection(section: SectionPlane | null) {
+  setState({ section, probeValue: null });
+  window.clearTimeout(sectionTimer);
+  sectionTimer = window.setTimeout(() => { if (state.quantity) void loadField(state.quantity, false); }, 160);
 }
 
 export function usingMock() {

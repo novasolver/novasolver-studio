@@ -3,6 +3,7 @@
 // quantity unchanged when the user switches the unit in an input.
 
 const FACTORS: Record<string, [dim: string, toSI: number]> = {
+  'N-m':['TORQUE',1], 'N-mm':['TORQUE',1e-3], '1/K':['ALPHA',1], 'm/s2':['ACC',1],
   // length
   m: ["L", 1],
   cm: ["L", 1e-2],
@@ -66,6 +67,7 @@ export function unitLabel(u: string | undefined | null): string {
   if (!u || u === "-") return "";
   const map: Record<string, string> = {
     degC: "°C",
+    'N-m':'N·m', 'N-mm':'N·mm', 'm/s2':'m/s²',
     "C/m2": "C/m²", "A/mm2": "A/mm²", "W/cm3": "W/cm³",
     ohm: "Ω", mohm: "mΩ", uF: "µF",
     "W/m2": "W/m²",

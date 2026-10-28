@@ -14,6 +14,7 @@ from .i18n import lang_of, t
 from .store import StudioError, case_dir
 
 QUANTITIES = {
+    'modal': [('mode', '-', 'sequential')],
     "electrostatic": [("v", "V", "sequential"), ("emag", "kV/mm", "sequential")],
     "current": [("temp", "°C", "sequential"), ("v", "V", "sequential"), ("jmag", "A/mm2", "sequential"), ("q", "W/cm3", "sequential")],
     "structural": [("vm", "MPa", "sequential"), ("disp", "mm", "sequential"), ("uz", "mm", "diverging")],   # stress first: what decides failure
@@ -64,7 +65,10 @@ def display_scale(unit, value):
 
 
 def quantities_for(r):
-    return [(q, u, k) for q, u, k in QUANTITIES[r["kind"]]
+    choices = QUANTITIES[r['kind']]
+    if r['kind'] == 'structural' and 't_max_k' in r['metrics']:
+        choices = choices + [('temp', '°C', 'sequential')]
+    return [(q, u, k) for q, u, k in choices
             if not (r["kind"] == "current" and q == "temp" and "t_max_k" not in r["metrics"])]
 
 
@@ -72,7 +76,9 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     jd, r = load(case["case_id"], run_id)
     m = r["metrics"]
     cards = []
-    if r["kind"] == "electrostatic":
+    if r['kind'] == 'modal':
+        cards = [_card('frequency', m['frequency_hz'], 'Hz', lang)]
+    elif r["kind"] == "electrostatic":
         if "capacitance_f" in m:
             scale, unit = display_scale("F", m["capacitance_f"])
             cards.append(_card("capacitance", m["capacitance_f"] * scale, unit, lang))
@@ -96,6 +102,11 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
         cards += [_card("max_vm", m["max_vm_pa"] / 1e6, "MPa", lang), _card("max_disp", m["max_disp_m"] * 1e3, "mm", lang)]
         if "reaction_n" in m:
             cards.append(_card("reaction", m["reaction_n"], "N", lang))
+        for key, prop, scale, unit in [('thermal_stress','thermal_stress_pa',1e-6,'MPa'),
+                ('elongation','elongation_m',1e3,'mm'), ('center_stress','center_stress_pa',1e-6,'MPa'),
+                ('twist','twist_rad',1,'rad'), ('shear','shear_pa',1e-6,'MPa')]:
+            if prop in m:
+                cards.insert(0, _card(key,m[prop]*scale,unit,lang))
     elif r["kind"] in ("cavity", "cavity_of"):
         cards = [_card("re", m["re"], "-", lang), _card("umin_center", m["umin_center"], "m/s", lang),
                  _card("max_speed", m["max_speed"], "m/s", lang)]
@@ -145,6 +156,8 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
                     "verified_detail": None if verification else t(ref["why_key"], lang) if ref.get("why_key") else ref.get("why")}
     quantities = [{"id": q, "label": t(f"qty.{q}", lang), "unit": u, "kind": k} for q, u, k in quantities_for(r)]
     warnings = []
+    if r.get('free_free'):
+        warnings.append({'code':'free_free', 'message':t('result.free_free',lang)})
     if m.get("air_e_max_v_m", 0) > 3e6:
         warnings.append({"code": "air_breakdown", "message": t("result.air_breakdown", lang, e=m["air_e_max_v_m"] / 1e6)})
     sy = (case["materials"].get("solid") or {}).get("sy")
@@ -168,7 +181,8 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     return {"run_id": jd.name, "kind": r["kind"], "warnings": warnings, "engine": r["engine"], "mode": r["mode"], "revision": r.get("revision"),
             "stale": r.get("revision") != case["revision"], "wall_s": r.get("wall_s"),
             "gates": gates, "gates_detail": gates_detail, "cards": cards, "verification": verification,
-            "quantities": quantities, "nova_tool": _nova_tool(case), "convergence": _conv_view(r.get("convergence"), lang)}
+            "quantities": quantities, "nova_tool": _nova_tool(case), "convergence": _conv_view(r.get("convergence"), lang),
+            **({'modes':r['modes'], 'free_free':r.get('free_free',False)} if r['kind'] == 'modal' else {})}
 
 
 def _conv_view(c, lang):
@@ -211,7 +225,7 @@ def _grid_surface(nx, ny, X, Y, z):
     return P, np.concatenate([np.stack([a, b, c], 1), np.stack([a, c, d], 1)])
 
 
-def field(case: dict, quantity: str, lang: str, run_id: str | None = None) -> dict:
+def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode: int = 1, section: dict | None = None) -> dict:
     jd, r = load(case["case_id"], run_id)
     data = np.load(jd / "results.npz")
     kind = r["kind"]
@@ -296,13 +310,21 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None) -> di
         P = mesh["nodes"][used]
         vals = {"temp": data["T"][used] - 273.15}
         idx = inv.reshape(-1, 3)
-    elif kind == "structural":
+    elif kind in ('structural', 'modal'):
         mesh = np.load(jd / "mesh.npz")
         tri = _surface_from_mesh(mesh)
         used, inv = np.unique(tri, return_inverse=True)
         P = mesh["nodes"][used]
-        U = data["u"][used]
-        vals = {"disp": np.linalg.norm(U, axis=1) * 1e3, "vm": data["vm"][used] / 1e6, "uz": U[:, 2] * 1e3}
+        if kind == 'modal':
+            if not 1 <= mode <= len(data['mode_shapes']):
+                raise StudioError('err.path',400,path=f'mode={mode}')
+            U = data['mode_shapes'][mode-1,used]
+            vals = {'mode':np.linalg.norm(U,axis=1)}
+        else:
+            U = data["u"][used]
+            vals = {"disp": np.linalg.norm(U, axis=1) * 1e3, "vm": data["vm"][used] / 1e6, "uz": U[:, 2] * 1e3}
+            if 'T' in data.files:
+                vals['temp'] = data['T'][used]-273.15
         disp = U
         idx = inv.reshape(-1, 3)
     elif kind == "cavity":
@@ -325,7 +347,10 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None) -> di
     if quantity not in vals:
         quantity = next(iter(vals))
     s = vals[quantity]
-    unit = dict((q, u) for q, u, _ in QUANTITIES[kind])[quantity]
+    unit = dict((q, u) for q, u, _ in quantities_for(r))[quantity]
+    if section is not None:
+        from .sections import section_field
+        P, idx, s, disp = section_field(jd, kind, quantity, mode, P, idx, s, disp, section)
     out = {"quantity": quantity, "label": t(f"qty.{quantity}", lang), "unit": unit,
            "positions": P.ravel().round(9).tolist(), "indices": idx.ravel().astype(int).tolist(),
            "scalars": np.asarray(s, float).round(9).tolist(), "range": [float(np.min(s)), float(np.max(s))]}
@@ -334,12 +359,16 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None) -> di
         bbox = float(np.ptp(P, axis=0).max())
         dmax = float(np.linalg.norm(disp, axis=1).max())
         out["auto_deform_scale"] = float(0.08 * bbox / dmax) if dmax > 0 else 1.0
+    if kind == 'modal':
+        out['mode'] = mode
+    if section is not None:
+        out['section'] = section
     return out
 
 
 # ---------------------------------------------------------------- PNG for the AI (and reports)
 
-def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None) -> tuple[bytes, dict]:
+def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None, mode: int = 1) -> tuple[bytes, dict]:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -353,12 +382,12 @@ def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None) 
             break
     from matplotlib import cm, colors
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-    f = field(case, quantity, lang, run_id)
+    f = field(case, quantity, lang, run_id, mode)
     P = np.array(f["positions"]).reshape(-1, 3)
     tri = np.array(f["indices"]).reshape(-1, 3)
     s = np.array(f["scalars"])
     lo, hi = f["range"]
-    diverging = f["quantity"] not in ("disp", "vm", "speed", "temp", "p", "v", "emag", "jmag", "q") or \
+    diverging = f["quantity"] not in ("disp", "vm", "speed", "temp", "p", "v", "emag", "jmag", "q", 'mode') or \
         (f["quantity"] == "p" and lo < -0.1 * abs(hi))          # suction and stagnation: show the sign
     if diverging:
         m = max(abs(lo), abs(hi), 1e-30)

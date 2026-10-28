@@ -74,6 +74,10 @@ def structural_loads(case: dict, m: dict):
         if b["role"] == "fixed":
             fixed.append(tri)
             continue
+        if b['role'] in ('moment', 'bearing', 'remote-force'):
+            from .structural import face_load
+            tractions.append((tri, face_load(case, face, nodes, tri, b)))
+            continue
         area = tri_areas(nodes, tri)
         if b["role"] == "load":
             F = units.to_si(b["force"])
@@ -81,7 +85,8 @@ def structural_loads(case: dict, m: dict):
             if d == "normal":
                 vec = -outward_normals(nodes, tets, tri)            # pushes into the face
             else:
-                vec = np.broadcast_to(np.array(DIR_VEC[d], float), (len(tri), 3))
+                from .structural import direction
+                vec = np.broadcast_to(direction(d), (len(tri), 3))
             tractions.append((tri, vec * F / area.sum()))
         elif b["role"] == "pressure":
             p = units.to_si(b["pressure"])
@@ -110,7 +115,7 @@ def symmetry_rollers(case: dict, m: dict) -> list[tuple[np.ndarray, int]]:
         if np.abs(n[:, axis]).min() < 0.9999:
             raise StudioError("err.symmetry_plane", 400, face=face)
         out.append((tri, axis))
-    if out and not any(b["role"] == "fixed" for b in case["boundaries"].values()) and len({a for _, a in out}) < 3:
+    if out and case.get('physics', {}).get('analysis') != 'modal' and not any(b["role"] == "fixed" for b in case["boundaries"].values()) and len({a for _, a in out}) < 3:
         raise StudioError("err.symmetry_rbm", 400)
     return out
 
@@ -141,15 +146,26 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     nodes, tets = m["nodes"], m["tets"]
     from .templates import element_prop
     E, nu = element_prop(case, m, "E"), element_prop(case, m, "nu")     # per element for multi-material assemblies
+    if case.get('physics', {}).get('analysis') == 'modal':
+        return run_modal(case, jd, prog, m)
     fixed, tractions = structural_loads(case, m)
+    from .structural import acceleration, temperatures
+    T = temperatures(case, m, lambda k, f: prog(k, f))
     r = fem_tet10.solve(nodes, tets, E, nu, fixed, tractions, progress=lambda k, f: prog(k, f),
-                        rollers=symmetry_rollers(case, m))
+                        rollers=symmetry_rollers(case, m), rho=element_prop(case, m, 'rho'), acceleration=acceleration(case),
+                        alpha=element_prop(case, m, 'alpha'), temperature=T,
+                        T_ref=units.to_si(case['physics'].get('T_ref', {'value': 20, 'unit': 'degC'})))
     U = r["u"]
     umag = np.linalg.norm(U, axis=1)
-    np.savez_compressed(jd / "results.npz", u=U, vm=r["vm"], s=r["s"])
+    np.savez_compressed(jd / "results.npz", u=U, vm=r["vm"], s=r["s"], reaction=r['nodal_reaction'],
+                        **({'T': T} if T is not None else {}))
     metrics = {"max_vm_pa": float(r["vm"].max()), "max_disp_m": float(umag.max()),
                "reaction_n": float(np.linalg.norm(r["reaction"])), "applied_n": float(np.linalg.norm(r["applied"])),
                "imbalance": r["imbalance"], "nodes": int(len(nodes)), "elements": int(len(tets))}
+    metrics.update(applied_force_n=r['applied'].tolist(), reaction_force_n=r['reaction'].tolist(),
+                   applied_moment_nm=r['applied_moment'].tolist(), reaction_moment_nm=r['reaction_moment'].tolist())
+    if T is not None:
+        metrics.update(t_min_k=float(T.min()), t_max_k=float(T.max()))
     metrics.update(support_peak(nodes, fixed, r["vm"]))
     if case["template"] == "cantilever":
         metrics["tip_disp_m"] = float(-U[np.unique(m["face_x1"]), 2].mean())
@@ -157,10 +173,26 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     elif case["template"] == "plate-hole":
         ref = reference_plate_hole(case, m["nodes"], r["vm"], metrics)
     else:
-        ref = {"applicable": False, "why": "no analytic reference for this shape; compare a 'fine' mesh run to check convergence"}
+        from .structural import reference
+        ref = reference(case, m, r, metrics)
     converged = bool(r["imbalance"] < 5e-3 and np.isfinite(umag).all())
     return {"kind": "structural", "metrics": metrics, "converged": converged,
             "converged_detail": {"imbalance": r["imbalance"], "limit": 5e-3}, "reference": ref}
+
+
+def run_modal(case, jd, prog, m):
+    from .fem_tet10 import solve_modal
+    from .templates import element_prop
+    fixed = [m['face_'+f] for f,b in case['boundaries'].items() if b['role'] == 'fixed']
+    r = solve_modal(m['nodes'], m['tets'], element_prop(case,m,'E'), element_prop(case,m,'nu'),
+                    element_prop(case,m,'rho'), fixed, symmetry_rollers(case,m),
+                    int(case['physics'].get('modes',6)), lambda k,f: prog(k,f))
+    np.savez_compressed(jd/'results.npz', phi=r['phi'], mode_shapes=r['mode_shapes'])
+    metrics = {'frequency_hz': r['modes'][0]['frequency_hz'], 'nodes': len(m['nodes']), 'elements': len(m['tets'])}
+    from .structural import modal_reference
+    return {'kind': 'modal', 'modes': r['modes'], 'free_free': r['free_free'], 'metrics': metrics,
+            'converged': r['converged'], 'converged_detail': {'eigen_residual': r['residual'], 'limit': 1e-5},
+            'reference': modal_reference(case, r['modes'])}
 
 
 def thermal_groups(case: dict, m: dict, nested=False):
@@ -484,6 +516,8 @@ def primary_quantity(case: dict, res: dict) -> tuple[str, float, str]:
         return ("power", m["power_w"], "W")
     if k == "structural":
         return ("max_disp", m["max_disp_m"], "m")
+    if k == 'modal':
+        return ('frequency', m['frequency_hz'], 'Hz')
     if k == "thermal":
         n_fixed = sum(1 for b in case["boundaries"].values() if b.get("role") == "temperature")
         if n_fixed >= 2:

@@ -44,6 +44,10 @@ def main() -> None:
     s.add_argument("--port", type=int, default=8765)
     sub.add_parser("mcp", help="run the MCP server on stdio")
     sub.add_parser("env", help="print available engines")
+    export = sub.add_parser('export-results',help='export VTU, CSV or a printable HTML report')
+    export.add_argument('case_id')
+    export.add_argument('format',choices=('vtu','csv','report'))
+    export.add_argument('--lang',choices=('ja','en','zh'),default='ja')
     a = ap.parse_args(argv)
     if a.cmd == "mcp":
         from .mcp_server import main as mcp_main
@@ -51,6 +55,9 @@ def main() -> None:
     elif a.cmd == "env":
         from .commands import environment_check
         print(json.dumps(environment_check("en"), indent=1, ensure_ascii=False))
+    elif a.cmd == 'export-results':
+        from .commands import export_results
+        print(json.dumps(export_results(a.case_id,a.format,a.lang),ensure_ascii=False))
     else:
         import threading
         import webbrowser

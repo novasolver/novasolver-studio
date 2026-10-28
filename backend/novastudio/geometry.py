@@ -23,6 +23,9 @@ def dims(case: dict) -> list[float]:
         return [units.to_si(p["length"]), units.to_si(p["width"]), units.to_si(p["thickness"])]
     if kind == "tube":
         return [2 * units.to_si(p["b"]), 2 * units.to_si(p["b"]), units.to_si(p["length"])]
+    if kind in ('shaft', 'quarter_disk'):
+        r = units.to_si(p['radius'])
+        return [r*(2 if kind == 'shaft' else 1)]*2 + [units.to_si(p['height'])]
     if kind == "box2d":
         s = units.to_si(p["size"])
         return [s, s, 0.12 * s]
@@ -82,6 +85,8 @@ def worker_job(case: dict, **kw) -> dict:
     if case["geometry"]["kind"] == "tube":
         job["a"] = units.to_si(case["geometry"]["params"]["a"])
         job["b"] = units.to_si(case["geometry"]["params"]["b"])
+    if case['geometry']['kind'] in ('shaft', 'quarter_disk'):
+        job['radius'] = units.to_si(case['geometry']['params']['radius'])
     job.update(kw)
     return job
 
@@ -143,7 +148,7 @@ def mesh_dir(case: dict) -> Path:
     return Path(case["_mesh_dir"]) if case.get("_mesh_dir") else case_dir(case["case_id"]) / "mesh"
 
 
-LOAD_ROLES = ("load", "pressure")
+LOAD_ROLES = ("load", "pressure", 'moment', 'bearing', 'remote-force')
 # elements across the thinnest wall of an imported solid: bending needs more than conduction; the three sizes keep a
 # clear ratio (about 2, then 1.6) so the convergence study sees the trend; small ratios make the GCI inconclusive
 THIN_THROUGH = {"import-structural": 2.0, "import-thermal": 1.2, "import-electrostatic": 1.2, "import-current": 1.2}

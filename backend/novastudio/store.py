@@ -144,6 +144,11 @@ def editable_paths(case: dict) -> list[str]:
     tp = templates.get(case["template"])
     paths = [p for p, *_ in tp["params"]]
     paths += ["mesh.size", "run.mode"]
+    if tp['physics'] == 'structural':
+        paths += ['physics.analysis', 'physics.modes', 'physics.T_ref', 'physics.thermal_load',
+                  'physics.thermal_load.mode', 'physics.thermal_load.temperature', 'physics.gravity.enabled',
+                  'physics.gravity.g', 'physics.gravity.direction', 'physics.rotation.enabled', 'physics.rotation.rpm',
+                  'physics.rotation.axis', 'physics.rotation.axis_point']
     if case["physics"]["kind"] == "dc-current":
         paths.append("physics.joule_heating")
     if "flow" in case:
@@ -155,7 +160,7 @@ def editable_paths(case: dict) -> list[str]:
     mats = case["materials"]
     if "solid" in mats:
         paths += ["materials.solid.preset", "materials.solid.E", "materials.solid.nu", "materials.solid.sy",
-                  "materials.solid.k", "materials.solid.eps_r", "materials.solid.sigma"]
+                  "materials.solid.k", "materials.solid.eps_r", "materials.solid.sigma", 'materials.solid.rho', 'materials.solid.alpha']
     if "fluid" in mats:
         paths += ["materials.fluid.preset", "materials.fluid.nu"]
     for face in templates.face_keys(case):
@@ -163,7 +168,7 @@ def editable_paths(case: dict) -> list[str]:
             continue
         paths.append(f"boundaries.{face}.role")
         paths += [f"boundaries.{face}.{k}" for k in templates.VALUE_FIELDS]
-        if case["physics"]["kind"] == "dc-current":
+        if case["physics"]["kind"] == "dc-current" or tp['physics'] == 'structural':
             paths += [f"boundaries.{face}.thermal.role"]
             paths += [f"boundaries.{face}.thermal.{k}" for r in templates.THERMAL_ROLES for k in templates.ROLE_FIELDS.get(r, {})]
         if tp.get("import") and case["mesh"].get("method") == "gmsh":
@@ -172,6 +177,9 @@ def editable_paths(case: dict) -> list[str]:
 
 
 ENUMS = {
+    'physics.analysis': ['static', 'linear-static', 'modal'],
+    'physics.thermal_load.mode': ['none', 'uniform', 'solve'],
+    'physics.rotation.axis': ['x', 'y', 'z'],
     "mesh.size": ["coarse", "normal", "fine"],
     "run.mode": ["preview", "final"],
     "flow.direction": ["+x", "-x", "+y", "-y", "+z", "-z"],
@@ -226,7 +234,28 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             parent = parent.setdefault(p, {})
         key = parts[-1]
         old = parent.get(key)
-        if path == "physics.joule_heating":
+        if path == 'physics.thermal_load':
+            if isinstance(value, str):
+                value = {'mode': value}
+            if not isinstance(value, dict) or value.get('mode') not in ('none', 'uniform', 'solve') or set(value)-{'mode', 'temperature'}:
+                raise StudioError('err.path', 400, path=path)
+            nv = dict(value)
+            if 'temperature' in nv:
+                try:
+                    nv['temperature'] = units.normalize(nv['temperature'], {'value': 120, 'unit': 'degC'})
+                    if not math.isfinite(units.to_si(nv['temperature'])):
+                        raise ValueError('nonfinite temperature')
+                except (units.UnitError, TypeError, ValueError):
+                    raise StudioError('err.path', 400, path=path)
+        elif path in ('physics.modes', 'physics.rotation.rpm'):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < (1 if path.endswith('modes') else 0) or (path.endswith('modes') and (int(value) != value or value > 30)):
+                raise StudioError('err.path', 400, path=path)
+            nv = int(value) if path.endswith('modes') else float(value)
+        elif path == 'physics.rotation.axis_point':
+            if not isinstance(value, list) or len(value) != 3 or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in value):
+                raise StudioError('err.path', 400, path=path)
+            nv = value
+        elif path == "physics.joule_heating" or path.endswith('.enabled'):
             if not isinstance(value, bool):
                 raise StudioError("err.path", 400, path=path)
             nv = value
@@ -266,7 +295,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 si = units.to_si(nv)
             except (units.UnitError, TypeError, ValueError) as e:
                 raise StudioError("err.unit", 400, msg=str(e))
-            if not (not isinstance(si, list) and math.isfinite(si) and si > 0 and
+            if not (not isinstance(si, list) and math.isfinite(si) and (si >= 0 if key == 'alpha' else si > 0) and
                     (key != "nu" or si < 0.5) and (key != "eps_r" or si >= 1)):
                 raise StudioError("err.range", 400, path=path, lo="1" if key == "eps_r" else "0", hi="0.5" if key == "nu" else "-")
         elif parts[:2] == ["mesh", "refine"]:
@@ -288,7 +317,9 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 raise StudioError("err.path", 400, path=f"{path}={value} (one or more of x, y, z, e.g. \"xy\")")
             nv = "".join(c for c in "xyz" if c in value)
         elif key == "direction":
-            if value not in templates.DIRECTIONS:
+            vector = isinstance(value, list) and len(value) == 3 and all(isinstance(v, (int, float)) and math.isfinite(v) for v in value) and sum(v*v for v in value) > 0
+            if not vector and (not isinstance(value, str) or value not in templates.DIRECTIONS or
+                               (value == 'normal' and (parts[0] == 'physics' or parent.get('role') in ('moment', 'bearing', 'remote-force')))):
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(templates.DIRECTIONS)})")
             nv = value
         elif key == "preset":
@@ -310,6 +341,13 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 si = units.to_si(nv)
             except (units.UnitError, TypeError, ValueError) as e:
                 raise StudioError("err.unit", 400, msg=str(e))
+            if isinstance(si, list):
+                if key != 'point' or len(si) != 3 or not all(math.isfinite(v) for v in si):
+                    raise StudioError('err.path', 400, path=path)
+            elif not math.isfinite(si):
+                raise StudioError('err.path', 400, path=path)
+            if path == 'physics.gravity.g' and si < 0:
+                raise StudioError('err.range', 400, path=path, lo='0', hi='-')
             bounds = templates.bounds_si(case["template"]).get(path)
             if bounds and not isinstance(si, list):
                 lo, hi = bounds
@@ -322,7 +360,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             if path.startswith("materials.") and not isinstance(si, list):
                 # physical range for every template (a negative modulus solves "fine" and mirrors the answer)
                 poisson = parts[1] == "solid" and key == "nu"
-                ok = math.isfinite(si) and ((0 <= si < 0.5) if poisson else si >= 1 if key == "eps_r" else si > 0)
+                ok = math.isfinite(si) and ((0 <= si < 0.5) if poisson else si >= 1 if key == "eps_r" else si >= 0 if key == 'alpha' else si > 0)
                 if not ok:
                     raise StudioError("err.range", 400, path=path, lo="1" if key == "eps_r" else "0", hi="0.5" if poisson else "-")
             if path.startswith("materials.") and parts[1] in new["materials"]:
@@ -388,7 +426,7 @@ def normalize_conjugate(case: dict) -> None:
 def normalize_boundaries(case: dict) -> None:
     """Each face carries exactly the value fields its role needs (defaults filled in, others dropped)."""
     for face, b in case["boundaries"].items():
-        thermal = b.get("thermal", {"role": "insulated"}) if case["physics"]["kind"] == "dc-current" else None
+        thermal = b.get("thermal", {"role": "insulated"}) if case["physics"]["kind"] == "dc-current" or templates.get(case['template'])['physics'] == 'structural' else None
         want = templates.ROLE_FIELDS.get(b.get("role"), {})
         for k in list(b):
             if k != "role" and k not in want:
@@ -403,6 +441,14 @@ def normalize_boundaries(case: dict) -> None:
 
 
 def _default_quantity(path: str) -> dict:
+    if path == 'physics.T_ref' or path == 'physics.thermal_load.temperature':
+        return {'value': 20, 'unit': 'degC'}
+    if path == 'physics.gravity.g':
+        return {'value': 9.81, 'unit': 'm/s2'}
+    if path.endswith('.alpha'):
+        return {'value': 12e-6, 'unit': '1/K'}
+    if path.endswith('.rho'):
+        return {'value': 7850, 'unit': 'kg/m3'}
     key = path.rsplit(".", 1)[-1]
     for fields in templates.ROLE_FIELDS.values():
         if key in fields and isinstance(fields[key], dict):

@@ -38,7 +38,10 @@ export interface CaseSchema {
   template: string;
   engine?: { kind: string; version?: string };
   geometry?: { kind: string; params?: Record<string, Quantity> };
-  physics?: { kind: string; joule_heating?: boolean };
+  physics?: { kind: string; joule_heating?: boolean; analysis?: string; modes?: number;
+    T_ref?: Quantity; thermal_load?: { mode: string; temperature?: Quantity };
+    gravity?: { enabled?: boolean; g?: Quantity; direction?: string };
+    rotation?: { enabled?: boolean; rpm?: number; axis?: string; axis_point?: number[] } };
   materials?: Record<string, { preset?: string; [k: string]: unknown }>;
   boundaries?: Record<string, { role: string; [k: string]: unknown }>;
   mesh?: { method?: string; size?: string; order?: number };
@@ -76,12 +79,13 @@ export interface UiFace {
   locked?: boolean;
   value?: { value: number; unit: string } | null;
   /** per-field values for the current role, e.g. {force:{value,unit}, direction:"-z"} */
-  values?: Record<string, { value: number; unit: string } | string>;
+  values?: Record<string, Quantity | string>;
   thermal?: { role: string; [key: string]: { value: number; unit: string } | string } | null;
   area_m2?: number | null;
 }
 
 export interface FaceDescriptor {
+  centroid?: number[];
   key: string;
   name?: string;
   /** face colour from the CAD file, "#rrggbb" */
@@ -228,6 +232,8 @@ export interface ResultQuantity {
 }
 
 export interface ResultsPayload {
+  modes?: { mode: number; frequency_hz: number; effective_mass: number[] }[];
+  free_free?: boolean;
   kind?: string;
   run_id?: string;
   engine?: string;
@@ -248,6 +254,8 @@ export interface ResultsPayload {
 }
 
 export interface FieldPayload {
+  mode?: number;
+  section?: SectionPlane;
   quantity?: string;
   positions: number[];
   indices: number[];
@@ -258,6 +266,9 @@ export interface FieldPayload {
   unit: string;
   label: string;
 }
+
+export interface SectionPlane { normal: number[]; position: number }
+export interface ProbeLine { quantities: Record<string,string>; line: { samples: { at_mm: number[]; distance_mm?: number; inside: boolean; values: Record<string,number> }[]; from_mm: number[]; to_mm: number[] } }
 
 export interface RunResponse {
   job_id: string;

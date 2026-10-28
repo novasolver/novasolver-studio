@@ -1,5 +1,13 @@
 # NovaSolver Studio
 
+Studio 0.5 adds structural modal analysis, uniform or solved-temperature thermal stress, gravity and centrifugal
+loads, and moment, bearing and remote-force face conditions. Six examples compare the computed answer with a
+closed-form reference: `cantilever-modal`, `thermal-bar-fixed`, `thermal-bar-free`, `hanging-bar`, `rotating-disk`
+and `shaft-torsion`. Structural studies track maximum displacement; modal studies track the first elastic frequency.
+Results include section caps, click probing, mode animation and a line chart with CSV download. The results Export
+menu and MCP `export_results` tool write ParaView VTU, CSV or a self-contained printable HTML report into the case's
+`exports` folder. From the CLI: `python -m novastudio export-results CASE_ID vtu` (also `csv` or `report`).
+
 **Open-source engineering simulation you can trust — structural, thermal and flow — operable by you or by your AI assistant.**
 **構造・熱・流れを解く、オープンソースの解析ソフト。画面からも、AI アシスタント（MCP）からも操作できます。**
 

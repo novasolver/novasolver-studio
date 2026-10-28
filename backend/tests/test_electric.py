@@ -226,7 +226,7 @@ def test_09_mcp_import_and_tool_count(tmp_path, physics):
     assert c["template"] == f"import-{physics}" and len(c["body_materials"]) == 2
     assert all(b["role"] == ("open" if physics == "electrostatic" else "insulated") for b in c["boundaries"].values())
     assert M.INSTRUCTIONS.count("Joule") >= 1
-    assert Path(M.__file__).read_text(encoding="utf-8").count("@mcp.tool(") == 23
+    assert Path(M.__file__).read_text(encoding="utf-8").count("@mcp.tool(") == 24
     for prop, val in (("eps_r", 0.5), ("sigma", -1), ("sigma", float("inf"))):
         body = next(iter(c["body_materials"]))
         with pytest.raises(StudioError):

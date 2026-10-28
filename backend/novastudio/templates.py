@@ -56,11 +56,15 @@ for _name, _E, _nu, _rho, _k, _eps, _sigma in [
                              (("E", _E, "GPa"), ("nu", _nu, "-"), ("rho", _rho, "kg/m3"),
                               ("k", _k, "W/mK"), ("eps_r", _eps, "-"), ("sigma", _sigma, "S/m"))}
 for _name, _mat in MATERIALS_SOLID.items():
+    _mat['alpha'] = {'value': {'steel': 12e-6, 'aluminium': 23e-6, 'titanium': 8.6e-6, 'copper': 17e-6,
+        'alloy_steel': 12e-6, 'pla': 68e-6, 'petg': 60e-6, 'abs': 90e-6, 'concrete': 10e-6,
+        'glass': 9e-6, 'fr4': 14e-6, 'silicon': 2.6e-6, 'wood': 5e-6, 'insulation': 0,
+        'ptfe': 100e-6, 'alumina': 8e-6, 'epoxy': 50e-6}.get(_name, 0), 'unit': '1/K'}
     _mat.setdefault("eps_r", {"value": {"pla": 3, "petg": 3.2, "abs": 2.8, "concrete": 5,
                                       "insulation": 1.05, "wood": 2, "glass": 5, "fr4": 4.4, "silicon": 11.7}.get(_name, 1), "unit": "-"})
     _mat.setdefault("sigma", {"value": {"copper": 5.96e7, "aluminium": 3.77e7, "steel": 6.99e6,
                                       "alloy_steel": 4e6, "titanium": 2.38e6, "silicon": 4.3e-4}.get(_name, 1e-12), "unit": "S/m"})
-BODY_PROPS = {"k": "W/mK", "E": "GPa", "nu": "-", "eps_r": "-", "sigma": "S/m"}
+BODY_PROPS = {"k": "W/mK", "E": "GPa", "nu": "-", "eps_r": "-", "sigma": "S/m", "rho": "kg/m3", "alpha": "1/K"}
 
 
 def solid_props(case: dict, body: str | None = None) -> dict:
@@ -68,6 +72,7 @@ def solid_props(case: dict, body: str | None = None) -> dict:
     single solid material."""
     from . import units
     mat = case["materials"]["solid"]
+    mat = {**MATERIALS_SOLID.get(mat.get('preset'), MATERIALS_SOLID['steel']), **mat}
     if body is not None and body in case.get("body_materials", {}):
         mat = {**MATERIALS_SOLID[case["body_materials"][body]], **case.get("body_props", {}).get(body, {})}
     return {p: units.to_si(mat[p]) for p in BODY_PROPS if p in mat}
@@ -108,7 +113,7 @@ MATERIALS_FLUID = {
     "air": {"nu": {"value": 1.5e-5, "unit": "m2/s"}, "rho": {"value": 1.2, "unit": "kg/m3"}},
 }
 
-STRUCT_ROLES = ["free", "fixed", "symmetry", "constraint", "load", "pressure"]
+STRUCT_ROLES = ["free", "fixed", "symmetry", "constraint", "load", "pressure", "moment", "bearing", "remote-force"]
 FLOW_ROLES = ["wall", "moving-wall", "inlet", "outlet", "plane2d"]
 THERMAL_ROLES = ["insulated", "temperature", "heat-flux", "convection"]
 ELECTROSTATIC_ROLES = ["open", "voltage", "surface-charge"]
@@ -117,6 +122,9 @@ DIRECTIONS = ["-z", "+z", "-y", "+y", "-x", "+x", "normal"]   # load direction; 
 
 # value fields each role carries (path suffix -> default quantity)
 ROLE_FIELDS = {
+    'moment': {'torque': {'value': 100, 'unit': 'N-m'}, 'direction': '+z', 'point': {'value': [0, 0, 0], 'unit': 'mm'}},
+    'bearing': {'force': {'value': 100, 'unit': 'N'}, 'direction': '+x'},
+    'remote-force': {'force': {'value': 100, 'unit': 'N'}, 'direction': '-z', 'point': {'value': [0, 0, 0], 'unit': 'mm'}},
     "voltage": {"voltage": {"value": 0, "unit": "V"}},
     "surface-charge": {"charge": {"value": 1e-6, "unit": "C/m2"}},
     "current": {"current": {"value": 1, "unit": "A"}},
@@ -470,6 +478,52 @@ for _id, _kind, _mat, _fields in [("electrostatic", "electrostatic", "ptfe", [_e
     TEMPLATES[f"import-{_id}"] = _tp
 
 
+
+def _structural_template(tid, geometry, physics, boundaries, quantity, fields):
+    return {'physics': 'structural', 'analysis': 'linear-static',
+            'engines': ['builtin-fem', 'calculix'], 'default_engine': 'builtin-fem',
+            'roles': STRUCT_ROLES, 'faces': list(boundaries),
+            'face_labels': {f: 'face.'+f for f in boundaries}, 'locked_faces': [],
+            'case': {'geometry': geometry, 'physics': {'kind': 'linear-static', **physics},
+                     'materials': {'solid': {'preset': 'steel', **copy.deepcopy(MATERIALS_SOLID['steel'])}},
+                     'boundaries': boundaries, 'mesh': {'method': 'gmsh', 'size': 'normal', 'order': 2},
+                     'reference': {'kind': 'analytic', 'id': tid, 'quantity': quantity, 'tolerance_pct': 2.}},
+            'params': fields}
+
+
+def _box(l, w, h):
+    return {'kind': 'box', 'params': {k: {'value': v, 'unit': 'mm'} for k,v in zip(('length','width','height'), (l,w,h))}}
+
+
+_free = {f: {'role': 'free'} for f in FACE_KEYS}
+TEMPLATES['cantilever-modal'] = _structural_template('cantilever-modal', _box(200,10,10),
+    {'analysis': 'modal', 'modes': 6}, {**copy.deepcopy(_free), 'x0': {'role': 'fixed'}}, 'frequency', _box_fields)
+for _tid in ('thermal-bar-fixed', 'thermal-bar-free'):
+    _b = {**copy.deepcopy(_free), 'x0': {'role': 'constraint', 'components': 'x'},
+          'y0': {'role': 'symmetry'}, 'z0': {'role': 'symmetry'}}
+    if _tid.endswith('fixed'):
+        _b['x1'] = {'role': 'constraint', 'components': 'x'}
+    TEMPLATES[_tid] = _structural_template(_tid, _box(100,10,10),
+        {'thermal_load': {'mode': 'uniform', 'temperature': {'value': 120, 'unit': 'degC'}},
+         'T_ref': {'value': 20, 'unit': 'degC'}}, _b, 'thermal_stress' if _tid.endswith('fixed') else 'elongation', _box_fields)
+TEMPLATES['thermal-bar-free']['case']['reference']['tolerance_pct'] = 1.
+TEMPLATES['hanging-bar'] = _structural_template('hanging-bar', _box(20,20,1000),
+    {'gravity': {'enabled': True, 'g': {'value': 9.81, 'unit': 'm/s2'}, 'direction': '-z'}},
+    {**copy.deepcopy(_free), 'z1': {'role': 'constraint', 'components': 'z'},
+     'x0': {'role': 'symmetry'}, 'y0': {'role': 'symmetry'}}, 'tip_disp', _box_fields)
+TEMPLATES['rotating-disk'] = _structural_template('rotating-disk',
+    {'kind': 'quarter_disk', 'params': {'radius': {'value': 100, 'unit': 'mm'}, 'height': {'value': 2.5, 'unit': 'mm'}}},
+    {'rotation': {'enabled': True, 'rpm': 10000., 'axis': 'z', 'axis_point': [0,0,0]}},
+    {'x0': {'role': 'symmetry'}, 'y0': {'role': 'symmetry'}, 'z0': {'role': 'symmetry'},
+     'z1': {'role': 'free'}, 'outer': {'role': 'free'}}, 'center_stress',
+    [('geometry.params.radius', 'param.radius', 'length', 1, 5000), ('geometry.params.height', 'param.height', 'length', .1, 50)])
+TEMPLATES['shaft-torsion'] = _structural_template('shaft-torsion',
+    {'kind': 'shaft', 'params': {'radius': {'value': 10, 'unit': 'mm'}, 'height': {'value': 200, 'unit': 'mm'}}}, {},
+    {'z0': {'role': 'fixed'}, 'z1': {'role': 'moment', 'torque': {'value': 100, 'unit': 'N-m'}, 'direction': '+z',
+                                  'point': {'value': [0,0,200], 'unit': 'mm'}}, 'outer': {'role': 'free'}}, 'twist',
+    [('geometry.params.radius', 'param.radius', 'length', 1, 5000), ('geometry.params.height', 'param.height', 'length', 1, 5000),
+     ('boundaries.z1.torque', 'field.torque', 'torque', 0, 1e8)])
+
 DEFAULT_ROLE = {"structural": "free", "thermal": "insulated", "cfd": "wall", "flow": "wall", "external": "wall",
                 "conjugate": "insulated", "electric": "open", "electrostatic": "open", "current": "insulated"}
 
@@ -548,6 +602,29 @@ def new_case(template_id: str, case_id: str) -> dict:
 def face_descriptors(case: dict) -> None:
     """Cheap primitive descriptors; imported faces retain the CAD kernel's descriptors."""
     if case['geometry']['kind'] == 'import':
+        return
+    if case['geometry']['kind'] in ('shaft', 'quarter_disk'):
+        from .units import to_si
+        import math
+        p = case['geometry']['params']
+        r,h = to_si(p['radius']),to_si(p['height'])
+        quarter = case['geometry']['kind'] == 'quarter_disk'
+        keys = face_keys(case)
+        faces = []
+        for i,k in enumerate(keys):
+            f = {'key':k,'n':i+1,'neighbors':[v for v in keys if v != k], 'smooth_neighbors':[]}
+            if k == 'outer':
+                f.update(type='Cylinder', axis=[0,0,1], axis_point=[0,0,0], radius=r,
+                         centroid=[0,0,h/2], area=(math.pi/2 if quarter else 2*math.pi)*r*h,
+                         bbox=[[0,0,0] if quarter else [-r,-r,0],[r,r,h]])
+            else:
+                axis = 'xyz'.index(k[0]); normal = [0,0,0]; normal[axis] = -1 if k[1] == '0' else 1
+                lo,hi = ([0,0,0] if quarter else [-r,-r,0]),[r,r,h]
+                lo[axis] = hi[axis] = h if k == 'z1' else 0
+                f.update(type='Plane',normal=normal,bbox=[lo,hi],centroid=[(a+b)/2 for a,b in zip(lo,hi)],
+                         area=math.pi*r*r/(4 if quarter else 1) if axis == 2 else r*h)
+            faces.append(f)
+        case['geometry']['faces'] = faces
         return
     from .geometry import dims
     import math

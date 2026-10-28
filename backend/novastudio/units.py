@@ -7,6 +7,7 @@ import re
 UNITS: dict[str, tuple[float, str]] = {
     "m": (1.0, "length"), "cm": (1e-2, "length"), "mm": (1e-3, "length"), "um": (1e-6, "length"),
     "N": (1.0, "force"), "kN": (1e3, "force"),
+    'N-m': (1., 'torque'), 'N-mm': (1e-3, 'torque'), '1/K': (1., 'expansion'), 'm/s2': (1., 'acceleration'),
     "Pa": (1.0, "pressure"), "kPa": (1e3, "pressure"), "MPa": (1e6, "pressure"), "GPa": (1e9, "pressure"),
     "kg/m3": (1.0, "density"), "g/cm3": (1e3, "density"),
     "m/s": (1.0, "velocity"), "mm/s": (1e-3, "velocity"), "km/h": (1 / 3.6, "velocity"),
@@ -26,7 +27,7 @@ UNITS: dict[str, tuple[float, str]] = {
 }
 # affine units: SI = value * factor + offset
 OFFSETS = {"degC": 273.15}
-ALIASES = {"°C": "degC", "℃": "degC", "C": "degC"}
+ALIASES = {"°C": "degC", "℃": "degC", "C": "degC", 'Nm':'N-m', 'N·m':'N-m', 'Nmm':'N-mm', 'N·mm':'N-mm'}
 
 UNIT_CHOICES: dict[str, list[str]] = {}
 for _u, (_f, _d) in UNITS.items():
@@ -67,7 +68,7 @@ def _bad(u):
     raise UnitError(f"unknown unit '{u}'")
 
 
-_RX = re.compile(r"^\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*([A-Za-z/0-9\-°℃]*)\s*$")
+_RX = re.compile(r"^\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*([A-Za-z/0-9\-°℃·]*)\s*$")
 
 
 def parse(text: str, default_unit: str = "-") -> dict:
