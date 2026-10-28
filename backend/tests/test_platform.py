@@ -232,8 +232,31 @@ def test_install_messages(monkeypatch, os_name, lang):
 def test_installed_mcp_command(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "INSTALLED", True)
     monkeypatch.setenv("NOVASTUDIO_WORKSPACE", str(tmp_path))
-    command = commands.environment_check("en")["mcp_command"]
-    assert command == {"command": "uvx", "args": ["novasolver-studio", "mcp"], "env": {"NOVASTUDIO_WORKSPACE": str(tmp_path)}}
+    # second opinion (0.4.1) #2: an installed package starts with its own interpreter; uvx is only an alternative,
+    # offered when it exists (uv is not a dependency)
+    monkeypatch.setattr(commands.shutil, "which", lambda name: None)
+    check = commands.environment_check("en")
+    assert check["mcp_command"] == {"command": sys.executable, "args": ["-m", "novastudio", "mcp"],
+                                    "env": {"NOVASTUDIO_WORKSPACE": str(tmp_path)}}
+    assert check["mcp_command_alternatives"] == []
+    monkeypatch.setattr(commands.shutil, "which", lambda name: "/usr/local/bin/uvx" if name == "uvx" else None)
+    assert commands.environment_check("en")["mcp_command_alternatives"] == [{"command": "uvx", "args": ["novasolver-studio", "mcp"]}]
+
+
+def test_openfoam_scratch_path_has_no_spaces(monkeypatch, tmp_path):
+    """second opinion (0.4.1) #1: POSIX OpenFOAM strips spaces from -case, and the macOS data dir is
+    'Application Support'; a non-ASCII or spaced job folder must solve in a scratch folder without either."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(config.Path, "home", lambda: tmp_path / "home")
+    for jd in (tmp_path / "解析" / "job1", tmp_path / "with space" / "job2"):
+        jd.mkdir(parents=True)
+        wd = config.foam_workdir(jd)
+        assert str(wd).isascii() and " " not in str(wd), wd
+        assert (jd / "of_location.txt").read_text(encoding="utf-8") == str(wd)
+    plain = tmp_path / "plain" / "job3"
+    plain.mkdir(parents=True)
+    if str(plain).isascii() and " " not in str(plain):
+        assert config.foam_workdir(plain) == plain / "of"
 
 
 def test_package_frontend_resource():

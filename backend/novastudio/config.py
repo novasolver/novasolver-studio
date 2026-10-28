@@ -35,10 +35,17 @@ def foam_workdir(jd: Path) -> Path:
     solve in an ASCII scratch folder (pointer in of_location.txt), named uniquely per job: convergence levels are all
     called coarse/normal/fine, and a shared folder once made a run read an older run's latest time step."""
     import hashlib
+    import re
+    import tempfile
+    # POSIX OpenFOAM also strips spaces and quotes from -case (fileName::validate), so "safe" is ASCII without them;
+    # the macOS data dir itself ("Application Support") has a space, so it cannot be the scratch root there
+    safe = lambda p: str(p).isascii() and not re.search(r"[\s'\"]", str(p))
     wd = jd / "of"
-    if not str(wd).isascii():
+    if not safe(wd):
         tag = hashlib.sha1(str(jd.resolve()).encode("utf-8")).hexdigest()[:10]
-        wd = data_dir() / "runs" / f"{jd.name}_{tag}" / "of"
+        roots = [data_dir()] if sys.platform == "win32" else [Path.home() / ".novasolver-studio", Path(tempfile.gettempdir()) / "novasolver-studio"]
+        root = next((r for r in roots if safe(r)), roots[-1])
+        wd = root / "runs" / f"{jd.name}_{tag}" / "of"
         (jd / "of_location.txt").write_text(str(wd), encoding="utf-8")
     if wd.exists():
         shutil.rmtree(wd)

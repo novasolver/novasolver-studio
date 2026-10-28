@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 import sys
 import copy
 import time
@@ -26,9 +27,12 @@ def environment_check(lang: str = "ja") -> dict:
     # how an MCP client starts this very installation: the packaged exe has an `mcp` subcommand, a source checkout
     # runs the module with the interpreter that is serving now
     frozen = bool(getattr(sys, "frozen", False))
+    # an installed package (pip / pipx / uvx) also uses this interpreter: uv is not a dependency, so a "uvx" command
+    # would fail where it is missing, and could start a different Studio where it is not
     mcp_command = {"command": sys.executable, "args": ["mcp"] if frozen else ["-m", "novastudio", "mcp"]}
-    if config.INSTALLED:
-        mcp_command = {"command": "uvx", "args": ["novasolver-studio", "mcp"]}
+    alternatives = []
+    if config.INSTALLED and shutil.which("uvx"):
+        alternatives.append({"command": "uvx", "args": ["novasolver-studio", "mcp"]})
     # an MCP client starts the server itself and does not inherit this process: a source checkout needs its backend
     # folder on the path, and a workspace override must follow so the AI sees the same cases as the UI
     env = {} if frozen or config.INSTALLED else {"PYTHONPATH": str(Path(__file__).resolve().parents[1])}
@@ -37,7 +41,7 @@ def environment_check(lang: str = "ja") -> dict:
     if env:
         mcp_command["env"] = env
     return {"studio_version": __version__, "workspace": str(workspace()), "os": platform.platform(),
-            "cpu_count": os.cpu_count(), "mcp_command": mcp_command,
+            "cpu_count": os.cpu_count(), "mcp_command": mcp_command, "mcp_command_alternatives": alternatives,
             "engines": [{"id": k, "name": ENGINE_NAMES[k], "available": v["available"], "kind": v["kind"]}
                         for k, v in eng.items()],
             "how_to_install": _solver_install(lang)}

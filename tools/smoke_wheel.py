@@ -91,7 +91,9 @@ def check_mcp(command: str, env: dict) -> None:
                     result = {"done": True, "results": tool("get_results", case_id=cid, language="en")}
             assert result["results"]["gates"] == {"ran": True, "converged": True, "verified": True}, result
             env_check = tool("environment_check", language="en")
-            assert env_check["mcp_command"]["command"] == "uvx", env_check
+            # the installed package starts the MCP server with its own interpreter (uvx is only an alternative)
+            assert env_check["mcp_command"]["args"] == ["-m", "novastudio", "mcp"], env_check
+            assert Path(env_check["mcp_command"]["command"]).is_file(), env_check
             assert files("novastudio").joinpath("samples", "l_bracket.step").is_file()
             assert files("novastudio").joinpath("i18n", "ja.json").is_file()
         finally:

@@ -1,5 +1,5 @@
 {
-  "config.py:70": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
-  "config.py:112": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
-  "config.py:130": "Windows-only solver discovery or command, guarded by sys.platform == win32."
+  "config.py:77": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
+  "config.py:119": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
+  "config.py:137": "Windows-only solver discovery or command, guarded by sys.platform == win32."
 }
