@@ -1,9 +1,9 @@
 name: Publish Python package
 
+# Manual only until PyPI trusted publishing is set up (docs/PYPI_SETUP.md): a tag trigger would fail on every
+# release and mail the account owner. Add "push: tags: ['v*']" back after the first successful publish.
 on:
   workflow_dispatch:
-  push:
-    tags: ['v*']
 
 permissions:
   contents: read

@@ -6,7 +6,9 @@ The operator must complete these steps before running the publish workflow. Noth
 2. On pypi.org, add a pending trusted publisher for project `novasolver-studio`:
    GitHub owner `novasolver`, repository `novasolver-studio`, workflow `publish-pypi.yml`, environment `pypi`.
 3. Create the GitHub repository environment `pypi`; configure required reviewers to gate releases.
-4. Review the version in `backend/novastudio/__init__.py`, run CI, then dispatch the workflow or push a matching `v*` tag.
+4. Review the version in `backend/novastudio/__init__.py`, run CI, then run the workflow by hand (Actions → Publish Python
+   package → Run workflow). After that first success, add `push: tags: ['v*']` to its `on:` block so that releases
+   publish themselves.
 5. After the first successful PyPI release, validate `server.pypi.json` with the MCP Registry and replace `server.json`
    as a separate operator action. The existing Windows MCPB entry remains active until then.
 
