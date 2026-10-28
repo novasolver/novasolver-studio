@@ -142,6 +142,12 @@ export class Viewer {
   private hoverFace = -1;
   private externalHover = -1;
   private selected = new Set<number>();
+  private hidden = new Set<string>();
+  private through = false;
+  private originalIndex = new Uint32Array(0);
+  private boxHandlers = new Set<(ids: FaceId[], add: boolean) => void>();
+  private boxStart: { x: number; y: number; add: boolean } | null = null;
+  private boxElement: HTMLDivElement | null = null;
   private pickingEnabled = true;
   private selLine: LineSegments2 | null = null;
   private hoverLine: LineSegments2 | null = null;
@@ -277,10 +283,11 @@ export class Viewer {
     container.appendChild(this.triad);
 
     const el = this.renderer.domElement;
-    el.addEventListener("pointerdown", this.onPointerDown);
+    el.addEventListener("pointerdown", this.onPointerDown, true);
     el.addEventListener("pointerup", this.onPointerUp);
     el.addEventListener("pointermove", this.onPointerMove);
     el.addEventListener("pointerleave", this.onPointerLeave);
+    el.addEventListener('pointercancel', this.onPointerCancel);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -353,6 +360,8 @@ export class Viewer {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    g.setAttribute('faceOpacity', new THREE.BufferAttribute(new Float32Array(nv).fill(1), 1));
+    this.originalIndex = idx.slice();
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     // vertices are per face, so smooth normals stay crisp at face boundaries (CAD look)
     g.computeVertexNormals();
@@ -368,6 +377,12 @@ export class Viewer {
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
     });
+    mat.onBeforeCompile = shader => {
+      shader.vertexShader = 'attribute float faceOpacity; varying float vFaceOpacity;\n' + shader.vertexShader;
+      shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFaceOpacity = faceOpacity;');
+      shader.fragmentShader = 'varying float vFaceOpacity;\n' + shader.fragmentShader;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vFaceOpacity;');
+    };
     this.geoMesh = new THREE.Mesh(g, mat);
     this.scene.add(this.geoMesh);
 
@@ -501,6 +516,40 @@ export class Viewer {
     }
     this.updateGeometryColors();
     this.updateOutlines();
+  }
+
+  setHiddenFaces(ids: FaceId[]): void {
+    this.hidden = new Set(ids.map(String));
+    if (!this.geoMesh) return;
+    const g = this.geoMesh.geometry;
+    const idx = this.originalIndex.slice();
+    this.triFace.forEach((fi, t) => {
+      if (this.hidden.has(String(this.faceIds[fi]))) idx[t*3+1] = idx[t*3+2] = idx[t*3];
+    });
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    if (this.geoEdges) {
+      this.geoEdges.geometry.dispose();
+      this.geoEdges.geometry = new THREE.EdgesGeometry(g, 30);
+    }
+    if (this.wire) { this.disposeObject(this.wire); this.wire = null; if (this.wireOn) this.buildWire(); }
+    this.setHover(-1);
+    this.updateOutlines();
+    this.dirty = true;
+  }
+
+  setSeeThrough(on: boolean): void {
+    this.through = on;
+    this.syncVisibility();
+    this.updateGeometryColors();
+  }
+
+  onBoxPick(cb: (ids: FaceId[], add: boolean) => void): () => void {
+    this.boxHandlers.add(cb);
+    return () => this.boxHandlers.delete(cb);
+  }
+
+  selectBox(x0: number, y0: number, x1: number, y1: number, add = false): void {
+    this.boxHandlers.forEach(h => h(this.boxFaces(x0, y0, x1, y1), add));
   }
 
   /** Hover driven by the host (e.g. a list row): 1 px outline, no hover callbacks. */
@@ -687,10 +736,11 @@ export class Viewer {
     cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
     const el = this.renderer.domElement;
-    el.removeEventListener("pointerdown", this.onPointerDown);
+    el.removeEventListener("pointerdown", this.onPointerDown, true);
     el.removeEventListener("pointerup", this.onPointerUp);
     el.removeEventListener("pointermove", this.onPointerMove);
     el.removeEventListener("pointerleave", this.onPointerLeave);
+    el.removeEventListener('pointercancel', this.onPointerCancel);
     this.controls.dispose();
     this.disposeObject(this.geoMesh);
     this.disposeObject(this.geoEdges);
@@ -710,6 +760,8 @@ export class Viewer {
     el.remove();
     this.triad.remove();
     this.pickHandlers.clear();
+    this.boxHandlers.clear();
+    this.boxElement?.remove();
     this.hoverHandlers.clear();
   }
 
@@ -907,10 +959,11 @@ export class Viewer {
     if (this.geoMesh) {
       this.geoMesh.visible = !showField || slice;
       const m = this.geoMesh.material as THREE.MeshStandardMaterial;
-      if (m.transparent !== slice) {
-        m.transparent = slice;
-        m.opacity = slice ? 0.1 : 1;
-        m.depthWrite = !slice;
+      const transparent = slice || this.through;
+      m.opacity = slice ? 0.1 : 1;
+      if (m.transparent !== transparent) {
+        m.transparent = transparent;
+        m.depthWrite = !transparent;
         m.needsUpdate = true;
       }
     }
@@ -937,6 +990,7 @@ export class Viewer {
   private updateGeometryColors(): void {
     if (!this.geoMesh) return;
     const attr = this.geoMesh.geometry.getAttribute("color") as THREE.BufferAttribute;
+    const opacity = this.geoMesh.geometry.getAttribute('faceOpacity') as THREE.BufferAttribute;
     const arr = attr.array as Float32Array;
     const c = new THREE.Color();
     const base = new THREE.Color().setStyle(this.pal.base, THREE.SRGBColorSpace);
@@ -950,12 +1004,14 @@ export class Viewer {
       if (fi === this.hoverFace || fi === this.externalHover) c.lerp(white, HOVER_LIGHTEN);
       const [start, count] = this.faceVertexRange[fi];
       for (let v = start; v < start + count; v++) {
+        opacity.setX(v, this.through && !this.selected.has(fi) ? .25 : 1);
         arr[v * 3] = c.r;
         arr[v * 3 + 1] = c.g;
         arr[v * 3 + 2] = c.b;
       }
     }
     attr.needsUpdate = true;
+    opacity.needsUpdate = true;
     this.dirty = true;
   }
 
@@ -1003,7 +1059,7 @@ export class Viewer {
       return;
     }
     const build = (faces: number[], mat: LineMaterial) => {
-      const parts = faces.map((fi) => this.faceOutline(fi));
+      const parts = faces.filter(fi => !this.hidden.has(String(this.faceIds[fi]))).map((fi) => this.faceOutline(fi));
       const n = parts.reduce((s, p) => s + p.length, 0);
       if (!n) return null;
       const all = new Float32Array(n);
@@ -1097,34 +1153,148 @@ export class Viewer {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hit = this.raycaster.intersectObject(this.geoMesh, false)[0];
+    const hits = this.raycaster.intersectObject(this.geoMesh, false).filter(hit =>
+      hit.faceIndex != null && !this.hidden.has(String(this.faceIds[this.triFace[hit.faceIndex]])));
+    // The first surface becomes a translucent shell; the next distinct face is available to pick.
+    const first = hits[0];
+    const hit = this.through && first ? hits.find(h => this.triFace[h.faceIndex!] !== this.triFace[first.faceIndex!]) ?? first : first;
     if (!hit || hit.faceIndex == null) return -1;
     return this.triFace[hit.faceIndex] ?? -1;
   }
 
   private onPointerDown = (e: PointerEvent) => {
     this.downAt = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+    if (e.button === 0 && e.ctrlKey && this.pickingEnabled) {
+      e.stopImmediatePropagation();
+      this.controls.enabled = false;
+      this.renderer.domElement.setPointerCapture(e.pointerId);
+      this.boxStart = { x: e.clientX, y: e.clientY, add: e.shiftKey };
+      const el = document.createElement('div');
+      Object.assign(el.style, { position: 'absolute', pointerEvents: 'none', border: '1px solid var(--focus)',
+        background: 'var(--active)', opacity: '.5', zIndex: '3' });
+      this.container.appendChild(el);
+      this.boxElement = el;
+    }
   };
 
   private onPointerUp = (e: PointerEvent) => {
     const d = this.downAt;
     this.downAt = null;
+    const box = this.boxStart;
+    if (box) {
+      this.boxStart = null;
+      this.boxElement?.remove(); this.boxElement = null;
+      this.controls.enabled = true;
+      if (this.renderer.domElement.hasPointerCapture(e.pointerId)) this.renderer.domElement.releasePointerCapture(e.pointerId);
+      if (Math.hypot(e.clientX-box.x, e.clientY-box.y) > 4) {
+        this.selectBox(box.x, box.y, e.clientX, e.clientY, box.add);
+        return;
+      }
+    }
     if (!d || e.button !== 0 || !this.pickingEnabled) return;
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return; // it was a drag
     const fi = this.pickAt(e.clientX, e.clientY);
     const id = fi >= 0 ? this.faceIds[fi] : null;
     const label = fi >= 0 ? this.faceLabels[fi] : undefined;
-    this.pickHandlers.forEach((h) => h(id, { label, shiftKey: e.shiftKey }));
+    this.pickHandlers.forEach((h) => h(id, { label, shiftKey: e.shiftKey || e.ctrlKey || e.metaKey }));
   };
 
   private onPointerMove = (e: PointerEvent) => {
+    if (this.boxStart && this.boxElement) {
+      const rect = this.container.getBoundingClientRect();
+      Object.assign(this.boxElement.style, { left: `${Math.min(e.clientX, this.boxStart.x)-rect.left}px`,
+        top: `${Math.min(e.clientY, this.boxStart.y)-rect.top}px`, width: `${Math.abs(e.clientX-this.boxStart.x)}px`,
+        height: `${Math.abs(e.clientY-this.boxStart.y)}px` });
+      return;
+    }
     if (e.buttons !== 0) return; // no hover updates while orbiting
     this.pendingHover = { x: e.clientX, y: e.clientY };
   };
 
+  private boxFaces(x0: number, y0: number, x1: number, y1: number): FaceId[] {
+    if (!this.geoMesh) return [];
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    // Faces with any visible part inside the rectangle. A small depth buffer over the rectangle only (at most
+    // 256 cells across) is filled once with every triangle, so the cost is one pass over the mesh. A raycast per
+    // triangle was quadratic: 1.6 s for a hidden 6,400-triangle face.
+    const pos = this.geoMesh.geometry.getAttribute('position');
+    const nrm = this.geoMesh.geometry.getAttribute('normal');
+    const mw = this.geoMesh.matrixWorld;
+    const nm = new THREE.Matrix3().getNormalMatrix(mw);
+    const eye = this.camera.position;
+    const pw = new THREE.Vector3(), nw = new THREE.Vector3();
+    // back faces out: at silhouettes their depth ties with the front faces and the bottom of a part got selected
+    const facingAway = (i: number) => {
+      if (!nrm) return false;
+      nw.fromBufferAttribute(nrm, i).applyMatrix3(nm);
+      pw.fromBufferAttribute(pos, i).applyMatrix4(mw);
+      return nw.dot(pw.sub(eye)) > 0;
+    };
+    const n = pos.count;
+    const sx = new Float32Array(n), sy = new Float32Array(n), sz = new Float32Array(n);
+    const v = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mw).project(this.camera);
+      sx[i] = rect.left + (v.x + 1) * rect.width / 2;
+      sy[i] = rect.top + (1 - v.y) * rect.height / 2;
+      sz[i] = v.z;
+    }
+    const bx0 = Math.min(x0, x1), bx1 = Math.max(x0, x1), by0 = Math.min(y0, y1), by1 = Math.max(y0, y1);
+    const cell = Math.max(1, Math.max(bx1 - bx0, by1 - by0) / 256);
+    const W = Math.max(1, Math.ceil((bx1 - bx0) / cell)), H = Math.max(1, Math.ceil((by1 - by0) / cell));
+    const depth = new Float32Array(W * H).fill(Infinity);
+    const owner = new Int32Array(W * H).fill(-1);
+    const skip = this.faceIds.map(id => this.hidden.has(String(id)));
+    const put = (cx: number, cy: number, z: number, fi: number) => {
+      const k = cy * W + cx;
+      if (z < depth[k]) { depth[k] = z; owner[k] = fi; }
+    };
+    for (let t = 0; t < this.triFace.length; t++) {
+      const fi = this.triFace[t];
+      if (skip[fi]) continue;
+      const a = this.originalIndex[t * 3], b = this.originalIndex[t * 3 + 1], c = this.originalIndex[t * 3 + 2];
+      const za = sz[a], zb = sz[b], zc = sz[c];
+      if (Math.abs(za) > 1 || Math.abs(zb) > 1 || Math.abs(zc) > 1) continue;      // clipped by the camera
+      if (facingAway(a) && facingAway(b) && facingAway(c)) continue;
+      const xa = sx[a], xb = sx[b], xc = sx[c], ya = sy[a], yb = sy[b], yc = sy[c];
+      const cx0 = Math.max(0, Math.floor((Math.min(xa, xb, xc) - bx0) / cell));
+      const cx1 = Math.min(W - 1, Math.floor((Math.max(xa, xb, xc) - bx0) / cell));
+      const cy0 = Math.max(0, Math.floor((Math.min(ya, yb, yc) - by0) / cell));
+      const cy1 = Math.min(H - 1, Math.floor((Math.max(ya, yb, yc) - by0) / cell));
+      if (cx0 > cx1 || cy0 > cy1) continue;
+      const den = (yb - yc) * (xa - xc) + (xc - xb) * (ya - yc);
+      if (Math.abs(den) < 1e-12) continue;
+      if (cx0 === cx1 && cy0 === cy1) {
+        // smaller than a cell: sample its centroid, or tiny faces could never be box-selected
+        put(cx0, cy0, (za + zb + zc) / 3, fi);
+        continue;
+      }
+      for (let cy = cy0; cy <= cy1; cy++) {
+        const py = by0 + (cy + 0.5) * cell;
+        for (let cx = cx0; cx <= cx1; cx++) {
+          const px = bx0 + (cx + 0.5) * cell;
+          const u = ((yb - yc) * (px - xc) + (xc - xb) * (py - yc)) / den;
+          const w = ((yc - ya) * (px - xc) + (xa - xc) * (py - yc)) / den;
+          if (u < 0 || w < 0 || u + w > 1) continue;
+          put(cx, cy, u * za + w * zb + (1 - u - w) * zc, fi);
+        }
+      }
+    }
+    const found = new Set<number>();
+    for (const fi of owner) if (fi >= 0) found.add(fi);
+    return [...found].map(fi => this.faceIds[fi]);
+  }
+
   private onPointerLeave = () => {
     this.pendingHover = null;
     this.setHover(-1);
+  };
+
+  private onPointerCancel = () => {
+    this.boxStart = null;
+    this.downAt = null;
+    this.boxElement?.remove(); this.boxElement = null;
+    this.controls.enabled = true;
   };
 
   private loop = () => {

@@ -61,6 +61,7 @@ export function AiPanel() {
       </header>
       <div className="prose-ui min-h-0 flex-1 overflow-y-auto p-4 text-body text-fg-2">
         <p className="text-fg">{t("ai.lead")}</p>
+        <p className="mt-3">{t('ai.selectionHint')}</p>
         <ol className="mt-4 flex flex-col gap-3">
           {["ai.step1", "ai.step2", "ai.step3"].map((k, i) => (
             <li key={k} className="flex gap-2.5">

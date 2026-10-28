@@ -1,10 +1,10 @@
-import { FolderOpen, Languages, Moon, Plus, Search, Sparkles, Sun } from "lucide-react";
+import { FolderOpen, Languages, Moon, Plus, Search, Sparkles, Sun, Undo2, Redo2 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Select } from "./ui/Select";
 import { Tooltip } from "./ui/Tooltip";
 import { Kbd } from "./ui/misc";
 import { cn } from "./ui/cn";
-import { caseTitle, closeCase, openCase, setLang, toggleTheme, ui, useStore, useT } from "../state/store";
+import { caseTitle, closeCase, openCase, setLang, toggleTheme, ui, useStore, useT, undoCase, redoCase } from "../state/store";
 import { pick } from "../i18n";
 import type { Lang, Localized } from "../api/types";
 
@@ -72,6 +72,9 @@ export function TopBar() {
   const theme = useStore((s) => s.theme);
   const aiOpen = useStore((s) => s.ai);
   const hasCase = useStore((s) => !!s.payload);
+  const history = useStore(s => s.payload?.history);
+  const busy = useStore(s => s.historyBusy);
+  const saving = useStore(s => s.saving);
   return (
     <header className="relative z-20 grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line bg-bg px-3">
       <div className="flex min-w-0 items-center gap-1">
@@ -84,6 +87,12 @@ export function TopBar() {
           <>
             <span className="mx-1 h-4 w-px bg-line-strong" />
             <CaseSwitcher />
+            <Tooltip content={history?.undo[0] ? t('undo.tooltip', { summary: history.undo[0].summary }) : t('undo.label')}>
+              <Button variant="ghost" size="icon" disabled={busy || (!saving && !history?.undo.length)} aria-label={t('undo.label')} onClick={() => void undoCase()}><Undo2 size={16} strokeWidth={1.5} /></Button>
+            </Tooltip>
+            <Tooltip content={t('redo.label')}>
+              <Button variant="ghost" size="icon" disabled={busy || !history?.redo_count} aria-label={t('redo.label')} onClick={() => void redoCase()}><Redo2 size={16} strokeWidth={1.5} /></Button>
+            </Tooltip>
           </>
         )}
       </div>

@@ -418,3 +418,114 @@ def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None) 
     fig.savefig(buf, format="png")
     plt.close(fig)
     return buf.getvalue(), {"quantity": f["quantity"], "unit": f["unit"], "range": f["range"]}
+
+
+def render_faces(case: dict, lang: str, view: str = 'iso', highlight: list[str] | None = None) -> tuple[bytes, dict]:
+    """Orthographic surface raster with a depth buffer shared by pixels and face labels."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib import colors, font_manager
+    from matplotlib.patches import Patch
+    views = {'iso': [1, -1.4, .9], 'iso_back': [-1, 1.4, -.9], 'top': [0, 0, 1], 'bottom': [0, 0, -1],
+             'front': [0, -1, 0], 'back': [0, 1, 0], 'left': [-1, 0, 0], 'right': [1, 0, 0]}
+    if view not in views:
+        raise StudioError('err.path', 400, path='view='+view)
+    prefs = {'ja': ['Yu Gothic', 'Meiryo'], 'zh': ['Microsoft YaHei', 'SimHei']}.get(lang, ['Segoe UI', 'Arial'])
+    fonts = {f.name for f in font_manager.fontManager.ttflist}
+    for font in prefs:
+        if font in fonts:
+            plt.rcParams['font.family'] = font
+            break
+    faces = geometry.display(case)['faces']
+    triangles, owners = [], []
+    for i, f in enumerate(faces):
+        xyz = np.asarray(f['positions']).reshape(-1, 3)
+        tri = np.asarray(f['indices'], int).reshape(-1, 3)
+        triangles.extend(xyz[tri])
+        owners.extend([i]*len(tri))
+    triangles, owners = np.asarray(triangles), np.asarray(owners)
+    direction = np.asarray(views[view], float)
+    direction /= np.linalg.norm(direction)
+    up = np.array([0., 0., 1.]) if abs(direction[2]) < .99 else np.array([0., 1., 0.])
+    right = np.cross(up, direction); right /= np.linalg.norm(right)
+    up = np.cross(direction, right)
+    basis = np.stack([right, up, direction], axis=1)
+    projected = triangles @ basis
+    lo = projected[:, :, :2].min(axis=(0, 1)); hi = projected[:, :, :2].max(axis=(0, 1))
+    w, h = 900, 600
+    scale = min((w-80)/max(hi[0]-lo[0], 1e-30), (h-80)/max(hi[1]-lo[1], 1e-30))
+    projected[:, :, :2] = (projected[:, :, :2]-(lo+hi)/2)*scale + [w/2, h/2]
+    depth = np.full((h, w), -np.inf)
+    ids = np.full((h, w), -1, int)
+    image = np.ones((h, w, 3))
+    # one colour per role: the picture is for a person to check "which face got what", so two roles must never share
+    # a tone (fixed and free were both grey and could not be told apart)
+    passive = '#c9ccd1'
+    role_colour = {'fixed': '#2563eb', 'symmetry': '#0d9488', 'constraint': '#7c3aed', 'load': '#ea580c',
+                   'pressure': '#dc2626', 'temperature': '#9333ea', 'heat-flux': '#ea580c', 'convection': '#38bdf8',
+                   'voltage': '#9333ea', 'surface-charge': '#ea580c', 'current': '#ea580c', 'inlet': '#16a34a',
+                   'outlet': '#d97706', 'moving-wall': '#ea580c', 'water-inlet': '#16a34a', 'water-outlet': '#d97706'}
+    roles = [case['boundaries'].get(f['key'], {}).get('role') for f in faces]
+    palette = {r: role_colour.get(r, passive) for r in roles if r}
+    palette[None] = '#f59e0b'                                 # no role at all: should not happen, make it stand out
+    groups = roles
+    for p, world, owner in zip(projected, triangles, owners):
+        a, b, c = p
+        xmin, ymin = np.maximum(np.floor(p[:, :2].min(0)).astype(int), 0)
+        xmax, ymax = np.minimum(np.ceil(p[:, :2].max(0)).astype(int), [w-1, h-1])
+        if xmin > xmax or ymin > ymax:
+            continue
+        denom = (b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1])
+        if abs(denom) < 1e-12:
+            continue
+        yy, xx = np.mgrid[ymin:ymax+1, xmin:xmax+1]
+        u = ((b[1]-c[1])*(xx-c[0])+(c[0]-b[0])*(yy-c[1]))/denom
+        v = ((c[1]-a[1])*(xx-c[0])+(a[0]-c[0])*(yy-c[1]))/denom
+        z = u*a[2]+v*b[2]+(1-u-v)*c[2]
+        dest = depth[ymin:ymax+1, xmin:xmax+1]
+        mask = (u >= -1e-8) & (v >= -1e-8) & (u+v <= 1+1e-8) & (z > dest)
+        dest[mask] = z[mask]
+        ids[ymin:ymax+1, xmin:xmax+1][mask] = owner
+        color = ('#0891b2' if faces[owner]['key'] in highlight else passive) if highlight is not None else palette[groups[owner]]
+        normal = np.cross(world[1]-world[0], world[2]-world[0])
+        shade = .72+.28*abs(normal @ direction)/max(np.linalg.norm(normal), 1e-30)
+        image[ymin:ymax+1, xmin:xmax+1][mask] = np.asarray(colors.to_rgb(color))*shade
+    # face borders: a pixel whose neighbour belongs to another face (or to the background) is an edge
+    edge = np.zeros((h, w), bool)
+    edge[:, 1:] |= ids[:, 1:] != ids[:, :-1]
+    edge[1:, :] |= ids[1:, :] != ids[:-1, :]
+    near = np.zeros_like(edge)
+    near[:, :-1] |= edge[:, 1:]
+    near[:-1, :] |= edge[1:, :]
+    image[(edge | near) & ((ids >= 0) | np.roll(ids >= 0, 1, 0) | np.roll(ids >= 0, 1, 1))] = colors.to_rgb('#30343a')
+    # crop to the part with a margin, so the part fills the picture
+    ys, xs = np.nonzero(ids >= 0)
+    if len(xs):
+        x0, x1 = max(xs.min() - 30, 0), min(xs.max() + 30, w - 1)
+        y0, y1 = max(ys.min() - 30, 0), min(ys.max() + 30, h - 1)
+    else:
+        x0, x1, y0, y1 = 0, w - 1, 0, h - 1
+    fig, ax = plt.subplots(figsize=(9, 6.7), dpi=110)
+    ax.imshow(image, origin='lower'); ax.set_axis_off()
+    ax.set_xlim(x0, x1); ax.set_ylim(y0, y1)
+    labelled = []
+    for i, f in enumerate(faces):
+        candidates = projected[owners == i].mean(axis=1)
+        center = candidates.mean(0)
+        for p in sorted(candidates, key=lambda p: np.linalg.norm(p[:2]-center[:2])):
+            x, y = np.rint(p[:2]).astype(int)
+            if 0 <= x < w and 0 <= y < h and ids[y, x] == i:
+                n = next((g['n'] for g in case['geometry'].get('faces', []) if g['key'] == f['key']), i+1)
+                ax.text(x, y, str(n), ha='center', va='center', fontsize=10,
+                        bbox=dict(boxstyle='round,pad=.2', fc='white', ec='0.4', lw=.5))
+                labelled.append(f['key'])
+                break
+    legend = [Patch(facecolor=palette[r], edgecolor='#30343a', label=t('role.'+r, lang)) for r in dict.fromkeys(roles) if r]
+    if highlight is not None:
+        legend = [Patch(facecolor='#0891b2', label=t('render.highlight', lang))]
+    fig.legend(handles=legend, loc='lower center', ncol=min(5, max(1, len(legend))), frameon=False)
+    ax.set_title(t('render.faces', lang))
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png'); plt.close(fig)
+    return buf.getvalue(), {'quantity': 'faces', 'view': view, 'labelled_faces': labelled, 'highlight': highlight}

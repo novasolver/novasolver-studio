@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -667,6 +668,7 @@ def mesh_job(job: dict) -> None:
         gmsh.model.add("studio")
         keys = {}
         face_info = []
+        imported_names = []
         if job["kind"] == "import":
             stl = job["file"].lower().endswith(".stl")
             if stl:
@@ -679,7 +681,14 @@ def mesh_job(job: dict) -> None:
                                               factor=float(job.get("surf_factor", 1.0)), ref_faces=ref)
             else:
                 gmsh.option.setString("Geometry.OCCTargetUnit", "M")     # CAD units -> metres
+                gmsh.option.setNumber('Geometry.OCCImportLabels', 1)
                 gmsh.model.occ.importShapes(job["file"])
+                gmsh.model.occ.synchronize()
+                for _, tag in gmsh.model.getEntities(2):
+                    name = cad_face_name(gmsh.model.getEntityName(2, tag))
+                    if name:
+                        imported_names.append((name, gmsh.model.occ.getMass(2, tag),
+                                               np.asarray(gmsh.model.occ.getCenterOfMass(2, tag))))
                 raw = gmsh.model.occ.getEntities(3)
                 n_before = len(raw)
                 mass_before = sum(gmsh.model.occ.getMass(3, t) for _, t in raw)
@@ -730,6 +739,11 @@ def mesh_job(job: dict) -> None:
                 face_info.append({"key": k, "n": n, "area": area, "centroid": cen, "perimeter": perim,
                                   "type": "Discrete" if stl else gmsh.model.getType(2, tag),
                                   "bodies": [f"b{int(v)}" for v in up], "interface": len(up) > 1})
+                # Healing/fragmentation may renumber entities or drop their labels; match unchanged faces geometrically.
+                for name, old_area, old_cen in imported_names:
+                    if abs(old_area-area) <= max(area, old_area)*1e-6 and np.linalg.norm(old_cen-cen) < diag_ref*1e-6:
+                        face_info[-1]['name'] = name
+                        break
             diag = float(np.linalg.norm([lx, ly, lz]))
             if not job.get("domain"):
                 h = diag / {"coarse": 10, "normal": 18, "fine": 30}[job.get("size", "normal")] if job.get("volume") \
@@ -918,6 +932,8 @@ def mesh_job(job: dict) -> None:
                 "positions": coords[used].ravel().round(9).tolist(),
                 "indices": inv.ravel().astype(int).tolist(),
             })
+        if not job.get('domain'):
+            describe_faces(gmsh, keys, display, job['kind'] == 'import' and stl)
         (out / "display.json").write_text(json.dumps(display), encoding="utf-8")
 
         if job.get("volume"):
@@ -938,6 +954,128 @@ def mesh_job(job: dict) -> None:
             (out / "mesh_stats.json").write_text(json.dumps(stats), encoding="utf-8")
     finally:
         gmsh.finalize()
+
+
+def cad_face_name(name: str) -> str:
+    name = re.split(r'[/\\]', name)[-1].strip()
+    return name if name and not re.fullmatch(r'(?:\d+|face\s*\d*|none)', name, re.I) else ''
+
+
+def describe_faces(gmsh, keys: dict, display: dict, discrete: bool) -> None:
+    """Describe geometry from the surface mesh and CAD topology, without changing the mesh."""
+    by_key = {f['key']: f for f in display['info']}
+    samples = {}
+    group_normals = {}
+    diag = np.linalg.norm(np.subtract(display['bbox'][1], display['bbox'][0]))
+    for tag, key in keys.items():
+        _, xyz, tri = surface_triangles(gmsh, tag)
+        if not len(tri):
+            continue
+        a, b, c = (xyz[tri[:, i]] for i in range(3))
+        nv = np.cross(b-a, c-a)
+        lens = np.linalg.norm(nv, axis=1)
+        ok = lens > 1e-30
+        centers, normals = ((a+b+c)/3)[ok], nv[ok]/lens[ok, None]
+        if not len(normals):
+            continue
+        sign = 1
+        if not discrete:
+            up, _ = gmsh.model.getAdjacencies(2, tag)
+            # A curved triangle's centroid lies inside its chord. Probe the true CAD surface, not the chord.
+            surface, uv = gmsh.model.getClosestPoint(2, tag, centers[0].tolist())
+            outward = np.asarray(gmsh.model.getNormal(tag, uv))[:3]
+            if any(gmsh.model.isInside(3, int(v), (surface+outward*diag*1e-5).tolist()) for v in up):
+                outward = -outward
+            sign = 1 if outward @ normals[0] >= 0 else -1
+        normals *= sign
+        samples[tag] = (centers, normals)
+        f = by_key.setdefault(key, {'key': key, 'n': len(by_key)+1,
+                                    'type': gmsh.model.getType(2, tag),
+                                    'area': float(lens.sum()/2),
+                                    'centroid': np.average(centers, axis=0, weights=lens[ok]).tolist()})
+        f.setdefault('neighbors', [])
+        f.setdefault('smooth_neighbors', [])
+        bb = [xyz.min(0).tolist(), xyz.max(0).tolist()]
+        if 'bbox' in f:
+            bb = [np.minimum(bb[0], f['bbox'][0]).tolist(), np.maximum(bb[1], f['bbox'][1]).tolist()]
+        f['bbox'] = bb
+        mean = np.average(normals, axis=0, weights=lens[ok])
+        if discrete:
+            total, weight = group_normals.get(key, (np.zeros(3), 0.))
+            group_normals[key] = (total+(normals*lens[ok, None]).sum(0), weight+float(lens[ok].sum()))
+        elif f.get('type') == 'Plane' and np.linalg.norm(mean) > .999:
+            # only true planes get a direction: a narrow cylinder's mean normal can sit within 2 degrees of a plane's
+            # and would then join "same direction" selections
+            f['normal'] = (mean / np.linalg.norm(mean)).tolist()
+        if not discrete:
+            name = cad_face_name(gmsh.model.getEntityName(2, tag))
+            if name:
+                f['name'] = name
+            # face colours from the CAD file (STEP/XCAF, read with OCCImportLabels): designers often colour the
+            # faces that matter (seats, sealing faces), so they are a selection key. Uncoloured entities report alpha 0.
+            try:
+                r_, g_, b_, a_ = gmsh.model.getColor(2, tag)
+            except Exception:
+                a_ = 0
+            if a_:
+                f['color'] = '#{:02x}{:02x}{:02x}'.format(r_, g_, b_)
+        if f.get('type') == 'Cylinder':
+            # Cylinder normals span the radial plane; their null direction is the axis even for short fillets.
+            uv = gmsh.model.getParametrization(2, tag, centers.ravel().tolist())
+            ns = np.asarray(gmsh.model.getNormal(tag, uv)).reshape(-1, 3)
+            _, _, vh = np.linalg.svd(ns, full_matrices=False)
+            axis = vh[-1]
+            if axis[np.argmax(np.abs(axis))] < 0:
+                axis = -axis
+            e1 = vh[0]; e2 = np.cross(axis, e1)
+            x, y = xyz @ e1, xyz @ e2
+            fit = np.linalg.lstsq(np.column_stack([2*x, 2*y, np.ones(len(x))]), x*x+y*y, rcond=None)[0]
+            radius = float(np.sqrt(max(0., fit[2]+fit[0]**2+fit[1]**2)))
+            point = fit[0]*e1 + fit[1]*e2 + (xyz @ axis).mean()*axis
+            f.update(axis=axis.tolist(), radius=radius, axis_point=point.tolist())
+    for key, (total, weight) in group_normals.items():
+        mean = total/weight
+        # an STL group has no surface type: call it planar only when its normals agree to a fraction of a degree
+        # (|mean of unit normals| = 1 - spread^2/6; .99999 allows about 0.4 degrees, a 4-degree arc gives .9998)
+        if np.linalg.norm(mean) > .99999:
+            by_key[key].update(type='Plane', normal=(mean/np.linalg.norm(mean)).tolist())
+    for _, curve in gmsh.model.getEntities(1):
+        up, _ = gmsh.model.getAdjacencies(1, curve)
+        up = [int(s) for s in up if int(s) in samples]
+        for i, a in enumerate(up):
+            for b in up[i+1:]:
+                ka, kb = keys[a], keys[b]
+                if ka == kb:
+                    continue
+                for x, y in ((ka, kb), (kb, ka)):
+                    if y not in by_key[x]['neighbors']:
+                        by_key[x]['neighbors'].append(y)
+                if discrete:
+                    _, pts, _ = gmsh.model.mesh.getNodes(1, curve, includeBoundary=True)
+                    pts = np.asarray(pts).reshape(-1, 3)
+                else:
+                    lo, hi = gmsh.model.getParametrizationBounds(1, curve)
+                    pts = np.asarray(gmsh.model.getValue(1, curve, np.linspace(lo[0], hi[0], 5))).reshape(-1, 3)
+                dots = []
+                for p in pts:
+                    ns = []
+                    for tag in (a, b):
+                        cen, norm = samples[tag]
+                        near = int(np.argmin(np.linalg.norm(cen-p, axis=1)))
+                        if discrete:
+                            n = norm[near]
+                        else:
+                            _, uv = gmsh.model.getClosestPoint(2, tag, p.tolist())
+                            n = np.asarray(gmsh.model.getNormal(tag, uv))[:3]
+                            if n @ norm[near] < 0:
+                                n = -n
+                        ns.append(n)
+                    dots.append(float(ns[0] @ ns[1]))
+                if dots and min(dots) > np.cos(np.radians(20)):
+                    for x, y in ((ka, kb), (kb, ka)):
+                        if y not in by_key[x]['smooth_neighbors']:
+                            by_key[x]['smooth_neighbors'].append(y)
+    display['info'] = list(by_key.values())
 
 
 if __name__ == "__main__":

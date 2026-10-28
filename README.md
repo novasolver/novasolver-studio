@@ -86,6 +86,21 @@ and **busbar** against L/(σA) and the temperature rise σΔV²/(8k) with both e
 内蔵 FEM で静電場・電流・ジュール発熱による温度を計算できます。平行平板コンデンサ・同軸ケーブル・銅母線の
 3 テンプレートには解析解との比較があり、任意形状ではメッシュ収束を確認できます。
 
+## Share face selection with an AI (0.4) / 選んだ面をAIと共有する
+
+Select faces in the boundaries viewport, then ask “fix the faces I selected” or “put 500 N here”.
+The assistant reads `get_gui_selection`, shows a numbered `render_view(quantity="faces", highlight=[...])`
+to confirm the setup, and applies conditions through `update_case`. GUI and AI changes share one Undo/Redo
+history. Ctrl+Z undoes the latest change by either of you; Ctrl+Shift+Z or Ctrl+Y redoes it.
+Named face groups can be reused with `boundaries.@<group>.role` and other boundary fields.
+
+画面で面を選んでから「選んだ面を固定して」のように頼めます。AIが選択内容を読み取り、面番号付きの画像で
+確認してから条件を設定します。画面とAIの変更は共通の履歴に残り、どちらの変更も元に戻せます。
+Hで選択した面を隠し、Alt+Hですべて表示。Ctrl+ドラッグで矩形選択、Xで透過表示を切り替えます。
+
+在视图中选择面后，可以说“固定我选中的面”。AI会读取选择内容，用带面编号的图片确认设置，再应用边界条件。
+界面与AI共用撤销和重做历史，双方的更改都可以撤销。面组可以保存并重复使用。
+
 ## Documentation
 
 - Design: [`docs/DESIGN.md`](docs/DESIGN.md) · Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · Development notes: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)

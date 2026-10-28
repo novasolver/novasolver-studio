@@ -47,7 +47,7 @@ def new_id() -> str:
 def _write_json(path: Path, data) -> None:
     """Atomic write. On Windows the final rename fails while another process has the file open for reading
     (GUI polling, MCP job_status), so retry briefly instead of failing the job."""
-    tmp = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
+    tmp = path.with_suffix(path.suffix + f".{os.getpid()}.{secrets.token_hex(4)}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     for attempt in range(60):
         try:
@@ -184,11 +184,40 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
     """Apply {dotted.path: value}. Returns (new_case, diff). Raises StudioError with a fixable message."""
     tp = templates.get(case["template"])
     allowed = set(editable_paths(case))
+    expanded = {}
+    for path, value in changes.items():
+        if path.startswith('boundaries.@'):
+            tail = path[len('boundaries.@'):]
+            names = [name for name in case.get('face_groups', {}) if tail.startswith(name + '.')]
+            if not names:
+                raise StudioError('err.unknown_group', 400, name=tail.rsplit('.', 1)[0])
+            name = max(names, key=len)  # CAD names can contain dots; prefer the longest matching group name.
+            field = tail[len(name) + 1:]
+            for face in case['face_groups'][name]:
+                expanded[f'boundaries.{face}.{field}'] = value
+        else:
+            expanded[path] = value
+    changes = expanded
     new = copy.deepcopy(case)
     diff = []
     # roles first, so that values sent in the same call land on the new role
     ordered = sorted(changes.items(), key=lambda kv: 0 if kv[0].endswith(".role") else 1)
     for path, value in ordered:
+        if path.startswith('face_groups.'):
+            name = path[len('face_groups.'):]
+            if not name.strip() or len(name) > 100:
+                raise StudioError('err.path', 400, path=path)
+            if value is not None and (not isinstance(value, list) or
+                    any(not isinstance(k, str) or k not in templates.face_keys(case) for k in value)):
+                raise StudioError('err.group_members', 400)
+            groups = new.setdefault('face_groups', {})
+            old = groups.get(name)
+            if value is None:
+                groups.pop(name, None)
+            else:
+                groups[name] = list(dict.fromkeys(value))
+            diff.append({'path': path, 'old': old, 'new': groups.get(name)})
+            continue
         if path not in allowed:
             raise StudioError("err.path", 400, path=path)
         parts = path.split(".")
@@ -309,7 +338,29 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
         normalize_conjugate(new)
     if any(d["path"].startswith(GEOM_KEYS) for d in diff):
         new.setdefault("provenance", {})["mesh_stale"] = True
+        templates.face_descriptors(new)
     return new, diff
+
+
+def history(case_id: str) -> dict:
+    path = case_dir(case_id) / 'history.json'
+    return json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {'undo': [], 'redo': []}
+
+
+def record_change(before: dict, after: dict, paths: list[str], source: str) -> None:
+    h = history(before['case_id'])
+    now = time.time()
+    paths = sorted(paths)
+    prev = h['undo'][-1] if h['undo'] else None
+    if (not h['redo'] and prev and prev['source'] == source and prev['paths'] == paths
+            and prev['rev_after'] == before['revision'] and 0 <= now - prev['ts'] <= 2):
+        prev.update(rev_after=after['revision'], ts=now)
+    else:
+        h['undo'].append({'rev_before': before['revision'], 'rev_after': after['revision'],
+                          'ts': now, 'source': source, 'paths': paths, 'before': before})
+    h['undo'] = h['undo'][-100:]
+    h['redo'] = []
+    _write_json(case_dir(before['case_id']) / 'history.json', h)
 
 
 def body_of_face(case: dict) -> dict:

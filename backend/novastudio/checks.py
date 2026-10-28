@@ -16,6 +16,19 @@ def run(case: dict, lang: str) -> list[dict]:
                       "faces": faces or [], "fix": fix})
 
     b = case["boundaries"]
+    thermal = list(b.values()) if tp['physics'] == 'thermal' else [v.get('thermal', {}) for v in b.values()]
+    dc = case['physics']['kind'] == 'dc-current'
+    if tp['physics'] == 'thermal' or (dc and case['physics'].get('joule_heating', True)):
+        refs = [units.to_si(v['temperature' if v.get('role') == 'temperature' else 'tinf'])
+                for v in thermal if v.get('role') in ('temperature', 'convection')]
+        voltage = [units.to_si(v['voltage']) for v in b.values() if v.get('role') == 'voltage']
+        joule = dc and (any(v.get('role') == 'current' and abs(units.to_si(v['current'])) > 0 for v in b.values()) or
+                        (len(voltage) > 1 and max(voltage)-min(voltage) > 1e-12))
+        flux = any(v.get('role') == 'heat-flux' and abs(units.to_si(v['flux'])) > 0 for v in thermal)
+        source = case['physics'].get('heat_source', 0)
+        source = units.to_si(source) if isinstance(source, (dict, str)) else source
+        if refs and max(refs)-min(refs) < 1e-8 and not flux and not source and not joule:
+            add('warn', 'uniform_temperature', 'boundaries')
     if tp["physics"] == "electric":
         if not any(v["role"] == "voltage" for v in b.values()):
             add("error", "no_voltage", "boundaries")
@@ -43,7 +56,8 @@ def run(case: dict, lang: str) -> list[dict]:
             add("error", "no_temperature", "boundaries")
         if not any(v["role"] in ("temperature", "convection", "heat-flux") for v in b.values()) or \
                 (sum(v["role"] == "temperature" for v in b.values()) < 2 and not any(v["role"] in ("heat-flux", "convection") for v in b.values())):
-            add("warn", "no_heat", "boundaries")
+            if not any(i['code'] == 'uniform_temperature' for i in items):
+                add("warn", "no_heat", "boundaries")
         if case["mesh"]["size"] == "coarse":
             add("warn", "coarse", "mesh", fix='update_case(changes={"mesh.size": "normal"})')
         ms = geometry.mesh_state(case)

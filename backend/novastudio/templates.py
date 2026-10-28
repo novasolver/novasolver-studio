@@ -523,7 +523,7 @@ def summary(lang: str) -> list[dict]:
 def new_case(template_id: str, case_id: str) -> dict:
     tp = get(template_id)
     c = copy.deepcopy(tp["case"])
-    return {
+    case = {
         "schema_version": SCHEMA_VERSION,
         "case_id": case_id,
         "revision": 1,
@@ -541,3 +541,53 @@ def new_case(template_id: str, case_id: str) -> dict:
         "checks": {},
         "provenance": {},
     }
+    face_descriptors(case)
+    return case
+
+
+def face_descriptors(case: dict) -> None:
+    """Cheap primitive descriptors; imported faces retain the CAD kernel's descriptors."""
+    if case['geometry']['kind'] == 'import':
+        return
+    from .geometry import dims
+    import math
+    size = dims(case)
+    keys = face_keys(case)
+    faces = []
+    for i, key in enumerate(keys):
+        f = {'key': key, 'n': i + 1, 'neighbors': [], 'smooth_neighbors': []}
+        if key in FACE_KEYS:
+            axis = 'xyz'.index(key[0])
+            n = [0., 0., 0.]
+            n[axis] = -1. if key[1] == '0' else 1.
+            lo, hi = [0., 0., 0.], list(size)
+            lo[axis] = hi[axis] = size[axis] if key[1] == '1' else 0.
+            f.update(type='Plane', normal=n, bbox=[lo, hi], centroid=[(a+b)/2 for a,b in zip(lo,hi)],
+                     area=math.prod(size[j] for j in range(3) if j != axis),
+                     neighbors=[k for k in keys if k != key and (k not in FACE_KEYS or k[0] != key[0])])
+        if case['geometry']['kind'] == 'tube':
+            from .units import to_si
+            a, b = (to_si(case['geometry']['params'][k]) for k in ('a', 'b'))
+            if key in ('inner', 'outer'):
+                r = a if key == 'inner' else b
+                f.update(type='Cylinder', axis=[0., 0., 1.], axis_point=[0., 0., 0.], radius=r,
+                         bbox=[[-r, -r, 0.], [r, r, size[2]]], area=2*math.pi*r*size[2],
+                         centroid=[0., 0., size[2]/2], neighbors=['z0', 'z1'])
+            else:
+                f.update(area=math.pi*(b*b-a*a), neighbors=['inner', 'outer'],
+                         bbox=[[-b, -b, f['centroid'][2]], [b, b, f['centroid'][2]]],
+                         centroid=[0., 0., f['centroid'][2]])
+        if case['geometry']['kind'] == 'plate_hole':
+            from .units import to_si
+            r = to_si(case['geometry']['params']['hole'])/2
+            if key == 'hole':
+                f.update(type='Cylinder', axis=[0., 0., 1.], axis_point=[size[0]/2, size[1]/2, 0.],
+                         radius=r, centroid=[size[0]/2, size[1]/2, size[2]/2], area=2*math.pi*r*size[2],
+                         bbox=[[size[0]/2-r, size[1]/2-r, 0.], [size[0]/2+r, size[1]/2+r, size[2]]],
+                         neighbors=['z0', 'z1'])
+            elif key[0] == 'z':
+                f['area'] -= math.pi*r*r
+            else:
+                f['neighbors'] = [k for k in f['neighbors'] if k != 'hole']
+        faces.append(f)
+    case['geometry']['faces'] = faces

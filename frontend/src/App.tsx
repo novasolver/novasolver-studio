@@ -9,7 +9,8 @@ import { StartScreen } from "./components/StartScreen";
 import { CommandPalette } from "./components/CommandPalette";
 import { AiPanel } from "./components/AiPanel";
 import { DropOverlay } from "./components/ImportCad";
-import { getState, goStep, selectFace, setState, STEPS, ui, useStore, viewCmd } from "./state/store";
+import { getState, goStep, selectFace, setState, STEPS, ui, useStore, viewCmd, undoCase, redoCase,
+  hideSelected, showAllFaces, toggleSeeThrough } from "./state/store";
 
 function isTyping(e: KeyboardEvent) {
   const el = e.target as HTMLElement | null;
@@ -27,6 +28,18 @@ function useShortcuts() {
         return;
       }
       const s = getState();
+      if (!s.palette && !isTyping(e) && s.payload) {
+        const key = e.key.toLowerCase();
+        if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')) {
+          e.preventDefault();
+          if (key === 'y' || e.shiftKey) void redoCase(); else void undoCase();
+          return;
+        }
+        if (s.step === 'boundaries' && !e.ctrlKey && !e.metaKey) {
+          if (key === 'h') { e.preventDefault(); if (e.altKey) showAllFaces(); else hideSelected(); return; }
+          if (key === 'x' && !e.altKey) { e.preventDefault(); toggleSeeThrough(); return; }
+        }
+      }
       if (s.palette || e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return;
       if (e.key === "Escape") {
         if (s.ai) ui.ai(false);

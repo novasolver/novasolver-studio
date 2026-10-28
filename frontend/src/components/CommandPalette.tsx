@@ -15,6 +15,8 @@ import {
   Search,
   ScrollText,
   Stamp,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { Dialog } from "./ui/Dialog";
 import { Kbd } from "./ui/misc";
@@ -34,6 +36,8 @@ import {
   useStore,
   useT,
   viewCmd,
+  undoCase,
+  redoCase,
 } from "../state/store";
 import type { Lang } from "../api/types";
 import { CAD_PHYSICS, pickCadFile } from "./ImportCad";
@@ -71,6 +75,8 @@ export function CommandPalette() {
         });
       });
       list.push(
+        { id: 'undo', group: t('palette.group.app'), label: t('undo.label'), icon: <Undo2 size={15} />, hint: 'Ctrl+Z', run: () => void undoCase() },
+        { id: 'redo', group: t('palette.group.app'), label: t('redo.label'), icon: <Redo2 size={15} />, hint: 'Ctrl+Shift+Z', run: () => void redoCase() },
         { id: "mesh", group: t("palette.group.run"), label: t("cmd.mesh"), icon: <Box size={15} />, run: () => void generateMesh() },
         { id: "run-preview", group: t("palette.group.run"), label: t("cmd.runPreview"), icon: <Play size={15} />, run: () => void runCase("preview") },
         { id: "run-final", group: t("palette.group.run"), label: t("cmd.runFinal"), icon: <Rocket size={15} />, run: () => void runCase("final") },
