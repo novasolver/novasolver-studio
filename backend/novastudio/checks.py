@@ -64,10 +64,30 @@ def run(case: dict, lang: str) -> list[dict]:
         if ms["exists"] and ms["stale"]:
             add("warn", "mesh_stale", "mesh", fix="generate_mesh(case_id)")
     elif tp["physics"] == "structural":
-        if not any(v["role"] in ("fixed", "symmetry", "constraint") for v in b.values()):
+        modal = case['physics'].get('analysis') == 'modal'
+        load = case['physics'].get('thermal_load', {})
+        thermal_mode = load if isinstance(load, str) else load.get('mode','none')
+        if modal:
+            if not any(v['role'] in ('fixed','symmetry','constraint') for v in b.values()):
+                add('warn', 'free_free', 'boundaries')
+            if any(v['role'] in geometry.LOAD_ROLES for v in b.values()):
+                add('warn', 'modal_loads_ignored', 'boundaries')
+        if not modal and not any(v["role"] in ("fixed", "symmetry", "constraint") for v in b.values()):
             add("error", "no_fixed", "boundaries", fix='update_case(changes={"boundaries.x0.role": "fixed"})')
-        if not any(v["role"] in ("load", "pressure") for v in b.values()):
+        if not modal and not any(v["role"] in geometry.LOAD_ROLES for v in b.values()) and thermal_mode == 'none' and not any(
+                case['physics'].get(k, {}).get('enabled') for k in ('gravity','rotation')):
             add("error", "no_load", "boundaries", fix='update_case(changes={"boundaries.x1.role": "load"})')
+        if not modal and thermal_mode != 'none':
+            mats = [templates.solid_props(case,k) for k in case.get('body_materials',{})] or [templates.solid_props(case)]
+            if all(m.get('alpha',0) == 0 for m in mats):
+                add('warn', 'no_expansion', 'physics')
+            if thermal_mode == 'solve' and not any(v.get('thermal',{}).get('role') in ('temperature','convection') for v in b.values()):
+                add('error', 'no_temperature', 'boundaries')
+        if not modal:
+            desc = {f['key']:f for f in case['geometry'].get('faces',[])}
+            for f,v in b.items():
+                if v['role'] == 'bearing' and not all(k in desc.get(f,{}) for k in ('axis','axis_point','radius')):
+                    add('error','bearing_axis','boundaries',faces=[f])
         if case["template"] == "cantilever":
             p = case["geometry"]["params"]
             L, h = units.to_si(p["length"]), units.to_si(p["height"])

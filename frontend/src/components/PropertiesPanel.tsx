@@ -61,6 +61,8 @@ import { fmt, fmtDuration, fmtGci, fmtInt, fmtSignedPct, unitLabel } from "../li
 import { STEP_ICONS } from "./stepIcons";
 import { cadPhysicsOf, pickCadFile } from "./ImportCad";
 import { SelectionActions } from './SelectionActions';
+import { StructuralSettings, VectorInput } from './StructuralSettings';
+import { ResultsTools } from './ResultsTools';
 
 // ------------------------------------------------------------------ shared bits
 
@@ -297,6 +299,7 @@ function PhysicsStep() {
         </Well>
       </Section>
       {p.ui.flow && <FlowSection />}
+      <StructuralSettings />
       {physicsKind === "dc-current" && <Section>
         <label className="flex items-center gap-2 text-body text-fg">
           <input type="checkbox" checked={p.case.physics?.joule_heating !== false}
@@ -580,11 +583,11 @@ function FilterChip({ on, onClick, children }: { on: boolean; onClick: () => voi
   );
 }
 
-type FaceValue = { value: number; unit: string } | string;
+type FaceValue = { value: number | number[]; unit: string } | string;
 
 function sameValue(a: FaceValue | undefined, b: FaceValue | undefined) {
   if (typeof a === "string" || typeof b === "string") return a === b;
-  return !!a && !!b && a.value === b.value && a.unit === b.unit;
+  return !!a && !!b && JSON.stringify(a.value) === JSON.stringify(b.value) && a.unit === b.unit;
 }
 
 /** Edits the role and values of every selected face at once (one PATCH). */
@@ -683,6 +686,7 @@ function SelectionEditor() {
           </div>
         )}
         <div className="flex flex-col gap-4">
+          {p.case.physics?.analysis === 'modal' && commonRole && ['load','pressure','moment','bearing','remote-force'].includes(commonRole) && <p className="prose-ui text-label text-fg-2">{t('struct.loadsIgnored')}</p>}
           <Field label={t("bc.role")} hint={ui.fixed_roles ? t("bc.fixedRoles") : undefined}>
             <Select
               disabled={!!ui.fixed_roles}
@@ -709,7 +713,7 @@ function SelectionEditor() {
                     value={mixed ? null : cur}
                     placeholder={<span className="text-fg-3">{t("bc.mixed")}</span>}
                     ariaLabel={label}
-                    options={(ui.directions ?? []).map((d) => ({ value: d.id, label: d.label }))}
+                    options={(ui.directions ?? []).filter(d => d.id !== 'normal' || commonRole === 'load').map((d) => ({ value: d.id, label: d.label }))}
                     onChange={(v) => {
                       for (const k of keys) change(`boundaries.${k}.${field}`, v);
                     }}
@@ -750,6 +754,13 @@ function SelectionEditor() {
                 </Field>
               );
             }
+            if (field === 'point') {
+              const q = vals[0];
+              const v = typeof q === 'object' && Array.isArray(q.value) ? q.value : [0,0,0];
+              const unit = typeof q === 'object' ? q.unit : 'mm';
+              return <Field key={field} label={label}><VectorInput label={label} value={v} unit={unit}
+                onCommit={v => { for (const k of keys) change(`boundaries.${k}.point`,{value:v,unit}); }} />{err && <FieldError text={err} />}</Field>;
+            }
             const v0 = vals.find((v) => v && typeof v !== "string") as { value: number; unit: string } | undefined;
             const units = ui.field_units?.[field] ?? (v0 ? [v0.unit] : []);
             return (
@@ -770,7 +781,7 @@ function SelectionEditor() {
           })}
           {legacyParams.length > 0 && <ParamList params={legacyParams} />}
           {fields && fields.length === 0 && commonRole && <p className="text-label text-fg-3">{t("bc.noValues")}</p>}
-          {p.case.physics?.kind === "dc-current" && p.case.physics.joule_heating !== false && <ThermalEditor faces={sel} />}
+          {((p.case.physics?.kind === "dc-current" && p.case.physics.joule_heating !== false) || p.case.physics?.thermal_load?.mode === 'solve') && <ThermalEditor faces={sel} />}
         </div>
         <div className="mt-3"><SelectionActions groups /></div>
       </div>
@@ -808,7 +819,7 @@ function ThermalEditor({ faces }: { faces: UiFace[] }) {
 function describeValues(f: UiFace, directions?: { id: string; label: string }[]): string {
   const v = f.values ?? {};
   return Object.entries(v)
-    .map(([, x]) => (typeof x === "string" ? (directions?.find((d) => d.id === x)?.label ?? x) : `${fmt(x.value, 4)} ${unitLabel(x.unit)}`))
+    .map(([, x]) => (typeof x === "string" ? (directions?.find((d) => d.id === x)?.label ?? x) : `${Array.isArray(x.value) ? x.value.map(v => fmt(v,4)).join(', ') : fmt(x.value, 4)} ${unitLabel(x.unit)}`))
     .join("   ");
 }
 
@@ -1455,6 +1466,7 @@ function ResultsStep() {
           )}
         </Section>
       )}
+      <ResultsTools />
       <Section>
         <div className="flex flex-col gap-4">
           <Field label={t("results.quantity")}>
@@ -1522,6 +1534,11 @@ function ResultsStep() {
                   { value: autoK * 3, label: `×${fmt(autoK * 3, 2)}` },
                 ]}
               />
+              <div className="mt-3 flex gap-2">
+                <Button variant="secondary" onClick={() => setState({deformScale:null})}>{t('results.auto')}</Button>
+                <Button variant="secondary" onClick={() => setState({deformScale:1})}>×1</Button>
+                <NumberInput ariaLabel={t('results.customScale')} value={k} min={0} onCommit={v => setState({deformScale:v})} />
+              </div>
             </Field>
           )}
           {range && (

@@ -175,6 +175,15 @@ def case_payload(case_id: str, lang: str = "ja") -> dict:
             continue
         params.append({"path": path, "label": t(label, lang), "value": node.get("value"), "unit": node.get("unit"),
                        "units": units.UNIT_CHOICES[dim], "min_si": lo, "max_si": hi})
+    if tp['physics'] == 'structural':
+        material = case['materials']['solid']
+        preset = templates.MATERIALS_SOLID.get(material.get('preset'),templates.MATERIALS_SOLID['steel'])
+        for key,label,dim in [('E','E','pressure'),('nu','poisson','dimensionless'),('rho','rho','density'),('alpha','alpha','expansion'),('k','k','conductivity')]:
+            path = 'materials.solid.'+key
+            if not any(v['path'] == path for v in params):
+                q = material.get(key,preset[key])
+                params.append({'path':path,'label':t('param.'+label,lang),'value':q['value'],'unit':q['unit'],
+                               'units':units.UNIT_CHOICES[dim],'min_si':0,'max_si':None})
     faces = []
     info = {f["key"]: f for f in case["geometry"].get("faces", [])}
     for key in templates.face_keys(case):
@@ -574,21 +583,27 @@ def verify_case(case_id: str, lang: str = "ja") -> dict:
             "stale": pl["stale"]}
 
 
-def field(case_id: str, quantity: str, lang: str = "ja") -> dict:
-    return results.field(store.load(case_id), quantity, lang_of(lang))
+def field(case_id: str, quantity: str, lang: str = "ja", mode: int = 1, section: dict | None = None) -> dict:
+    return results.field(store.load(case_id), quantity, lang_of(lang), mode=mode, section=section)
 
 
 def render_view(case_id: str, quantity: str = "", lang: str = "ja", view: str = 'iso',
-                highlight: list[str] | None = None) -> tuple[bytes, dict]:
+                highlight: list[str] | None = None, mode: int = 1) -> tuple[bytes, dict]:
     if quantity == 'faces':
         return results.render_faces(store.load(case_id), lang_of(lang), view, highlight)
-    return results.render_png(store.load(case_id), quantity, lang_of(lang))
+    return results.render_png(store.load(case_id), quantity, lang_of(lang), mode=mode)
+
+
+def export_results(case_id: str, format: str, lang: str = 'ja') -> dict:
+    from .exports import export
+    path = export(store.load(case_id), format, lang_of(lang))
+    return {'path': str(path), 'format': format, 'filename': path.name}
 
 
 def probe_results(case_id: str, points: list | None = None, line: dict | None = None, faces: list[str] | None = None,
-                  run_id: str | None = None, lang: str = "ja") -> dict:
+                  run_id: str | None = None, lang: str = "ja", mode: int = 1) -> dict:
     from .probe import probe
-    return probe(store.load(case_id), points, line, faces, run_id)
+    return probe(store.load(case_id), points, line, faces, run_id, mode)
 
 
 def clone_case(case_id: str, changes: dict | None = None, title: str | None = None, lang: str = "ja", source: str = 'gui') -> dict:

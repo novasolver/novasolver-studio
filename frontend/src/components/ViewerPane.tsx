@@ -11,9 +11,11 @@ import {
   selectFace,
   selectFaces,
   getState,
+  probeFieldPoint,
   undoCase,
   redoCase,
   setHoverFace,
+  setState,
   useStore,
   useT,
   viewCmd,
@@ -254,6 +256,9 @@ export function ViewerPane() {
   const colormap = useStore((s) => s.colormap);
   const range = useStore((s) => s.range);
   const deform = useStore((s) => s.deformScale);
+  const animation = useStore(s => s.modeAnimation);
+  const modal = useStore(s => s.results?.kind === 'modal');
+  const probeValue = useStore(s => s.probeValue);
   const resultsLoading = useStore((s) => s.resultsLoading);
   const meshExists = useStore((s) => !!s.payload?.ui.mesh?.state.exists);
   const running = useStore((s) => isActive(s.job));
@@ -354,6 +359,23 @@ export function ViewerPane() {
     if (!viewer || !field) return;
     viewer.setDeformScale(deform ?? field.auto_deform_scale ?? 1);
   }, [viewer, deform, field]);
+  useEffect(() => { viewer?.setModeAnimation(showField && !!modal && animation); }, [viewer,showField,modal,animation]);
+  useEffect(() => viewer?.onFieldPick((at,value,unit) => { void probeFieldPoint(at,value,unit); }), [viewer]);
+  useEffect(() => {
+    if (!viewer) return;
+    const vector = (d: string | number[] | undefined): number[] => Array.isArray(d) ? d : flowVector(d ?? null) ?? [0,0,-1];
+    viewer.setBoundaryLoads(step === 'boundaries' ? (faces ?? []).filter(f => ['load','moment','bearing','remote-force'].includes(f.role ?? '')).map(f => {
+      const shape = geometry?.faces.find(g => g.key === f.key);
+      const p = shape?.positions ?? [];
+      let center = f.descriptor?.centroid ?? [0,1,2].map(c => { let sum=0; for(let i=c;i<p.length;i+=3) sum+=p[i]; return sum/Math.max(p.length/3,1); });
+      if (f.role === 'bearing' && f.descriptor?.axis && f.descriptor.axis_point) {
+        const axis = f.descriptor.axis, origin = f.descriptor.axis_point;
+        const along = center.reduce((s,v,i) => s+(v-origin[i])*axis[i],0);
+        center = origin.map((v,i) => v+axis[i]*along);
+      }
+      return { center, direction:vector(f.values?.direction as string | undefined), role:f.role!, radius:f.descriptor?.radius, axis:f.descriptor?.axis };
+    }) : []);
+  }, [viewer,faces,step,geometry]);
 
   // face colouring layers (role colours shown on the boundaries step only)
   useEffect(() => {
@@ -464,6 +486,10 @@ export function ViewerPane() {
           {running ? <StripSkeleton /> : <ResultsStrip />}
           <StaleBanner />
           {field && <ColorBar />}
+          {probeValue && <div className="hud absolute bottom-14 left-3 rounded-[8px] px-3 py-2 text-label text-fg">
+            <span className="tnum">{probeValue.at.map(x => fmt(x*1000,4)).join(', ')} mm · {fmt(probeValue.value,5)} {unitLabel(probeValue.unit)}</span>
+            <button className="ml-2 h-8 px-1 text-fg-2" aria-label={t('common.close')} onClick={() => setState({probeValue:null})}><X size={12} /></button>
+          </div>}
           {resultsLoading && !field && (
             <div className="absolute inset-0 flex items-center justify-center gap-2 text-body text-fg-2">
               <Spinner /> {t("results.loading")}

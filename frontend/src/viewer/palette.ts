@@ -111,7 +111,7 @@ export function roleColor(theme: ViewerTheme, role: string | null | undefined, l
 /** Roles that hold a value fixed (displacement, temperature; symmetry holds the normal displacement). */
 export const FIXED_ROLES = new Set(["fixed", "symmetry", "constraint", "temperature", "voltage"]);
 /** Roles that drive the problem (force, pressure, heat input, inflow, moving wall). */
-export const LOADED_ROLES = new Set(["load", "pressure", "heat-flux", "inlet", "moving-wall", "surface-charge", "current"]);
+export const LOADED_ROLES = new Set(["load", "pressure", "heat-flux", "inlet", "moving-wall", "surface-charge", "current", 'moment', 'bearing', 'remote-force']);
 /** Roles that exchange with the surroundings (convection, outflow). */
 export const EXCHANGE_ROLES = new Set(["convection", "outlet"]);
 

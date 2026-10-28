@@ -13,6 +13,9 @@ import type {
   Sample,
   Template,
   WsMessage,
+  SectionPlane,
+  ProbeLine,
+  ProbePoint,
 } from "./types";
 
 type MockModule = typeof import("./mock");
@@ -100,6 +103,10 @@ export function renderUrl(caseId: string, quantity: string): string {
   return withLang(`/api/cases/${encodeURIComponent(caseId)}/render.png?quantity=${encodeURIComponent(quantity)}`);
 }
 
+export function exportUrl(caseId: string, format: string): string {
+  return withLang(`/api/cases/${encodeURIComponent(caseId)}/export?format=${encodeURIComponent(format)}`);
+}
+
 export interface CaseSummary {
   case_id: string;
   title: unknown;
@@ -159,8 +166,12 @@ export const api = {
   job: (jobId: string) => request<Job>("GET", `/api/jobs/${encodeURIComponent(jobId)}`),
   stopJob: (jobId: string) => request<Job>("POST", `/api/jobs/${encodeURIComponent(jobId)}/stop`),
   results: (id: string) => request<ResultsPayload>("GET", `/api/cases/${encodeURIComponent(id)}/results`),
-  field: (id: string, quantity: string) =>
-    request<FieldPayload>("GET", `/api/cases/${encodeURIComponent(id)}/field?quantity=${encodeURIComponent(quantity)}`),
+  field: (id: string, quantity: string, mode = 1, section: SectionPlane | null = null) =>
+    request<FieldPayload>("GET", `/api/cases/${encodeURIComponent(id)}/field?quantity=${encodeURIComponent(quantity)}&mode=${mode}${section ? '&section='+encodeURIComponent(JSON.stringify(section)) : ''}`),
+  probe: (id: string, line: { from: number[]; to: number[]; n: number }, mode = 1, run_id?: string) =>
+    request<ProbeLine>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { line, mode, run_id }),
+  probePoint: (id: string, at: number[], mode = 1, run_id?: string) =>
+    request<ProbePoint>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { points: [at], mode, run_id }),
 };
 
 /** Subscribe to server push (WS /ws). Reconnects with backoff. Returns an unsubscribe. */

@@ -45,7 +45,7 @@ def committable_bytes() -> int | None:
 
 # measured peak of the whole run worker (thick-sphere octant, 2026-10-28): 1.58 GB at 117k nodes, 3.84 GB at 454k
 MEM_BASE = 600e6
-MEM_PER_NODE = {"structural": 7.5e3, "scalar": 2.5e3}
+MEM_PER_NODE = {"structural": 7.5e3, "scalar": 2.5e3, "modal": 22e3}
 
 
 def check_memory(n_nodes: int, kind: str) -> None:
@@ -178,9 +178,54 @@ def _bmatrix(dNdx):
     return B
 
 
+def structural_system(nodes, tets, E, nu, alpha=0., temperature=None, T_ref=293.15):
+    """Shared stiffness and initial-strain load assembly, in bounded element blocks."""
+    n, ndof = len(nodes), 3 * len(nodes)
+    pairs, mat = np.unique(np.column_stack([np.broadcast_to(E, len(tets)), np.broadcast_to(nu, len(tets))]), axis=0,
+                           return_inverse=True)
+    Ds = np.array([elasticity_matrix(*p) for p in pairs])          # one D per material
+    mat = mat.ravel()
+    X = nodes[tets]                                   # (E,10,3)
+
+    vol = np.zeros(len(tets))
+    dofs = (3 * tets[:, :, None] + np.arange(3)).reshape(len(tets), 30)
+    K = sp.csr_matrix((ndof, ndof))
+    f = np.zeros(ndof)
+    expansion = np.zeros((len(tets), 4))
+    if temperature is not None:
+        temp = np.broadcast_to(temperature, n)
+        expansion = np.broadcast_to(alpha, len(tets))[:, None] * (temp[tets] @ SHAPE.T - T_ref)
+    # in chunks: the element matrices of a 300k-element model take 2.3 GB at once
+    for s in range(0, len(tets), ASSEMBLY_CHUNK):
+        sl = slice(s, s + ASSEMBLY_CHUNK)
+        Ke = np.zeros((len(dofs[sl]), 30, 30))
+        fe = np.zeros((len(dofs[sl]), 30))
+        for g in range(4):
+            J = np.einsum("ik,ekj->eij", DSHAPE[g], X[sl])    # (E,3,3)
+            detJ = np.linalg.det(J)
+            if np.any(detJ <= 0):
+                raise ValueError("inverted element (negative Jacobian)")
+            dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(detJ), 3, 10)))
+            B = _bmatrix(dNdx)
+            Ke += GW[g] * detJ[:, None, None] * np.einsum("eki,ekl,elj->eij", B, Ds[mat[sl]], B)
+            if temperature is not None:
+                initial = np.zeros((len(detJ), 6))
+                initial[:, :3] = expansion[sl, g, None]
+                fe += (GW[g] * detJ)[:, None] * np.einsum("eki,ekl,el->ei", B, Ds[mat[sl]], initial)
+            vol[sl] += GW[g] * detJ
+        rows = np.repeat(dofs[sl], 30, axis=1).ravel()
+        cols = np.tile(dofs[sl], (1, 30)).ravel()
+        K = K + sp.csr_matrix((Ke.ravel(), (rows, cols)), shape=(ndof, ndof))
+        np.add.at(f, dofs[sl].ravel(), fe.ravel())
+        del Ke
+
+    return K, f, vol, dofs, Ds, mat, expansion
+
+
 def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tuple[np.ndarray, np.ndarray]],
           progress: Callable[[str, float], None] = lambda *_: None,
-          rollers: list[tuple[np.ndarray, int]] = ()) -> dict:
+          rollers: list[tuple[np.ndarray, int]] = (), *, rho=0., acceleration=None,
+          alpha=0., temperature=None, T_ref=293.15, nodal_forces=None) -> dict:
     """fixed_faces: list of tri6 arrays whose nodes get u=0.
     tractions: list of (tri6 array, traction vector [Pa]) applied uniformly on that face.
     rollers: list of (tri6 array, component) whose nodes get u[component]=0 (symmetry planes normal to an axis).
@@ -190,43 +235,14 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     n = len(nodes)
     ndof = 3 * n
     check_memory(n, "structural")
-    pairs, mat = np.unique(np.column_stack([np.broadcast_to(E, len(tets)), np.broadcast_to(nu, len(tets))]), axis=0,
-                           return_inverse=True)
-    Ds = np.array([elasticity_matrix(*p) for p in pairs])          # one D per material
-    mat = mat.ravel()
-    X = nodes[tets]                                   # (E,10,3)
-
     progress("job.assembling", 0.10)
-    vol = np.zeros(len(tets))
-    dofs = (3 * tets[:, :, None] + np.arange(3)).reshape(len(tets), 30)
-    K = sp.csr_matrix((ndof, ndof))
-    # in chunks: the element matrices of a 300k-element model take 2.3 GB at once
-    for s in range(0, len(tets), ASSEMBLY_CHUNK):
-        sl = slice(s, s + ASSEMBLY_CHUNK)
-        Ke = np.zeros((len(dofs[sl]), 30, 30))
-        for g in range(4):
-            J = np.einsum("ik,ekj->eij", DSHAPE[g], X[sl])    # (E,3,3)
-            detJ = np.linalg.det(J)
-            if np.any(detJ <= 0):
-                raise ValueError("inverted element (negative Jacobian)")
-            dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(detJ), 3, 10)))
-            B = _bmatrix(dNdx)
-            Ke += GW[g] * detJ[:, None, None] * np.einsum("eki,ekl,elj->eij", B, Ds[mat[sl]], B)
-            vol[sl] += GW[g] * detJ
-        rows = np.repeat(dofs[sl], 30, axis=1).ravel()
-        cols = np.tile(dofs[sl], (1, 30)).ravel()
-        K = K + sp.csr_matrix((Ke.ravel(), (rows, cols)), shape=(ndof, ndof))
-        del Ke
-
-    f = np.zeros(ndof)
-    for tri, t in tractions:
-        P = nodes[tri[:, :3]]
-        area = 0.5 * np.linalg.norm(np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]), axis=1)
-        # uniform traction on a 6-node triangle: corners 0, midsides area/3 each
-        for k in range(3, 6):
-            tt = t if np.ndim(t) == 2 else np.broadcast_to(t, (len(tri), 3))   # per-triangle or uniform traction
-            np.add.at(f, (3 * tri[:, k])[:, None] + np.arange(3), (area / 3)[:, None] * tt)
-
+    K, f, vol, dofs, Ds, mat, expansion = structural_system(nodes, tets, E, nu, alpha, temperature, T_ref)
+    X = nodes[tets]
+    f += surface_forces(nodes, tractions).ravel()
+    if nodal_forces is not None:
+        f += np.asarray(nodal_forces).ravel()
+    if acceleration is not None:
+        f += body_forces(nodes, tets, rho, acceleration).ravel()
     fixed_nodes = np.unique(np.concatenate([fa.ravel() for fa in fixed_faces])) if fixed_faces else np.array([], int)
     fixed = (3 * fixed_nodes[:, None] + np.arange(3)).ravel()
     if len(rollers):
@@ -284,7 +300,9 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     for g in range(4):
         J = np.einsum("ik,ekj->eij", DSHAPE[g], X)
         dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(tets), 3, 10)))
-        sg[:, g] = np.einsum("ekl,el->ek", Ds[mat], np.einsum("eij,ej->ei", _bmatrix(dNdx), u[dofs]))
+        strain = np.einsum("eij,ej->ei", _bmatrix(dNdx), u[dofs])
+        strain[:, :3] -= expansion[:, g, None]
+        sg[:, g] = np.einsum("ekl,el->ek", Ds[mat], strain)
     Lg = np.column_stack([1 - GAUSS.sum(axis=1), GAUSS])           # barycentric coords of Gauss points (4x4)
     sc = np.einsum("cg,egk->eck", np.linalg.inv(Lg), sg)            # (E, 4 corners, 6)
     acc = np.zeros((n, 6)); cnt = np.zeros(n)
@@ -304,7 +322,13 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     # relative to the total load, not the net one: internal pressure on a closed vessel nets to ~0
     scale = max(np.linalg.norm(applied), np.linalg.norm(np.abs(f).reshape(-1, 3).sum(axis=0)), 1e-30)
     imbalance = float(np.linalg.norm(applied + react) / scale)
+    applied_moment = np.cross(nodes, f.reshape(-1, 3)).sum(0)
+    reaction_moment = np.cross(nodes, reaction.reshape(-1, 3)).sum(0)
+    moment_scale = max(np.linalg.norm(applied_moment), scale * np.ptp(nodes, axis=0).max(), 1e-30)
+    imbalance = max(imbalance, float(np.linalg.norm(applied_moment + reaction_moment) / moment_scale))
     return {"u": U, "vm": vm, "s": sn, "vm_elem_max": float(vm_e.max()), "applied": applied, "reaction": react,
+            "applied_moment": applied_moment, "reaction_moment": reaction_moment,
+            "nodal_reaction": reaction.reshape(-1, 3), "forces": f.reshape(-1, 3),
             "imbalance": imbalance, "volume": float(vol.sum()), "ndof": ndof, "nfree": int(len(free))}
 
 
@@ -328,6 +352,166 @@ def outward_normals(nodes: np.ndarray, tets: np.ndarray, tri: np.ndarray) -> np.
 def tri_areas(nodes, tri):
     P = nodes[tri[:, :3]]
     return 0.5 * np.linalg.norm(np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]), axis=1)
+
+
+def volume_rule():
+    """Positive degree-seven integration (Duffy map); four points underintegrate the quadratic mass matrix."""
+    x, w = np.polynomial.legendre.leggauss(5)
+    x, w = (x + 1) / 2, w / 2
+    for i, a in enumerate(x):
+        for j, b in enumerate(x):
+            for k, c in enumerate(x):
+                g = np.array([a, (1-a)*b, (1-a)*(1-b)*c])
+                L = np.array([1-g.sum(), *g])
+                N = np.r_[L*(2*L-1), 4*L[EDGES[:, 0]]*L[EDGES[:, 1]]]
+                yield N, _dshape(g), w[i]*w[j]*w[k]*(1-a)**2*(1-b)
+
+
+def mass_matrix(nodes, tets, rho):
+    tets = canonical_tets(nodes, tets)
+    coeff = np.broadcast_to(rho, len(tets))
+    M = sp.csr_matrix((len(nodes), len(nodes)))
+    rule = list(volume_rule())
+    for start in range(0, len(tets), ASSEMBLY_CHUNK):
+        sl = slice(start, start + ASSEMBLY_CHUNK)
+        conn = tets[sl]
+        X = nodes[conn]
+        me = np.zeros((len(conn), 10, 10))
+        for N, dN, w in rule:
+            det = np.linalg.det(np.einsum('ik,ekj->eij', dN, X))
+            if np.any(det <= 0):
+                raise ValueError('inverted element (negative Jacobian)')
+            me += (w*det*coeff[sl])[:, None, None] * np.outer(N, N)
+        M += sp.csr_matrix((me.ravel(), (np.repeat(conn, 10, 1).ravel(), np.tile(conn, (1, 10)).ravel())), shape=M.shape)
+    return sp.kron(M, sp.eye(3), format='csr')
+
+
+def body_forces(nodes, tets, rho, acceleration):
+    coeff = np.broadcast_to(rho, len(tets))
+    f = np.zeros_like(nodes)
+    for start in range(0, len(tets), ASSEMBLY_CHUNK):
+        sl = slice(start, start+ASSEMBLY_CHUNK)
+        conn = tets[sl]; X = nodes[conn]
+        fe = np.zeros((len(conn), 10, 3))
+        for N, dN, w in volume_rule():
+            weight = w*np.linalg.det(np.einsum('ik,ekj->eij', dN, X))*coeff[sl]
+            a = acceleration(np.einsum('i,eij->ej', N, X))
+            fe += weight[:, None, None]*N[None, :, None]*a[:, None, :]
+        np.add.at(f, conn.ravel(), fe.reshape(-1, 3))
+    return f
+
+
+def surface_forces(nodes, tractions):
+    """The third dimension denotes already integrated consistent tri6 nodal forces."""
+    f = np.zeros_like(nodes)
+    for tri, t in tractions:
+        if np.ndim(t) == 3:
+            np.add.at(f, tri.ravel(), np.asarray(t).reshape(-1, 3))
+        else:
+            tt = np.broadcast_to(t, (len(tri), 3))
+            for k in range(3, 6):
+                np.add.at(f, tri[:, k], tri_areas(nodes, tri)[:, None]*tt/3)
+    return f
+
+
+MODAL_DIRECT_LIMIT = 300000
+
+
+def rigid_body_modes(nodes):
+    xyz = nodes-nodes.mean(axis=0)
+    x,y,z = xyz.T
+    B = np.zeros((len(nodes),3,6))
+    B[:,0,0] = B[:,1,1] = B[:,2,2] = 1.
+    B[:,0,3],B[:,1,3] = -y,x
+    B[:,1,4],B[:,2,4] = -z,y
+    B[:,0,5],B[:,2,5] = z,-x
+    return B.reshape(3*len(nodes),6)
+
+
+def modal_constraints(nodes, fixed_faces, rollers, tets=None):
+    fixed = [3*np.unique(f)[:, None]+np.arange(3) for f in fixed_faces]
+    fixed += [3*np.unique(tri)+c for tri,c in rollers]
+    fixed = np.unique(np.concatenate([f.ravel() for f in fixed])) if fixed else np.array([],int)
+    if tets is None:
+        labels, count = np.zeros(len(nodes), int), 1
+    else:
+        a = np.repeat(tets[:, :1], tets.shape[1]-1, axis=1).ravel()
+        b = tets[:, 1:].ravel()
+        graph = sp.coo_matrix((np.ones(len(a)), (a, b)), shape=(len(nodes), len(nodes)))
+        count, labels = sp.csgraph.connected_components(graph, directed=False)
+    rows, cols, values = [], [], []
+    nrigid = 0
+    constrained = np.zeros(3*len(nodes), bool)
+    constrained[fixed] = True
+    components = np.split(np.argsort(labels), np.cumsum(np.bincount(labels))[:-1])
+    for component, idx in enumerate(components):
+        dofs = (3*idx[:, None]+np.arange(3)).ravel()
+        local = rigid_body_modes(nodes[idx])
+        held = local[constrained[dofs]]
+        nrigid += np.linalg.matrix_rank(local)- (np.linalg.matrix_rank(held) if len(held) else 0)
+        r, c = np.nonzero(local)
+        rows.append(dofs[r]); cols.append(6*component+c); values.append(local[r, c])
+    rigid = sp.csr_matrix((np.concatenate(values), (np.concatenate(rows), np.concatenate(cols))),
+                          shape=(3*len(nodes), 6*count))
+    return fixed, rigid, nrigid
+
+
+def solve_modal(nodes, tets, E, nu, rho, fixed_faces=(), rollers=(), modes=6, progress=lambda *_: None):
+    check_memory(len(nodes), 'modal')
+    tets = canonical_tets(nodes, tets)
+    progress('job.assembling', .1)
+    K = structural_system(nodes, tets, E, nu)[0]
+    M = mass_matrix(nodes, tets, rho)
+    fixed,rigid,nrigid = modal_constraints(nodes,fixed_faces,rollers,tets=tets)
+    free = np.setdiff1d(np.arange(3*len(nodes)), fixed)
+    A, B = K[free][:, free], M[free][:, free]
+    free_free = not len(fixed)
+    count = min(int(modes) + nrigid, len(free)-1)
+    # A dimensioned negative shift leaves rigid modes factorisable, without moving the elastic roots.
+    shift = -max(1., float(np.mean(A.diagonal())/np.mean(B.diagonal()))*1e-9)
+    progress('job.solving', .45)
+    if len(free) <= MODAL_DIRECT_LIMIT:
+        values, vectors = spla.eigsh(A, M=B, k=count, sigma=shift, which='LM', tol=1e-11)
+    else:
+        import pyamg
+        scale_k,scale_m = float(A.diagonal().mean()),float(B.diagonal().mean())
+        Ah,Bh = A/scale_k,B/scale_m
+        hierarchy = pyamg.smoothed_aggregation_solver(Ah-shift*scale_m/scale_k*Bh,
+                                                     B=rigid[free].toarray(), symmetry='symmetric')
+        X = np.random.default_rng(0).normal(size=(len(free), count))
+        values, vectors = spla.lobpcg(Ah, X, B=Bh, M=hierarchy.aspreconditioner(), largest=False,
+                                     tol=1e-10, maxiter=1000)
+        values *= scale_k/scale_m
+    order = np.argsort(values)
+    values, vectors = values[order], vectors[:, order]
+    if nrigid:
+        # Topology and supports determine the nullity; a threshold can discard soft elastic modes.
+        values, vectors = values[nrigid:], vectors[:, nrigid:]
+    values, vectors = values[:modes], vectors[:, :modes]
+    if not len(values) or np.any(values <= 0):
+        raise RuntimeError('no positive elastic modes')
+    # Re-orthonormalise in the mass inner product, including degenerate bending pairs.
+    L = np.linalg.cholesky(vectors.T @ (B @ vectors))
+    vectors = np.linalg.solve(L, vectors.T).T
+    phi = np.zeros((3*len(nodes), len(values)))
+    phi[free] = vectors
+    residual = A@vectors - (B@vectors)*values
+    rel = np.linalg.norm(residual, axis=0)/np.maximum(np.linalg.norm(A@vectors, axis=0), 1e-30)
+    table = []
+    influence = []
+    total_mass = []
+    for axis in range(3):
+        r = np.zeros(3*len(nodes)); r[axis::3] = 1
+        mr = M@r
+        influence.append(phi.T@mr)
+        total_mass.append(r@mr)
+    for i, v in enumerate(values):
+        fractions = [float(influence[axis][i]**2/total_mass[axis]) for axis in range(3)]
+        table.append({'mode': i+1, 'frequency_hz': float(np.sqrt(v)/(2*np.pi)), 'effective_mass': fractions})
+    shapes = phi.T.reshape(-1, len(nodes), 3)
+    display = shapes/np.linalg.norm(shapes, axis=2).max(axis=1)[:, None, None]
+    return {'modes': table, 'phi': shapes, 'mode_shapes': display, 'free_free': free_free,
+            'residual': float(rel.max()), 'converged': bool(rel.max() < 1e-5)}
 
 
 # exact consistent "mass" matrix of a straight-sided 6-node triangle, times 180/A

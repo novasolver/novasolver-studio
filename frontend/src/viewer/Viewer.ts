@@ -35,6 +35,7 @@ export interface ViewerGeometry {
 }
 
 export interface ViewerField {
+  section?: { normal: number[]; position: number };
   positions: ArrayLike<number>;
   indices: ArrayLike<number>;
   scalars: ArrayLike<number>;
@@ -168,6 +169,10 @@ export class Viewer {
   private colormap: ColormapName = "viridis";
   private range: [number, number] = [0, 1];
   private deformScale = 1;
+  private modeAnimation = false;
+  private modeOffset = { value: 0 };
+  private fieldPickHandlers = new Set<(at: number[], value: number, unit: string) => void>();
+  private loadLine: LineSegments2 | null = null;
 
   private pickHandlers = new Set<FacePickHandler>();
   private hoverHandlers = new Set<FaceHoverHandler>();
@@ -425,6 +430,7 @@ export class Viewer {
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(this.basePositions), 3));
       g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+      g.setAttribute('modeDisplacement', new THREE.BufferAttribute(field.displacement ? Float32Array.from(field.displacement) : new Float32Array(n*3), 3));
       g.setIndex(new THREE.BufferAttribute(Uint32Array.from(field.indices), 1));
       const mat = new THREE.MeshStandardMaterial({
         vertexColors: true,
@@ -437,7 +443,13 @@ export class Viewer {
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1,
       });
+      mat.onBeforeCompile = shader => {
+        shader.uniforms.uModeOffset = this.modeOffset;
+        shader.vertexShader = 'attribute vec3 modeDisplacement; uniform float uModeOffset;\n'+shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed += modeDisplacement * uModeOffset;');
+      };
       this.fieldMesh = new THREE.Mesh(g, mat);
+      this.fieldMesh.frustumCulled = false;
       this.scene.add(this.fieldMesh);
       this.applyDeform();
       this.updateFieldColors();
@@ -487,6 +499,60 @@ export class Viewer {
     this.deformScale = Number.isFinite(k) ? k : 0;
     this.applyDeform();
     this.syncVisibility();
+  }
+
+  setModeAnimation(on: boolean): void {
+    this.modeAnimation = on && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.modeOffset.value = 0;
+    if (this.fieldEdges) this.fieldEdges.visible = !this.modeAnimation;
+    this.dirty = true;
+  }
+
+  cameraDirection(): number[] {
+    return this.camera.position.clone().sub(this.controls.target).normalize().toArray();
+  }
+
+  onFieldPick(cb: (at: number[], value: number, unit: string) => void): () => void {
+    this.fieldPickHandlers.add(cb);
+    return () => this.fieldPickHandlers.delete(cb);
+  }
+
+  setBoundaryLoads(loads: { center: number[]; direction: number[]; role: string; radius?: number; axis?: number[] }[]): void {
+    this.disposeLine(this.loadLine); this.loadLine = null;
+    if (!loads.length) { this.dirty = true; return; }
+    const span = this.boundingSphere()?.radius ?? 1;
+    const segments: number[] = [];
+    const line = (a: THREE.Vector3, b: THREE.Vector3) => segments.push(...a.toArray(), ...b.toArray());
+    const arrow = (tail: THREE.Vector3, tip: THREE.Vector3, side: THREE.Vector3) => {
+      line(tail,tip);
+      const back = tip.clone().lerp(tail,.25), width = tail.distanceTo(tip)*.13;
+      line(tip,back.clone().addScaledVector(side,width)); line(tip,back.addScaledVector(side,-width));
+    };
+    for (const load of loads) {
+      const c = new THREE.Vector3(...load.center), d = new THREE.Vector3(...load.direction).normalize();
+      const e = new THREE.Vector3().crossVectors(d,Math.abs(d.z)<.9 ? new THREE.Vector3(0,0,1) : new THREE.Vector3(0,1,0)).normalize();
+      const v = new THREE.Vector3().crossVectors(d,e).normalize();
+      if (load.role === 'moment') {
+        const r = Math.min(load.radius ?? span*.12,span*.15);
+        const pts = Array.from({length:25},(_,i) => c.clone().addScaledVector(e,r*Math.cos(i/24*1.6*Math.PI)).addScaledVector(v,r*Math.sin(i/24*1.6*Math.PI)));
+        for (let i=0;i<pts.length-2;i++) line(pts[i],pts[i+1]);
+        arrow(pts[pts.length-3],pts[pts.length-1],d);
+      } else if (load.role === 'bearing') {
+        const axis = new THREE.Vector3(...(load.axis ?? [0,0,1])).normalize();
+        const side = new THREE.Vector3().crossVectors(axis,d).normalize();
+        for (let i=-3;i<=3;i++) {
+          const theta = i*Math.PI/8;
+          const radial = d.clone().multiplyScalar(Math.cos(theta)).addScaledVector(side,Math.sin(theta));
+          const tip = c.clone().addScaledVector(radial,load.radius ?? span*.1);
+          arrow(tip.clone().addScaledVector(radial,-span*.12*Math.cos(theta)),tip,axis);
+        }
+      } else {
+        arrow(c.clone().addScaledVector(d,-span*.2),c,e);
+      }
+    }
+    const geometry = new LineSegmentsGeometry(); geometry.setPositions(segments);
+    this.loadLine = new LineSegments2(geometry,this.flowMat); this.scene.add(this.loadLine);
+    this.dirty = true;
   }
 
   /**
@@ -752,6 +818,7 @@ export class Viewer {
     this.disposeLine(this.selLine);
     this.disposeLine(this.hoverLine);
     this.disposeLine(this.flowLine);
+    this.disposeLine(this.loadLine);
     this.selMat.dispose();
     this.hoverMat.dispose();
     this.flowMat.dispose();
@@ -763,6 +830,7 @@ export class Viewer {
     this.boxHandlers.clear();
     this.boxElement?.remove();
     this.hoverHandlers.clear();
+    this.fieldPickHandlers.clear();
   }
 
   // --------------------------------------------------------------- internals
@@ -941,6 +1009,7 @@ export class Viewer {
 
   /** A flat field inside a 3-D body (e.g. a CFD slice): the body is shown as a ghost around it. */
   private fieldIsSlice(): boolean {
+    if (this.field?.section) return false;
     if (!this.fieldMesh || !this.geoMesh) return false;
     const ext = (o: THREE.Mesh) => {
       o.geometry.computeBoundingBox();
@@ -973,8 +1042,9 @@ export class Viewer {
     }
     if (this.wire) this.wire.visible = this.wireOn && !showField;
     const deformed = showField && !!this.field?.displacement?.length && this.deformScale !== 0;
-    if (this.ghost) this.ghost.visible = deformed;
+    if (this.ghost) this.ghost.visible = deformed && !this.field?.section;
     if (this.flowLine) this.flowLine.visible = !showField;
+    if (this.loadLine) this.loadLine.visible = !showField;
     if (showField) this.setHover(-1);
     this.updateOutlines();
   }
@@ -1132,6 +1202,7 @@ export class Viewer {
     if (tris > 400_000) return; // too heavy for integrated GPUs; skip outline
     const eg = new THREE.EdgesGeometry(this.fieldMesh.geometry, 30);
     this.fieldEdges = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
+    this.fieldEdges.visible = !this.modeAnimation;
     this.scene.add(this.fieldEdges);
     this.applyLineColors();
     this.dirty = true;
@@ -1191,8 +1262,26 @@ export class Viewer {
         return;
       }
     }
-    if (!d || e.button !== 0 || !this.pickingEnabled) return;
+    if (!d || e.button !== 0) return;
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return; // it was a drag
+    if (this.fieldMesh && this.field && this.basePositions && !this.modeAnimation) {
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.pointer.set((e.clientX-rect.left)/rect.width*2-1,1-(e.clientY-rect.top)/rect.height*2);
+      this.raycaster.setFromCamera(this.pointer,this.camera);
+      const hit = this.raycaster.intersectObject(this.fieldMesh,false)[0];
+      if (hit?.face) {
+        const attr = this.fieldMesh.geometry.getAttribute('position');
+        const ids = [hit.face.a,hit.face.b,hit.face.c];
+        const verts = ids.map(i => new THREE.Vector3().fromBufferAttribute(attr,i));
+        const bary = new THREE.Vector3(); THREE.Triangle.getBarycoord(hit.point,verts[0],verts[1],verts[2],bary);
+        const weights = bary.toArray();
+        const at = [0,1,2].map(c => ids.reduce((sum,i,k) => sum+this.basePositions![i*3+c]*weights[k],0));
+        const value = ids.reduce((sum,i,k) => sum+this.field!.scalars[i]*weights[k],0);
+        this.fieldPickHandlers.forEach(cb => cb(at,value,this.field!.unit ?? ''));
+      }
+      return;
+    }
+    if (!this.pickingEnabled) return;
     const fi = this.pickAt(e.clientX, e.clientY);
     const id = fi >= 0 ? this.faceIds[fi] : null;
     const label = fi >= 0 ? this.faceLabels[fi] : undefined;
@@ -1312,6 +1401,10 @@ export class Viewer {
       this.dirty = true;
     }
     if (this.capture) return; // a share capture owns the renderer and camera until endCapture
+    if (this.modeAnimation && this.fieldMesh) {
+      this.modeOffset.value = (Math.sin(performance.now()/1000*2*Math.PI*.6)-1)*this.deformScale;
+      this.dirty = true;
+    }
     if (this.controls.update()) this.dirty = true;
 
     if (this.pendingHover && this.pickingEnabled) {

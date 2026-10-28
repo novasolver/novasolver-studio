@@ -419,7 +419,7 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
                           "why": "no analytic reference for this shape; compare a 'fine' mesh run to check convergence"}}
 
 
-def slice_plane(nodes, tets, values, origin, normal):
+def slice_plane(nodes, tets, values, origin, normal, interpolate=None):
     """Cut tetrahedra with a plane. Returns triangle soup (positions (m,3), indices, interpolated values)."""
     d = (nodes - origin) @ normal
     D = d[tets]
@@ -435,7 +435,7 @@ def slice_plane(nodes, tets, values, origin, normal):
             if (da < 0) != (db < 0):
                 w = da / (da - db)
                 pts.append(nodes[t[a]] + w * (nodes[t[b]] - nodes[t[a]]))
-                vals.append(values[t[a]] + w * (values[t[b]] - values[t[a]]))
+                vals.append(interpolate(e, pts[-1]) if interpolate else values[t[a]] + w * (values[t[b]] - values[t[a]]))
         if len(pts) < 3:
             continue
         pts = np.array(pts)

@@ -1,14 +1,15 @@
 {
   "name": "novasolver-studio-frontend",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:faces": "node tests/faces-undo.cjs"
+    "test:faces": "node tests/faces-undo.cjs",
+    "test": "node tests/faces-undo.cjs && node tests/results-tools.cjs && node tests/boundary-directions.cjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.5",

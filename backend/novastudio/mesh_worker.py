@@ -758,6 +758,29 @@ def mesh_job(job: dict) -> None:
                 # sizing from the curvature of a discrete surface follows its facets, not the shape: very slow, no gain
                 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
             bbox = [[xmin, ymin, zmin], [xmax, ymax, zmax]]
+        elif job['kind'] in ('shaft', 'quarter_disk'):
+            r, lz = job['radius'], job['dims'][2]
+            quarter = job['kind'] == 'quarter_disk'
+            lx = ly = r if quarter else 2*r
+            bbox = [[0, 0, 0] if quarter else [-r, -r, 0], [r, r, lz]]
+            occ = gmsh.model.occ
+            occ.addCylinder(0, 0, 0, 0, 0, lz, r, angle=math.pi/2 if quarter else 2*math.pi)
+            occ.synchronize()
+            for _, tag in gmsh.model.getEntities(2):
+                typ = gmsh.model.getType(2, tag)
+                bb = gmsh.model.getBoundingBox(2, tag)
+                if typ == 'Cylinder':
+                    k = 'outer'
+                elif abs(bb[5]-bb[2]) < 1e-6:
+                    k = 'z0' if abs(occ.getCenterOfMass(2, tag)[2]) < lz/2 else 'z1'
+                else:
+                    k = 'x0' if abs(bb[3]-bb[0]) < 1e-6 else 'y0'
+                keys[tag] = k
+                gmsh.model.addPhysicalGroup(2, [tag], tag=tag, name=k)
+            h = (r/ {'coarse': 6, 'normal': 10, 'fine': 16}[job.get('size','normal')]) if quarter else r/DIVS[job.get('size','normal')]
+            gmsh.option.setNumber('Mesh.MeshSizeFromCurvature', 32)
+            gmsh.option.setNumber('Mesh.SecondOrderLinear', 0)
+            gmsh.option.setNumber('Mesh.HighOrderOptimize', 2)
         elif job["kind"] == "tube":
             a, b, lz = job["a"], job["b"], job["dims"][2]
             lx = ly = 2 * b

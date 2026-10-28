@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["build", "pytest>=9.1.1"]
+dev = ["build", "pytest>=9.1.1", "meshio>=5.3"]
 
 [project.scripts]
 novasolver-studio = "novastudio.__main__:main"

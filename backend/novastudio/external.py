@@ -177,7 +177,7 @@ def _nset(name, nodes_):
     return [f"*NSET, NSET={name}"] + [", ".join(map(str, s[i:i + 12])) for i in range(0, len(s), 12)]
 
 
-def compile_calculix(case: dict, mesh: dict) -> str:
+def compile_calculix(case: dict, mesh: dict, temperature=...) -> str:
     """Linear static analysis. Loads are the same per-triangle tractions the built-in solver uses."""
     from .fem_tet10 import canonical_tets, tri_areas
     from .run_worker import structural_loads, symmetry_rollers
@@ -185,13 +185,20 @@ def compile_calculix(case: dict, mesh: dict) -> str:
     mat = case["materials"]["solid"]
     E, nu = units.to_si(mat["E"]), units.to_si(mat["nu"])
     out = _ccx_header(case, nodes, tets)
-    fixed_faces, tractions = structural_loads(case, mesh)
+    modal = case.get('physics',{}).get('analysis') == 'modal'
+    fixed_faces = [mesh['face_'+f] for f,b in case['boundaries'].items() if b['role'] == 'fixed']
+    tractions = []
+    if not modal:
+        fixed_faces, tractions = structural_loads(case, mesh)
     fixed = np.unique(np.concatenate([fa.ravel() for fa in fixed_faces])) if fixed_faces else np.array([], int)
-    loads = np.zeros((len(nodes), 3))
-    for tri, tt in tractions:
-        area = tri_areas(nodes, tri)
-        for k in range(3, 6):                      # consistent loads: midside nodes take area/3 each
-            np.add.at(loads, tri[:, k], (area / 3)[:, None] * tt)
+    from .fem_tet10 import surface_forces, body_forces
+    from .structural import acceleration, temperatures
+    from .templates import element_prop
+    loads = surface_forces(nodes, tractions)
+    a = acceleration(case)
+    T = None if modal else temperatures(case,mesh,lambda *_: None) if temperature is ... else temperature
+    if a is not None and not modal:
+        loads += body_forces(nodes,tets,element_prop(case,mesh,'rho'),a)
     bc = []
     if len(fixed):
         out += _nset("FIX", fixed)
@@ -201,12 +208,25 @@ def compile_calculix(case: dict, mesh: dict) -> str:
         if sym:
             out += _nset(f"SYM{'XYZ'[axis]}", np.unique(np.concatenate(sym)))
             bc.append(f"SYM{'XYZ'[axis]}, {axis + 1}, {axis + 1}, 0.")
-    out += _ccx_sections(case, mesh, lambda p: ["*ELASTIC", f"{p['E']:.6e}, {p['nu']:.4f}"])
+    tref = units.to_si(case['physics'].get('T_ref',{'value':20,'unit':'degC'}))
+    out += _ccx_sections(case, mesh, lambda p: ["*ELASTIC", f"{p['E']:.12e}, {p['nu']:.12g}",
+        '*DENSITY',f"{p['rho']:.12e}", '*EXPANSION, ZERO='+str(tref), f"{p['alpha']:.12e}"])
+    if modal:
+        from .fem_tet10 import modal_constraints
+        nrigid = modal_constraints(nodes,fixed_faces,symmetry_rollers(case,mesh),tets=tets)[2]
+        count = int(case['physics'].get('modes',6))+nrigid
+        out += ['*BOUNDARY',*bc] if bc else []
+        out += ['*STEP','*FREQUENCY',str(count),'*NODE FILE','U','*END STEP','']
+        return '\n'.join(out)
+    if T is not None:
+        out += ['*INITIAL CONDITIONS, TYPE=TEMPERATURE', f'NALL, {tref:.12g}']
     out += ["*STEP", "*STATIC", "*BOUNDARY", *bc, "*CLOAD"]
     for n in np.nonzero(np.abs(loads).sum(axis=1))[0]:
         for d in range(3):
             if abs(loads[n, d]) > 0:
                 out.append(f"{n + 1}, {d + 1}, {loads[n, d]:.9e}")
+    if T is not None:
+        out += ['*TEMPERATURE']+[f'{n+1}, {v:.12e}' for n,v in enumerate(T)]
     out += ["*NODE FILE", "U, RF", "*EL FILE", "S", "*END STEP", ""]
     return "\n".join(out)
 
@@ -268,7 +288,10 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
     thermal = tpl(case["template"])["physics"] == "thermal"
     wd = jd / "ccx"
     wd.mkdir(exist_ok=True)
-    text = compile_calculix_thermal(case, mesh) if thermal else compile_calculix(case, mesh)
+    from .structural import temperatures
+    modal = case.get('physics', {}).get('analysis') == 'modal'
+    T = None if thermal or modal else temperatures(case, mesh, prog)
+    text = compile_calculix_thermal(case, mesh) if thermal else compile_calculix(case, mesh, temperature=T)
     (wd / "job.inp").write_text(text, encoding="utf-8")
     prog("job.solving", 0.3)
     rc = _proc([ccx, "-i", "job"], wd, wd / "ccx.log", jd)
@@ -276,6 +299,8 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
         raise RuntimeError("CalculiX failed: " + " | ".join((wd / "ccx.log").read_text(errors="replace").splitlines()[-3:]))
     prog("job.post", 0.9)
     r = parse_frd(wd / "job.frd", len(mesh["nodes"]))
+    if case.get('physics',{}).get('analysis') == 'modal':
+        return calculix_modes(case,mesh,jd,wd)
     common = {"nodes": int(len(mesh["nodes"])), "elements": int(len(mesh["tets"]))}
     no_ref = {"applicable": False, "why": "no analytic reference for this shape; compare a 'fine' mesh run to check convergence"}
     if thermal:
@@ -307,9 +332,11 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
     U, S = r["DISP"], r["STRESS"]
     vm = np.sqrt(0.5 * ((S[:, 0] - S[:, 1]) ** 2 + (S[:, 1] - S[:, 2]) ** 2 + (S[:, 2] - S[:, 0]) ** 2)
                  + 3 * (S[:, 3] ** 2 + S[:, 4] ** 2 + S[:, 5] ** 2))
-    np.savez_compressed(jd / "results.npz", u=U, vm=vm, s=S[:, :6])
+    np.savez_compressed(jd / "results.npz", u=U, vm=vm, s=S[:, :6], **({'T': T} if T is not None else {}))
     umag = np.linalg.norm(U, axis=1)
     metrics = {"max_disp_m": float(umag.max()), "max_vm_pa": float(vm.max()), **common}
+    if T is not None:
+        metrics.update(t_min_k=float(T.min()), t_max_k=float(T.max()))
     if case["template"] == "cantilever":
         metrics["tip_disp_m"] = float(-U[np.unique(mesh["face_x1"]), 2].mean())
         ref = reference_cantilever(case, metrics["tip_disp_m"])
@@ -317,9 +344,64 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
         from .run_worker import reference_plate_hole
         ref = reference_plate_hole(case, mesh["nodes"], vm, metrics)
     else:
-        ref = no_ref
+        from .structural import reference
+        ref = reference(case,mesh,{'u':U,'vm':vm,'s':S},metrics)
     return {"kind": "structural", "metrics": metrics, "converged": bool(np.isfinite(umag).all()),
             "converged_detail": {"note": "linear static solve completed"}, "reference": ref}
+
+
+def calculix_modes(case,mesh,jd,wd):
+    from .fem_tet10 import mass_matrix
+    from .templates import element_prop
+    from .structural import modal_reference
+    frequencies = []
+    reading = False
+    for line in (wd/'job.dat').read_text(encoding='utf-8',errors='replace').splitlines():
+        if 'E I G E N V A L U E' in line:
+            reading = True
+        parts = line.split()
+        if reading and len(parts) == 5 and parts[0].isdigit():
+            try:
+                frequencies.append(float(parts[3]))
+            except ValueError:
+                pass
+        if reading and frequencies and 'P A R T I C I P A T I O N' in line:
+            break
+    shapes,values = [], None
+    for line in (wd/'job.frd').read_text(encoding='utf-8',errors='replace').splitlines():
+        if line.startswith(' -4'):
+            values = np.zeros((len(mesh['nodes']),3)) if line[5:13].strip() == 'DISP' else None
+        elif values is not None and line.startswith(' -1'):
+            values[int(line[3:13])-1] = [float(line[13+12*i:25+12*i]) for i in range(3)]
+        elif values is not None and line.startswith(' -3'):
+            shapes.append(values); values = None
+    free_free = not any(b['role'] in ('fixed','constraint','symmetry') for b in case['boundaries'].values())
+    from .fem_tet10 import modal_constraints
+    from .run_worker import symmetry_rollers
+    fixed = [mesh['face_'+f] for f,b in case['boundaries'].items() if b['role'] == 'fixed']
+    nrigid = modal_constraints(mesh['nodes'],fixed,symmetry_rollers(case,mesh),tets=mesh['tets'])[2]
+    if not frequencies or len(shapes) != len(frequencies):
+        raise RuntimeError('CalculiX did not return a complete frequency/mode table')
+    keep = np.arange(nrigid, len(frequencies))
+    keep = keep[:int(case['physics'].get('modes',6))]
+    M = mass_matrix(mesh['nodes'],mesh['tets'],element_prop(case,mesh,'rho'))
+    phi = np.asarray(shapes)[keep]
+    for i in range(len(phi)):
+        v = phi[i].ravel()
+        phi[i] /= np.sqrt(v@(M@v))
+    table = []
+    for i,k in enumerate(keep):
+        fractions = []
+        for axis in range(3):
+            r = np.zeros(3*len(mesh['nodes'])); r[axis::3] = 1
+            fractions.append(float((phi[i].ravel()@(M@r))**2/(r@(M@r))))
+        table.append({'mode':i+1,'frequency_hz':frequencies[k],'effective_mass':fractions})
+    display = phi/np.linalg.norm(phi,axis=2).max(1)[:,None,None]
+    np.savez_compressed(jd/'results.npz',phi=phi,mode_shapes=display)
+    return {'kind':'modal','modes':table,'free_free':free_free,'converged':True,
+            'converged_detail':{'note':'CalculiX frequency step completed'},
+            'metrics':{'frequency_hz':table[0]['frequency_hz'],'nodes':len(mesh['nodes']),'elements':len(mesh['tets'])},
+            'reference':modal_reference(case,table)}
 
 
 def _fixed_face_flows(case, mesh, T, flows):

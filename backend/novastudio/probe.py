@@ -12,7 +12,7 @@ MAX_POINTS = 500
 _TET_FACES = ((0, 1, 2, 3), (0, 1, 3, 2), (0, 2, 3, 1), (1, 2, 3, 0))   # three corners + the opposite one
 
 
-def _fields(kind: str, data) -> dict[str, tuple[np.ndarray, str]]:
+def _fields(kind: str, data, mode: int = 1) -> dict[str, tuple[np.ndarray, str]]:
     """Nodal quantities in display units."""
     if kind == "structural":
         u = data["u"] * 1e3
@@ -26,7 +26,14 @@ def _fields(kind: str, data) -> dict[str, tuple[np.ndarray, str]]:
                           np.stack([s[:, 5], s[:, 4], s[:, 2]], 1)], 1)
             ev = np.linalg.eigvalsh(T)
             out["s1"], out["s3"] = (ev[:, 2], "MPa"), (ev[:, 0], "MPa")
+        if 'T' in data.files:
+            out['temp'] = (data['T']-273.15,'°C')
         return out
+    if kind == 'modal':
+        if not 1 <= mode <= len(data['mode_shapes']):
+            raise StudioError('err.path',400,path=f'mode={mode}')
+        u = data['mode_shapes'][mode-1]
+        return {'mode': (np.linalg.norm(u,axis=1),'-')}
     out = {}
     if "V" in data.files:
         E = data["E"]
@@ -196,7 +203,7 @@ def _tri_owner_side(tri: np.ndarray, tets: np.ndarray, nodes: np.ndarray) -> np.
 
 
 def probe(case: dict, points: list | None = None, line: dict | None = None, faces: list[str] | None = None,
-          run_id: str | None = None) -> dict:
+          run_id: str | None = None, mode: int = 1) -> dict:
     jd, r = load(case["case_id"], run_id)
     kind = r["kind"]
     if not (jd / "mesh.npz").is_file():
@@ -206,7 +213,7 @@ def probe(case: dict, points: list | None = None, line: dict | None = None, face
         raise StudioError("err.probe_unsupported", 400, kind="external (snappyHexMesh)")
     mesh = np.load(jd / "mesh.npz")
     nodes, tets = mesh["nodes"], mesh["tets"]
-    F = _fields(kind, data)
+    F = _fields(kind, data, mode)
     if not F or len(next(iter(F.values()))[0]) != len(nodes):
         raise StudioError("err.probe_unsupported", 400, kind=kind)
     out = {"case_id": case["case_id"], "run_id": jd.name, "kind": kind, "stale": r.get("revision") != case["revision"],
