@@ -5,9 +5,11 @@ import { Field, SectionLabel } from './ui/misc';
 import type { Quantity } from '../api/types';
 
 export function VectorInput({ value, label, unit = 'mm', onCommit }: { value: number[]; label: string; unit?: string; onCommit: (v: number[]) => void }) {
-  return <div className="grid grid-cols-3 gap-1">{['X','Y','Z'].map((axis,i) => <NumberInput key={axis}
-    ariaLabel={`${label} ${axis}`} value={value[i] ?? 0} unit={unit}
-    onCommit={v => { const next=[...value]; next[i]=v; onCommit(next); }} />)}</div>;
+  // one row per axis: three inputs side by side in the 300 px panel were 35 px wide and showed "200" as "20"
+  return <div className="flex flex-col gap-1">{['X','Y','Z'].map((axis,i) => <div key={axis} className="flex items-center gap-2">
+    <span className="w-3 shrink-0 text-label text-fg-3">{axis}</span>
+    <div className="min-w-0 flex-1"><NumberInput ariaLabel={`${label} ${axis}`} value={value[i] ?? 0} unit={unit}
+      onCommit={v => { const next=[...value]; next[i]=v; onCommit(next); }} /></div></div>)}</div>;
 }
 
 function Temperature({ path, label, value }: { path: string; label: string; value?: Quantity }) {

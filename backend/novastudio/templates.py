@@ -483,7 +483,8 @@ def _structural_template(tid, geometry, physics, boundaries, quantity, fields):
     return {'physics': 'structural', 'analysis': 'linear-static',
             'engines': ['builtin-fem', 'calculix'], 'default_engine': 'builtin-fem',
             'roles': STRUCT_ROLES, 'faces': list(boundaries),
-            'face_labels': {f: 'face.'+f for f in boundaries}, 'locked_faces': [],
+            # "face.outer" is the coax's outer *electrode*; a shaft or disk rim is just its outer surface
+            'face_labels': {f: 'face.outer_surface' if f == 'outer' else 'face.'+f for f in boundaries}, 'locked_faces': [],
             'case': {'geometry': geometry, 'physics': {'kind': 'linear-static', **physics},
                      'materials': {'solid': {'preset': 'steel', **copy.deepcopy(MATERIALS_SOLID['steel'])}},
                      'boundaries': boundaries, 'mesh': {'method': 'gmsh', 'size': 'normal', 'order': 2},

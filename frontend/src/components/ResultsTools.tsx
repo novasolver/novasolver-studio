@@ -34,7 +34,8 @@ export function ResultsTools() {
           <tbody>{r.modes.map(m => <tr key={m.mode} className="border-t border-line text-fg">
             <td className="text-left"><button className="flex h-8 items-center gap-1" onClick={() => void selectMode(m.mode)} aria-pressed={selected === m.mode}>
               <span aria-hidden className={`h-3 w-3 rounded-full border border-line-strong ${selected === m.mode ? 'bg-fg':'bg-surface'}`} />{m.mode}</button></td>
-            <td>{fmt(m.frequency_hz,5)}</td>{m.effective_mass.map((v,i) => <td key={i}>{fmt(v*100,3)}</td>)}</tr>)}</tbody></table>
+            <td>{fmt(m.frequency_hz,5)}</td>{/* participation below 0.05 % is round-off ("1.89e-14"): show 0 so the table reads at a glance */}
+            {m.effective_mass.map((v,i) => <td key={i}>{v*100 < .05 ? '0' : (v*100).toFixed(1)}</td>)}</tr>)}</tbody></table>
       </div>
       <Button variant="secondary" className="mt-3" onClick={() => setState({modeAnimation:!animation})}>
         {animation ? <Pause size={14} strokeWidth={1.5} />:<Play size={14} strokeWidth={1.5} />}{t(animation ? 'modal.pause':'modal.animate')}
