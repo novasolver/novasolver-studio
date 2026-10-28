@@ -17,6 +17,43 @@ DIRECT_FALLBACK_LIMIT = 250000   # unknowns; direct solve when AMG-CG does not c
 ASSEMBLY_CHUNK = 20000        # elements per block of element matrices (about 140 MB)
 
 
+def committable_bytes() -> int | None:
+    """Memory this process can still allocate: on Windows the commit limit (RAM + page file) decides when numpy raises
+    MemoryError, not free RAM (a 3.8 GB solve finished with 2 GB of RAM free). None when unknown."""
+    try:
+        import ctypes
+        import sys
+        if sys.platform != "win32":
+            import psutil
+            return int(psutil.virtual_memory().available + psutil.swap_memory().free)
+
+        class MS(ctypes.Structure):
+            _fields_ = [("len", ctypes.c_ulong), ("load", ctypes.c_ulong), ("phys", ctypes.c_ulonglong),
+                        ("avail_phys", ctypes.c_ulonglong), ("page", ctypes.c_ulonglong),
+                        ("avail_page", ctypes.c_ulonglong), ("virt", ctypes.c_ulonglong),
+                        ("avail_virt", ctypes.c_ulonglong), ("ext", ctypes.c_ulonglong)]
+        s = MS()
+        s.len = ctypes.sizeof(MS)
+        return int(s.avail_page) if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(s)) else None
+    except Exception:
+        return None
+
+
+# measured peak of the whole run worker (thick-sphere octant, 2026-10-28): 1.58 GB at 117k nodes, 3.84 GB at 454k
+MEM_BASE = 600e6
+MEM_PER_NODE = {"structural": 7.5e3, "scalar": 2.5e3}
+
+
+def check_memory(n_nodes: int, kind: str) -> None:
+    """Stop with a clear message before assembling a model that cannot fit, instead of a MemoryError deep in the AMG
+    set-up after minutes of work."""
+    need = MEM_BASE + MEM_PER_NODE[kind] * n_nodes
+    have = committable_bytes()
+    if have is not None and need > have:
+        from .store import StudioError
+        raise StudioError("err.memory", 500, need=f"{need / 1e9:.1f}", have=f"{have / 1e9:.1f}", nodes=n_nodes)
+
+
 def _amg_cg(A, b, B=None, tol=1e-8):
     """Smoothed-aggregation AMG preconditioned CG. Strongly graded meshes (thin-wall and load refinement next to
     coarse regions) can make the default set-up stall, so a sturdier set-up with symmetric Gauss-Seidel smoothing
@@ -140,6 +177,7 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     tets = canonical_tets(nodes, tets)
     n = len(nodes)
     ndof = 3 * n
+    check_memory(n, "structural")
     pairs, mat = np.unique(np.column_stack([np.broadcast_to(E, len(tets)), np.broadcast_to(nu, len(tets))]), axis=0,
                            return_inverse=True)
     Ds = np.array([elasticity_matrix(*p) for p in pairs])          # one D per material
@@ -185,31 +223,47 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
 
     progress("job.solving", 0.45)
     u = np.zeros(ndof)
-    Kff = K[free][:, free].tocsr()
+    Kfix = K[fixed]                                   # rows of the constrained dofs, for the reactions
     if len(free) <= DIRECT_LIMIT:
-        u[free] = spla.spsolve(Kff.tocsc(), f[free])
+        u[free] = spla.spsolve(K[free][:, free].tocsc(), f[free])
     else:
-        # large 3D problems: smoothed-aggregation AMG preconditioned CG with the rigid-body modes (low memory)
-        xyz = nodes[free // 3] - nodes.mean(axis=0)      # rotations about the centre: better-scaled near-null space
-        comp = free % 3
-        B = np.zeros((len(free), 6))
-        B[np.arange(len(free)), comp] = 1.0
+        # large 3D problems: smoothed-aggregation AMG preconditioned CG with the rigid-body modes.
+        # The constraints are applied in place (zero rows and columns, a scaled 1 on the diagonal) instead of copying
+        # out K[free][:, free], and the matrix goes in as 3x3 blocks: AMG then measures strength per node, not per
+        # dof. A 400k-element sphere needed 845 MB for the per-dof strength matrix alone and ran out of memory.
+        isfix = np.zeros(ndof, bool)
+        isfix[fixed] = True
+        hit = np.repeat(isfix, np.diff(K.indptr))       # one bool per stored entry (an index array would be 8x larger)
+        hit |= isfix[K.indices]
+        K.data[hit] = 0.0
+        del hit
+        d = K.diagonal()
+        d[fixed] = d[free].mean() if len(free) else 1.0
+        K.setdiag(d)
+        b = np.where(isfix, 0.0, f)
+        A = K.tobsr(blocksize=(3, 3))
+        del K
+        xyz = nodes - nodes.mean(axis=0)                 # rotations about the centre: better-scaled near-null space
         x, y, z = xyz[:, 0], xyz[:, 1], xyz[:, 2]
-        B[comp == 0, 3] = -y[comp == 0]; B[comp == 1, 3] = x[comp == 1]
-        B[comp == 1, 4] = -z[comp == 1]; B[comp == 2, 4] = y[comp == 2]
-        B[comp == 0, 5] = z[comp == 0]; B[comp == 2, 5] = -x[comp == 2]
+        B = np.zeros((n, 3, 6))
+        B[:, 0, 0] = B[:, 1, 1] = B[:, 2, 2] = 1.0
+        B[:, 0, 3], B[:, 1, 3] = -y, x
+        B[:, 1, 4], B[:, 2, 4] = -z, y
+        B[:, 0, 5], B[:, 2, 5] = z, -x
         try:
-            u[free] = _amg_cg(Kff, f[free], B)
+            u[:] = _amg_cg(A, b, B.reshape(ndof, 6))
         except RuntimeError:
             # strongly graded meshes (fine around a load, coarse elsewhere) can stall AMG-CG; a direct solve is slower
             # and uses more memory but always answers, so fall back to it while the problem still fits
             if len(free) > DIRECT_FALLBACK_LIMIT:
                 raise
             progress("job.solving", 0.6)
-            u[free] = spla.spsolve(Kff.tocsc(), f[free])
+            u[:] = spla.spsolve(A.tocsc(), b)
+        u[fixed] = 0.0
 
     progress("job.post", 0.85)
-    reaction = K @ u - f
+    reaction = np.zeros(ndof)
+    reaction[fixed] = Kfix @ u - f[fixed]
     U = u.reshape(-1, 3)
 
     # stress at the 4 Gauss points, extrapolated linearly to the corner nodes (as CalculiX does), then
@@ -276,6 +330,7 @@ def solve_scalar(nodes, tets, k, fixed: list[tuple[np.ndarray, float]], fluxes: 
     Returns the scalar, Gauss gradients/weights and the reactions of the prescribed faces."""
     tets = canonical_tets(nodes, tets)
     n = len(nodes)
+    check_memory(n, "scalar")
     progress("job.assembling", 0.10)
     K = sp.csr_matrix((n, n))
     f = np.zeros(n)

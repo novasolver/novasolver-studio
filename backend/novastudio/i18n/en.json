@@ -111,6 +111,8 @@
   "err.no_results": "No results yet. Call run_simulation first.",
   "err.mesh": "Mesh generation failed: {detail}",
   "err.solver": "The solver failed: {detail}",
+  "err.memory": "This mesh ({nodes} nodes) needs about {need} GB of memory, but only about {have} GB is available now. Close other apps and run again, or use a coarser mesh. In a mesh study the fine level uses the most memory.",
+  "err.memory_short": "The computer ran out of memory during the solve. Close other apps and run again, or use a coarser mesh.",
   "err.face_lost": "The face(s) {faces} carrying a condition are missing from the mesh, so that condition would be ignored. The run was stopped. Re-import the shape or pick the faces again.",
   "err.probe_unsupported": "Point and face values are not available for this kind of result ({kind}). Use get_results and render_view instead.",
   "err.faceted_step": "This STEP is made of {faces} flat triangles (a mesh converted to STEP). Reading it would take minutes and give one face per triangle. Import the original STL instead (or export STL from Blender).",

@@ -677,6 +677,8 @@ def main(job_dir: str) -> None:
             update(jd, state="stopped", message_key="job.stopped", message_args={})
         elif getattr(exc, "key", "").startswith("err."):    # a StudioError: its own translated message
             update(jd, state="failed", message_key=exc.key, message_args={k: str(v) for k, v in exc.kw.items()})
+        elif isinstance(exc, MemoryError):                  # the estimate passed but the PC still ran out
+            update(jd, state="failed", message_key="err.memory_short", message_args={})
         else:
             update(jd, state="failed", message_key="err.solver", message_args={"detail": f"{type(exc).__name__}: {exc}"})
     finally:
