@@ -7,6 +7,10 @@ frontend/node_modules/
 frontend/dist/
 build/
 release/
+dist-py/
+backend/*.egg-info/
+backend/novastudio/frontend_dist/
+backend/novastudio/samples/
 
 # local data: cases, solver packs, downloads, screenshots used during development
 workspace/

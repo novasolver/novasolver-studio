@@ -1,7 +1,7 @@
 """External engines: CalculiX (structural) and OpenFOAM ESI (CFD).
 
 The case schema is compiled deterministically into solver input files; the AI never writes solver dictionaries.
-Solvers run as separate processes with a fixed argv (no shell).
+Solvers run as separate processes with a fixed argv; native OpenFOAM uses its environment launcher.
 STATUS: the compilers are unit-tested for their output text; running needs the solvers installed (see config.py).
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from . import units
-from .config import foam_workdir
+from .config import foam_argv, foam_workdir
 from .config import find_calculix, find_openfoam
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -529,10 +529,10 @@ def run_openfoam(case: dict, jd: Path, prog) -> dict:
     from .config import openfoam_env
     env = openfoam_env(foam)
     prog("job.meshing", 0.05)
-    if _proc([str(Path(foam["bin"]) / "blockMesh.exe"), "-case", str(wd)], wd, wd / "log.blockMesh", jd, env) != 0:
+    if _proc(foam_argv(foam, "blockMesh", ["-case", str(wd)]), wd, wd / "log.blockMesh", jd, env) != 0:
         raise RuntimeError("blockMesh failed: see log.blockMesh")
     prog("job.solving", 0.15)
-    if _proc([str(Path(foam["bin"]) / f"{meta['solver']}.exe"), "-case", str(wd)], wd, wd / "log.solver", jd, env) != 0:
+    if _proc(foam_argv(foam, meta["solver"], ["-case", str(wd)]), wd, wd / "log.solver", jd, env) != 0:
         raise RuntimeError(f"{meta['solver']} failed: see log.solver")
     prog("job.post", 0.9)
     times = sorted((d for d in wd.iterdir() if d.is_dir() and re.fullmatch(r"[0-9.eE+-]+", d.name) and d.name != "0"),

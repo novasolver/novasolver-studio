@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from . import units
-from .config import foam_workdir
+from .config import foam_argv, foam_workdir
 
 MESH_DIV = {"coarse": 5, "normal": 8, "fine": 12}       # cells across the smallest inlet/outlet diameter
 DUAL_FEATURE_ANGLE = 70                                  # polyDualMesh keeps edges sharper than this as cell edges
@@ -306,7 +306,6 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
     (wd / "mesh.msh").write_bytes(msh.read_bytes())
     meta = json.loads((wd / "meta.json").read_text())
     env = openfoam_env(foam)
-    exe = lambda n: str(Path(foam["bin"]) / f"{n}.exe")
     prog("job.meshing", 0.08)
     walls = {k for k, b in case["boundaries"].items() if b.get("role") == "wall"}
     wall_mesh = None
@@ -319,28 +318,28 @@ def run(case: dict, jd: Path, prog, proc) -> dict:
             p.write_text(text, encoding="utf-8", newline="\n")
         for step, frac in (("blockMesh", 0.09), ("surfaceFeatureExtract", 0.1), ("snappyHexMesh", 0.11)):
             prog("job.meshing", frac)
-            args = [exe(step), "-case", str(wd)] + (["-overwrite"] if step == "snappyHexMesh" else [])
+            args = foam_argv(foam, step, ["-case", str(wd)] + (["-overwrite"] if step == "snappyHexMesh" else []))
             if proc(args, wd, wd / f"log.{step}", jd, env) != 0:
                 tail = (wd / f"log.{step}").read_text(errors="replace").strip().splitlines()[-3:]
                 raise RuntimeError(f"{step} failed: " + " | ".join(tail))
     else:
-        if proc([exe("gmshToFoam"), "-case", str(wd), str(wd / "mesh.msh")], wd, wd / "log.gmshToFoam", jd, env) != 0:
+        if proc(foam_argv(foam, "gmshToFoam", ["-case", str(wd), str(wd / "mesh.msh")]), wd, wd / "log.gmshToFoam", jd, env) != 0:
             raise RuntimeError("gmshToFoam failed: see log.gmshToFoam")
         set_wall_types(wd / "constant" / "polyMesh" / "boundary", walls)
         # one polyhedron per tet node: far more accurate wall friction than raw tetrahedra (see compile_case)
-        if proc([exe("polyDualMesh"), "-case", str(wd), "-overwrite", str(DUAL_FEATURE_ANGLE)], wd,
+        if proc(foam_argv(foam, "polyDualMesh", ["-case", str(wd), "-overwrite", str(DUAL_FEATURE_ANGLE)]), wd,
                 wd / "log.polyDualMesh", jd, env) != 0:
             raise RuntimeError("polyDualMesh failed: see log.polyDualMesh")
     set_wall_types(wd / "constant" / "polyMesh" / "boundary", walls)
     prog("job.solving", 0.15)
-    rc = proc([exe("simpleFoam"), "-case", str(wd)], wd, wd / "log.simpleFoam", jd, env)
+    rc = proc(foam_argv(foam, "simpleFoam", ["-case", str(wd)]), wd, wd / "log.simpleFoam", jd, env)
     if rc != 0:
         tail = (wd / "log.simpleFoam").read_text(errors="replace").strip().splitlines()[-4:]
         raise RuntimeError("simpleFoam failed: " + " | ".join(tail))
     prog("job.post", 0.9)
-    proc([exe("postProcess"), "-case", str(wd), "-func", "writeCellCentres", "-latestTime"], wd, wd / "log.post", jd, env)
+    proc(foam_argv(foam, "postProcess", ["-case", str(wd), "-func", "writeCellCentres", "-latestTime"]), wd, wd / "log.post", jd, env)
     if wall_mesh is not None:                         # wall functions hold for y+ about 30..300: report what we got
-        proc([exe("simpleFoam"), "-case", str(wd), "-postProcess", "-func", "yPlus", "-latestTime"], wd,
+        proc(foam_argv(foam, "simpleFoam", ["-case", str(wd), "-postProcess", "-func", "yPlus", "-latestTime"]), wd,
              wd / "log.yPlus", jd, env)
         yp = re.findall(r"y\+ : min = ([0-9.eE+-]+), max = ([0-9.eE+-]+), average = ([0-9.eE+-]+)",
                         (wd / "log.yPlus").read_text(errors="replace"))
@@ -613,17 +612,16 @@ def run_external(case: dict, jd: Path, prog, proc) -> dict:
     (wd / "mesh.msh").write_bytes((mesh_dir(case) / "mesh.msh").read_bytes())
     meta = json.loads((wd / "meta.json").read_text())
     env = openfoam_env(foam)
-    exe = lambda n: str(Path(foam["bin"]) / f"{n}.exe")
     prog("job.meshing", 0.08)
-    if proc([exe("gmshToFoam"), "-case", str(wd), str(wd / "mesh.msh")], wd, wd / "log.gmshToFoam", jd, env) != 0:
+    if proc(foam_argv(foam, "gmshToFoam", ["-case", str(wd), str(wd / "mesh.msh")]), wd, wd / "log.gmshToFoam", jd, env) != 0:
         raise RuntimeError("gmshToFoam failed: see log.gmshToFoam")
     set_wall_types(wd / "constant" / "polyMesh" / "boundary", {"body"})
     prog("job.solving", 0.15)
-    if proc([exe("simpleFoam"), "-case", str(wd)], wd, wd / "log.simpleFoam", jd, env) != 0:
+    if proc(foam_argv(foam, "simpleFoam", ["-case", str(wd)]), wd, wd / "log.simpleFoam", jd, env) != 0:
         tail = (wd / "log.simpleFoam").read_text(errors="replace").strip().splitlines()[-4:]
         raise RuntimeError("simpleFoam failed: " + " | ".join(tail))
     prog("job.post", 0.9)
-    proc([exe("postProcess"), "-case", str(wd), "-func", "writeCellCentres", "-latestTime"], wd, wd / "log.post", jd, env)
+    proc(foam_argv(foam, "postProcess", ["-case", str(wd), "-func", "writeCellCentres", "-latestTime"]), wd, wd / "log.post", jd, env)
     times = sorted((x for x in wd.iterdir() if x.is_dir() and re.fullmatch(r"[0-9.eE+-]+", x.name) and x.name != "0"),
                    key=lambda x: float(x.name))
     last = times[-1]
@@ -843,11 +841,10 @@ def run_conjugate(case: dict, jd: Path, prog, proc) -> dict:
         p.write_text(text, encoding="utf-8", newline="\n")
     (wd / "mesh.msh").write_bytes((mesh_dir(case) / "mesh.msh").read_bytes())
     env = openfoam_env(foam)
-    exe = lambda n: str(Path(foam["bin"]) / f"{n}.exe")
     prog("job.meshing", 0.06)
-    if proc([exe("gmshToFoam"), "-case", str(wd), str(wd / "mesh.msh")], wd, wd / "log.gmshToFoam", jd, env) != 0:
+    if proc(foam_argv(foam, "gmshToFoam", ["-case", str(wd), str(wd / "mesh.msh")]), wd, wd / "log.gmshToFoam", jd, env) != 0:
         raise RuntimeError("gmshToFoam failed: see log.gmshToFoam")
-    if proc([exe("splitMeshRegions"), "-case", str(wd), "-cellZones", "-overwrite"], wd, wd / "log.split", jd, env) != 0:
+    if proc(foam_argv(foam, "splitMeshRegions", ["-case", str(wd), "-cellZones", "-overwrite"]), wd, wd / "log.split", jd, env) != 0:
         raise RuntimeError("splitMeshRegions failed: see log.split")
     regions = list(case["bodies"])
     for r in regions:
@@ -862,7 +859,7 @@ def run_conjugate(case: dict, jd: Path, prog, proc) -> dict:
             q.parent.mkdir(parents=True, exist_ok=True)
             q.write_text(text, encoding="utf-8", newline="\n")
     prog("job.solving", 0.15)
-    if proc([exe("chtMultiRegionSimpleFoam"), "-case", str(wd)], wd, wd / "log.cht", jd, env) != 0:
+    if proc(foam_argv(foam, "chtMultiRegionSimpleFoam", ["-case", str(wd)]), wd, wd / "log.cht", jd, env) != 0:
         tail = (wd / "log.cht").read_text(errors="replace").strip().splitlines()[-5:]
         raise RuntimeError("chtMultiRegionSimpleFoam failed: " + " | ".join(tail))
     prog("job.post", 0.9)
@@ -872,7 +869,7 @@ def run_conjugate(case: dict, jd: Path, prog, proc) -> dict:
     nodes, tets, tbody = mesh["nodes"], mesh["tets"][:, :4], mesh["tet_body"]
     Tt = np.full(len(tets), np.nan); Ut = np.zeros((len(tets), 3))
     for r in regions:
-        proc([exe("postProcess"), "-case", str(wd), "-region", r, "-func", "writeCellCentres", "-latestTime"],
+        proc(foam_argv(foam, "postProcess", ["-case", str(wd), "-region", r, "-func", "writeCellCentres", "-latestTime"]),
              wd, wd / f"log.post.{r}", jd, env)
         T = _internal(last / r / "T", False); C = _internal(last / r / "C", True)
         sel = np.where(tbody == int(r[1:]))[0]
@@ -1096,19 +1093,18 @@ mergeTolerance 1e-6;
         p.write_text(text, encoding="utf-8", newline="\n")
     meta = json.loads((wd / "meta.json").read_text())
     env = openfoam_env(foam)
-    exe = lambda nme: str(Path(foam["bin"]) / f"{nme}.exe")
     for step, frac in (("blockMesh", 0.05), ("surfaceFeatureExtract", 0.06), ("snappyHexMesh", 0.07)):
         prog("job.meshing", frac)
-        args = [exe(step), "-case", str(wd)] + (["-overwrite"] if step == "snappyHexMesh" else [])
+        args = foam_argv(foam, step, ["-case", str(wd)] + (["-overwrite"] if step == "snappyHexMesh" else []))
         if proc(args, wd, wd / f"log.{step}", jd, env) != 0:
             tail = (wd / f"log.{step}").read_text(errors="replace").strip().splitlines()[-3:]
             raise RuntimeError(f"{step} failed: " + " | ".join(tail))
-    proc([exe("checkMesh"), "-case", str(wd)], wd, wd / "log.checkMesh", jd, env)
+    proc(foam_argv(foam, "checkMesh", ["-case", str(wd)]), wd, wd / "log.checkMesh", jd, env)
     cm = (wd / "log.checkMesh").read_text(errors="replace")
     m_cells = re.search(r"\n\s*cells:\s+(\d+)", cm)
     ncells = int(m_cells.group(1)) if m_cells else 0
     prog("job.solving", 0.15)
-    if proc([exe("simpleFoam"), "-case", str(wd)], wd, wd / "log.simpleFoam", jd, env) != 0:
+    if proc(foam_argv(foam, "simpleFoam", ["-case", str(wd)]), wd, wd / "log.simpleFoam", jd, env) != 0:
         tail = (wd / "log.simpleFoam").read_text(errors="replace").strip().splitlines()[-4:]
         raise RuntimeError("simpleFoam failed: " + " | ".join(tail))
     prog("job.post", 0.92)

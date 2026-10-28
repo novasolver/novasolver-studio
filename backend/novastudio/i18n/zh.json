@@ -328,5 +328,9 @@
   "check.uniform_temperature": "由于没有热量输入，整个零件将达到环境温度。请在发热面上设置热通量，或为不同的面指定不同温度。",
   "face.radius": " R{r}",
   "face.axis": " 轴{axis}",
-  "history.face": "{face}的{field}"
+  "history.face": "{face}的{field}",
+  "install.macos.calculix": "使用 brew install costerwi/calculix/calculix-ccx 安装 CalculiX，或设置 NOVASTUDIO_CCX。",
+  "install.macos.openfoam": "使用 brew install gerlero/openfoam/openfoam 安装 OpenFOAM（Apple Silicon、macOS 14+），或设置 NOVASTUDIO_OPENFOAM。",
+  "install.linux.calculix": "使用 apt install calculix-ccx 或发行版的软件包安装 CalculiX，或设置 NOVASTUDIO_CCX。",
+  "install.linux.openfoam": "从 https://www.openfoam.com/download/ 安装 ESI OpenFOAM 软件包，或设置 NOVASTUDIO_OPENFOAM / WM_PROJECT_DIR。"
 }

@@ -328,5 +328,9 @@
   "check.uniform_temperature": "熱の入力がないため、全体が周囲と同じ温度になります。発熱する面に熱流束を設定するか、温度の異なる面を指定してください。",
   "face.radius": " R{r}",
   "face.axis": " 軸{axis}",
-  "history.face": "{face}の{field}"
+  "history.face": "{face}の{field}",
+  "install.macos.calculix": "brew install costerwi/calculix/calculix-ccx で CalculiX をインストールするか、NOVASTUDIO_CCX を設定してください。",
+  "install.macos.openfoam": "brew install gerlero/openfoam/openfoam で OpenFOAM をインストールしてください（Apple Silicon、macOS 14+）。NOVASTUDIO_OPENFOAM でも指定できます。",
+  "install.linux.calculix": "apt install calculix-ccx またはディストリビューションのパッケージで CalculiX をインストールするか、NOVASTUDIO_CCX を設定してください。",
+  "install.linux.openfoam": "https://www.openfoam.com/download/ から ESI OpenFOAM パッケージをインストールするか、NOVASTUDIO_OPENFOAM / WM_PROJECT_DIR を設定してください。"
 }
