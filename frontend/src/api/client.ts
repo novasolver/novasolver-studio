@@ -112,7 +112,7 @@ export interface CaseSummary {
 }
 
 /** Upload a CAD file as the raw request body (no multipart). */
-async function importCad(file: File, physics: "structural" | "thermal" | "flow" | "external"): Promise<CasePayload> {
+async function importCad(file: File, physics: "structural" | "thermal" | "flow" | "external" | "electrostatic" | "current"): Promise<CasePayload> {
   if (mock) throw new ApiError(501, null, "CAD import needs the Studio backend.");
   const url = withLang(`/api/import?physics=${physics}&filename=${encodeURIComponent(file.name)}`);
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });

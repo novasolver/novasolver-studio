@@ -1,5 +1,6 @@
 # environments and builds
 .venv/
+.tmp/
 __pycache__/
 *.pyc
 frontend/node_modules/

@@ -400,7 +400,7 @@ export async function createSample(id: string, physics: string) {
 export const CAD_EXTENSIONS = [".step", ".stp", ".iges", ".igs", ".brep", ".stl"];
 
 /** Import a CAD file (raw body upload) as a new case. */
-export async function importFile(file: File, physics: "structural" | "thermal" | "flow" | "external") {
+export async function importFile(file: File, physics: "structural" | "thermal" | "flow" | "external" | "electrostatic" | "current") {
   if (state.importing) return;
   const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
   if (!CAD_EXTENSIONS.includes(ext)) {
@@ -539,6 +539,12 @@ function applyOptimistic(p: CasePayload, path: string, value: unknown): CasePayl
     np.ui.faces = p.ui.faces.map((f) => (f.key === fm[1] ? { ...f, role: (value as string) || null, role_label: label } : f));
     return np;
   }
+  const ft = path.match(/^boundaries\.([^.]+)\.thermal\.([^.]+)$/);
+  if (ft) {
+    np.ui.faces = p.ui.faces.map((f) => f.key === ft[1] ? { ...f, thermal: { role: "insulated", ...f.thermal, [ft[2]]: value as { value: number; unit: string } | string } } : f);
+    return np;
+  }
+  if (path === "physics.joule_heating") np.case.physics = { kind: p.case.physics?.kind ?? "dc-current", ...p.case.physics, joule_heating: Boolean(value) };
   const fv = path.match(/^boundaries\.([^.]+)\.([^.]+)$/);
   if (fv && p.ui.faces.some((f) => f.key === fv[1])) {
     np.ui.faces = p.ui.faces.map((f) =>

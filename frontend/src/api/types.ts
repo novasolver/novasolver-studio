@@ -12,7 +12,7 @@ export interface EngineInfo {
 }
 
 /** Analysis family as the backend names it (templates use "cfd", imports use "flow"). */
-export type Physics = "structural" | "thermal" | "cfd" | "flow" | "external";
+export type Physics = "structural" | "thermal" | "cfd" | "flow" | "external" | "electric" | "electrostatic" | "current";
 
 export interface Template {
   id: string;
@@ -37,7 +37,7 @@ export interface CaseSchema {
   template: string;
   engine?: { kind: string; version?: string };
   geometry?: { kind: string; params?: Record<string, Quantity> };
-  physics?: { kind: string };
+  physics?: { kind: string; joule_heating?: boolean };
   materials?: Record<string, { preset?: string; [k: string]: unknown }>;
   boundaries?: Record<string, { role: string; [k: string]: unknown }>;
   mesh?: { method?: string; size?: string; order?: number };
@@ -75,6 +75,7 @@ export interface UiFace {
   value?: { value: number; unit: string } | null;
   /** per-field values for the current role, e.g. {force:{value,unit}, direction:"-z"} */
   values?: Record<string, { value: number; unit: string } | string>;
+  thermal?: { role: string; [key: string]: { value: number; unit: string } | string } | null;
   area_m2?: number | null;
 }
 
@@ -99,6 +100,7 @@ export interface CaseUi {
   materials: { id: string; label: string }[];
   material_kind?: "solid" | "fluid";
   roles: { id: string; label: string }[];
+  thermal_roles?: { id: string; label: string }[];
   faces: UiFace[];
   mesh?: { size: string; sizes: string[]; state: { exists: boolean; stale: boolean; stats: MeshStats | null } };
   modes?: { id: "preview" | "final"; engine: string | null }[];
@@ -206,6 +208,7 @@ export interface ResultQuantity {
 }
 
 export interface ResultsPayload {
+  kind?: string;
   run_id?: string;
   engine?: string;
   mode?: string;

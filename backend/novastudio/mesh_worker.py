@@ -744,6 +744,27 @@ def mesh_job(job: dict) -> None:
                 # sizing from the curvature of a discrete surface follows its facets, not the shape: very slow, no gain
                 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
             bbox = [[xmin, ymin, zmin], [xmax, ymax, zmax]]
+        elif job["kind"] == "tube":
+            a, b, lz = job["a"], job["b"], job["dims"][2]
+            lx = ly = 2 * b
+            bbox = [[-b, -b, 0], [b, b, lz]]
+            occ = gmsh.model.occ
+            outer = occ.addCylinder(0, 0, 0, 0, 0, lz, b)
+            inner = occ.addCylinder(0, 0, 0, 0, 0, lz, a)
+            occ.cut([(3, outer)], [(3, inner)])
+            occ.synchronize()
+            for _, tag in gmsh.model.getEntities(2):
+                bb = gmsh.model.getBoundingBox(2, tag)
+                if gmsh.model.getType(2, tag) == "Cylinder":
+                    k = "inner" if abs(bb[3] - a) < abs(bb[3] - b) else "outer"
+                else:
+                    k = "z0" if abs(occ.getCenterOfMass(2, tag)[2]) < lz / 2 else "z1"
+                keys[tag] = k
+                gmsh.model.addPhysicalGroup(2, [tag], tag=tag, name=k)
+            h = (b - a) / DIVS[job.get("size", "normal")]
+            gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 24)
+            gmsh.option.setNumber("Mesh.SecondOrderLinear", 0)
+            gmsh.option.setNumber("Mesh.HighOrderOptimize", 2)
         else:
             lx, ly, lz = job["dims"]
             bbox = [[0, 0, 0], [lx, ly, lz]]
@@ -825,6 +846,10 @@ def mesh_job(job: dict) -> None:
         else:
             gmsh.model.addPhysicalGroup(3, [t for _, t in gmsh.model.getEntities(3)], tag=100000, name="solid")
             body_info = []
+        if job["kind"] != "import":
+            # the corner points of an OCC primitive carry a default size of their own (about 20 mm on a 100 mm cube):
+            # it overruled h, so "normal" and "fine" gave the same mesh and a mesh study could not refine
+            gmsh.model.mesh.setSize(gmsh.model.getEntities(0), h)
         gmsh.option.setNumber("Mesh.MeshSizeMax", h)
         gmsh.option.setNumber("Mesh.MeshSizeMin", job["_hmin"] * 0.5 if job.get("_hmin") else h * (0.5 if job["kind"] != "import" else 0.1))
         gmsh.option.setNumber("Mesh.Algorithm3D", 1)

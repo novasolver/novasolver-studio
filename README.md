@@ -76,6 +76,16 @@ Also listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as 
 Then ask, for example: *"Import bracket.step, fix the bottom face, push 500 N on the top face, run it and tell me
 whether the result is verified."*
 
+## Electromagnetics (0.3) / 電磁気
+
+The built-in tet10 solver now computes electrostatic potential, electric field and electrode charge, or DC current
+with optional steady Joule heating. STEP assemblies can assign a dielectric or conductor to each body.
+Three editable templates include analytic checks: **capacitor** against εA/d, **coax** against 2πεL/ln(b/a),
+and **busbar** against L/(σA) and the temperature rise σΔV²/(8k) with both ends cooled.
+
+内蔵 FEM で静電場・電流・ジュール発熱による温度を計算できます。平行平板コンデンサ・同軸ケーブル・銅母線の
+3 テンプレートには解析解との比較があり、任意形状ではメッシュ収束を確認できます。
+
 ## Documentation
 
 - Design: [`docs/DESIGN.md`](docs/DESIGN.md) · Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · Development notes: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)

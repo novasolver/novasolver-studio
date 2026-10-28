@@ -144,6 +144,8 @@ def editable_paths(case: dict) -> list[str]:
     tp = templates.get(case["template"])
     paths = [p for p, *_ in tp["params"]]
     paths += ["mesh.size", "run.mode"]
+    if case["physics"]["kind"] == "dc-current":
+        paths.append("physics.joule_heating")
     if "flow" in case:
         paths += ["flow.speed", "flow.direction"]
     for b in case.get("bodies", {}):
@@ -153,7 +155,7 @@ def editable_paths(case: dict) -> list[str]:
     mats = case["materials"]
     if "solid" in mats:
         paths += ["materials.solid.preset", "materials.solid.E", "materials.solid.nu", "materials.solid.sy",
-                  "materials.solid.k"]
+                  "materials.solid.k", "materials.solid.eps_r", "materials.solid.sigma"]
     if "fluid" in mats:
         paths += ["materials.fluid.preset", "materials.fluid.nu"]
     for face in templates.face_keys(case):
@@ -161,6 +163,9 @@ def editable_paths(case: dict) -> list[str]:
             continue
         paths.append(f"boundaries.{face}.role")
         paths += [f"boundaries.{face}.{k}" for k in templates.VALUE_FIELDS]
+        if case["physics"]["kind"] == "dc-current":
+            paths += [f"boundaries.{face}.thermal.role"]
+            paths += [f"boundaries.{face}.thermal.{k}" for r in templates.THERMAL_ROLES for k in templates.ROLE_FIELDS.get(r, {})]
         if tp.get("import") and case["mesh"].get("method") == "gmsh":
             paths.append(f"mesh.refine.{face}")      # local element size on this face (a fillet, a notch)
     return sorted(set(paths))
@@ -192,7 +197,11 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             parent = parent.setdefault(p, {})
         key = parts[-1]
         old = parent.get(key)
-        if path in ENUMS:
+        if path == "physics.joule_heating":
+            if not isinstance(value, bool):
+                raise StudioError("err.path", 400, path=path)
+            nv = value
+        elif path in ENUMS:
             if value not in ENUMS[path]:
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(ENUMS[path])})")
             nv = value
@@ -203,8 +212,9 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
         elif key == "role":
             if tp.get("fixed_roles") and value != old:
                 raise StudioError("err.fixed_roles", 400, path=path)
-            if value not in tp["roles"] or value == "plane2d":
-                raise StudioError("err.role", 400, role=value, roles=", ".join(r for r in tp["roles"] if r != "plane2d"))
+            roles = templates.THERMAL_ROLES if "thermal" in parts else tp["roles"]
+            if value not in roles or value == "plane2d":
+                raise StudioError("err.role", 400, role=value, roles=", ".join(r for r in roles if r != "plane2d"))
             nv = value
         elif parts[0] == "bodies" and key == "material":
             allowed_m = list(templates.FLUID_PROPS) if new["bodies"][parts[1]]["role"] == "fluid" else list(templates.SOLID_PROPS)
@@ -227,8 +237,9 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 si = units.to_si(nv)
             except (units.UnitError, TypeError, ValueError) as e:
                 raise StudioError("err.unit", 400, msg=str(e))
-            if not (si > 0 and (key != "nu" or si < 0.5)):
-                raise StudioError("err.range", 400, path=path, lo="0", hi="0.5" if key == "nu" else "-")
+            if not (not isinstance(si, list) and math.isfinite(si) and si > 0 and
+                    (key != "nu" or si < 0.5) and (key != "eps_r" or si >= 1)):
+                raise StudioError("err.range", 400, path=path, lo="1" if key == "eps_r" else "0", hi="0.5" if key == "nu" else "-")
         elif parts[:2] == ["mesh", "refine"]:
             if value in (None, "", "none", 0):         # back to the automatic size
                 parent.pop(key, None)
@@ -261,7 +272,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                     parent[k] = copy.deepcopy(q)
         else:
             if parts[0] == "boundaries":
-                role = new["boundaries"].get(parts[1], {}).get("role")
+                role = parent.get("role")
                 if key not in templates.ROLE_FIELDS.get(role, {}):
                     raise StudioError("err.path", 400, path=f"{path} (role '{role}' has no '{key}')")
             ref_old = old if isinstance(old, dict) else _default_quantity(path)
@@ -277,17 +288,23 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                     unit = nv["unit"]
                     raise StudioError("err.range", 400, path=path, lo=f"{units.from_si(lo, unit):g} {unit}",
                                       hi=f"{units.from_si(hi, unit):g} {unit}")
+            if path.startswith("materials.") and key in ("eps_r", "sigma") and isinstance(si, list):
+                raise StudioError("err.range", 400, path=path, lo="1" if key == "eps_r" else "0", hi="-")
             if path.startswith("materials.") and not isinstance(si, list):
                 # physical range for every template (a negative modulus solves "fine" and mirrors the answer)
                 poisson = parts[1] == "solid" and key == "nu"
-                ok = math.isfinite(si) and ((0 <= si < 0.5) if poisson else si > 0)
+                ok = math.isfinite(si) and ((0 <= si < 0.5) if poisson else si >= 1 if key == "eps_r" else si > 0)
                 if not ok:
-                    raise StudioError("err.range", 400, path=path, lo="0", hi="0.5" if poisson else "-")
+                    raise StudioError("err.range", 400, path=path, lo="1" if key == "eps_r" else "0", hi="0.5" if poisson else "-")
             if path.startswith("materials.") and parts[1] in new["materials"]:
                 new["materials"][parts[1]]["preset"] = "custom"
         parent[key] = nv
         diff.append({"path": path, "old": old, "new": nv})
     normalize_boundaries(new)
+    if new["geometry"]["kind"] == "tube":
+        p = new["geometry"]["params"]
+        if units.to_si(p["a"]) >= units.to_si(p["b"]):
+            raise StudioError("err.tube_radii", 400)
     if new.get("bodies"):
         normalize_conjugate(new)
     if any(d["path"].startswith(GEOM_KEYS) for d in diff):
@@ -320,6 +337,7 @@ def normalize_conjugate(case: dict) -> None:
 def normalize_boundaries(case: dict) -> None:
     """Each face carries exactly the value fields its role needs (defaults filled in, others dropped)."""
     for face, b in case["boundaries"].items():
+        thermal = b.get("thermal", {"role": "insulated"}) if case["physics"]["kind"] == "dc-current" else None
         want = templates.ROLE_FIELDS.get(b.get("role"), {})
         for k in list(b):
             if k != "role" and k not in want:
@@ -327,6 +345,10 @@ def normalize_boundaries(case: dict) -> None:
         for k, default in want.items():
             if k not in b:
                 b[k] = copy.deepcopy(default)
+        if thermal is not None:
+            fields = templates.ROLE_FIELDS.get(thermal.get("role"), {})
+            b["thermal"] = {"role": thermal.get("role", "insulated"),
+                            **{k: copy.deepcopy(thermal.get(k, v)) for k, v in fields.items()}}
 
 
 def _default_quantity(path: str) -> dict:
@@ -346,4 +368,8 @@ def _default_quantity(path: str) -> dict:
         return {"value": 50, "unit": "W/mK"}
     if path.endswith(".sy"):
         return {"value": 235, "unit": "MPa"}
+    if path.endswith(".eps_r"):
+        return {"value": 1, "unit": "-"}
+    if path.endswith(".sigma"):
+        return {"value": 1, "unit": "S/m"}
     return {"value": 0, "unit": "-"}

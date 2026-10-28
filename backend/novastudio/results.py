@@ -14,6 +14,8 @@ from .i18n import lang_of, t
 from .store import StudioError, case_dir
 
 QUANTITIES = {
+    "electrostatic": [("v", "V", "sequential"), ("emag", "kV/mm", "sequential")],
+    "current": [("temp", "°C", "sequential"), ("v", "V", "sequential"), ("jmag", "A/mm2", "sequential"), ("q", "W/cm3", "sequential")],
     "structural": [("vm", "MPa", "sequential"), ("disp", "mm", "sequential"), ("uz", "mm", "diverging")],   # stress first: what decides failure
     "thermal": [("temp", "°C", "sequential")],
     "conjugate": [("temp", "°C", "sequential"), ("speed", "m/s", "sequential")],
@@ -53,11 +55,41 @@ def _card(key, value, unit, lang, digits=4):
     return {"key": key, "label": t(f"card.{key}", lang), "value": float(f"{value:.{digits}g}"), "unit": unit}
 
 
+def display_scale(unit, value):
+    if unit == "F":
+        return (1e12, "pF") if abs(value) < 1e-9 else (1e9, "nF") if abs(value) < 1e-6 else (1e6, "uF")
+    if unit == "ohm":
+        return (1e3, "mohm") if abs(value) < 1 else (1, "ohm")
+    return (1e3, "mm") if unit == "m" else (1, unit)
+
+
+def quantities_for(r):
+    return [(q, u, k) for q, u, k in QUANTITIES[r["kind"]]
+            if not (r["kind"] == "current" and q == "temp" and "t_max_k" not in r["metrics"])]
+
+
 def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     jd, r = load(case["case_id"], run_id)
     m = r["metrics"]
     cards = []
-    if r["kind"] == "structural":
+    if r["kind"] == "electrostatic":
+        if "capacitance_f" in m:
+            scale, unit = display_scale("F", m["capacitance_f"])
+            cards.append(_card("capacitance", m["capacitance_f"] * scale, unit, lang))
+        cards += [_card("charge", max(abs(v) for v in m["face_charge_c"].values()), "C", lang),
+                  _card("energy", m["energy_j"], "J", lang), _card("e_max", m["e_max_v_m"] / 1e6, "kV/mm", lang)]
+    elif r["kind"] == "current":
+        if "t_rise_k" in m:
+            cards.append(_card("t_rise", m["t_rise_k"], "K", lang))
+        cards.append(_card("current", m["current_a"], "A", lang))
+        if "resistance_ohm" in m:
+            scale, unit = display_scale("ohm", m["resistance_ohm"])
+            cards.append(_card("resistance", m["resistance_ohm"] * scale, unit, lang))
+        cards.append(_card("power", m["power_w"], "W", lang))
+        if "t_max_k" in m:
+            cards.append(_card("t_max", units.from_si(m["t_max_k"], "degC"), "°C", lang))
+        cards.append(_card("j_max", m["j_max_a_m2"] / 1e6, "A/mm2", lang))
+    elif r["kind"] == "structural":
         cards = [_card("tip_disp", m["tip_disp_m"] * 1e3, "mm", lang)] if "tip_disp_m" in m else []
         if "kt" in m:
             cards.append(_card("kt", m["kt"], "-", lang))
@@ -92,7 +124,7 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     ref = r.get("reference") or {}
     verification = None
     if ref.get("applicable"):
-        scale, unit = (1e3, "mm") if ref["unit"] == "m" else (1.0, ref["unit"])
+        scale, unit = display_scale(ref["unit"], ref["computed"])
         conv_ref = ref.get("kind") == "convergence"
         label = t("verify.convergence", lang, q=t(f"qty.study.{ref['quantity']}", lang)) if conv_ref \
             else t(f"verify.{case['template']}", lang)
@@ -110,9 +142,11 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     gates_detail = {"converged": r.get("converged_detail"),
                     "verified": None if verification else t(
                         "verify.none_reason" if case["reference"].get("kind") in (None, "none") else "verify.pattern_reason", lang),
-                    "verified_detail": None if verification else ref.get("why")}
-    quantities = [{"id": q, "label": t(f"qty.{q}", lang), "unit": u, "kind": k} for q, u, k in QUANTITIES[r["kind"]]]
+                    "verified_detail": None if verification else t(ref["why_key"], lang) if ref.get("why_key") else ref.get("why")}
+    quantities = [{"id": q, "label": t(f"qty.{q}", lang), "unit": u, "kind": k} for q, u, k in quantities_for(r)]
     warnings = []
+    if m.get("air_e_max_v_m", 0) > 3e6:
+        warnings.append({"code": "air_breakdown", "message": t("result.air_breakdown", lang, e=m["air_e_max_v_m"] / 1e6)})
     sy = (case["materials"].get("solid") or {}).get("sy")
     if r["kind"] == "structural" and sy and m.get("max_vm_pa") and not case.get("body_materials"):
         sy_pa = units.to_si(sy)
@@ -131,7 +165,7 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     if ps.get("singular"):
         a, b, c = (v / 1e6 for v in ps["levels_pa"])
         warnings.append({"code": "stress_singular", "message": t("result.stress_singular", lang, a=a, b=b, c=c)})
-    return {"run_id": jd.name, "warnings": warnings, "engine": r["engine"], "mode": r["mode"], "revision": r.get("revision"),
+    return {"run_id": jd.name, "kind": r["kind"], "warnings": warnings, "engine": r["engine"], "mode": r["mode"], "revision": r.get("revision"),
             "stale": r.get("revision") != case["revision"], "wall_s": r.get("wall_s"),
             "gates": gates, "gates_detail": gates_detail, "cards": cards, "verification": verification,
             "quantities": quantities, "nova_tool": _nova_tool(case), "convergence": _conv_view(r.get("convergence"), lang)}
@@ -141,7 +175,7 @@ def _conv_view(c, lang):
     """Mesh study table for the UI: value per level in display units, GCI and observed order."""
     if not c:
         return None
-    scale, unit = (1e3, "mm") if c["unit"] == "m" else (1.0, c["unit"])
+    scale, unit = display_scale(c["unit"], c["levels"][-1]["value"])
     return {"quantity": c["quantity"], "label": t(f"qty.study.{c['quantity']}", lang), "unit": unit,
             "levels": [{"size": l["size"], "elements": l["elements"], "value": l["value"] * scale} for l in c["levels"]],
             "extrapolated": c["f_ext"] * scale if c.get("f_ext") is not None else None, "gci_pct": c["gci_pct"],
@@ -181,6 +215,8 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None) -> di
     jd, r = load(case["case_id"], run_id)
     data = np.load(jd / "results.npz")
     kind = r["kind"]
+    if not quantity:
+        quantity = quantities_for(r)[0][0]
     disp = None
     if kind == "external" and "snappy" in data.files:
         if quantity == "p" and "body_P" in data.files:
@@ -242,6 +278,17 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None) -> di
         normal = np.zeros(3); normal[int(np.argsort(ext)[1])] = 1.0       # plane along the channel
         P, idx, s = slice_plane(nodes, ft, np.linalg.norm(data["U"], axis=1), fn.mean(axis=0), normal)
         vals = {"speed": s}
+    elif kind in ("electrostatic", "current"):
+        mesh = np.load(jd / "mesh.npz")
+        tri = _surface_from_mesh(mesh)
+        used, inv = np.unique(tri, return_inverse=True)
+        P = mesh["nodes"][used]
+        vals = {"v": data["V"][used], "emag": np.linalg.norm(data["E"][used], axis=1) / 1e6}
+        if "J" in data.files:
+            vals.update(jmag=np.linalg.norm(data["J"][used], axis=1) / 1e6, q=data["q"][used] / 1e6)
+        if "T" in data.files:
+            vals["temp"] = data["T"][used] - 273.15
+        idx = inv.reshape(-1, 3)
     elif kind in ("thermal", "conjugate"):
         mesh = np.load(jd / "mesh.npz")
         tri = _surface_from_mesh(mesh)
@@ -311,7 +358,7 @@ def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None) 
     tri = np.array(f["indices"]).reshape(-1, 3)
     s = np.array(f["scalars"])
     lo, hi = f["range"]
-    diverging = f["quantity"] not in ("disp", "vm", "speed", "temp", "p") or \
+    diverging = f["quantity"] not in ("disp", "vm", "speed", "temp", "p", "v", "emag", "jmag", "q") or \
         (f["quantity"] == "p" and lo < -0.1 * abs(hi))          # suction and stagnation: show the sign
     if diverging:
         m = max(abs(lo), abs(hi), 1e-30)

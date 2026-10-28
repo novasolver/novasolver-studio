@@ -16,7 +16,18 @@ def run(case: dict, lang: str) -> list[dict]:
                       "faces": faces or [], "fix": fix})
 
     b = case["boundaries"]
-    if tp["physics"] == "conjugate":
+    if tp["physics"] == "electric":
+        if not any(v["role"] == "voltage" for v in b.values()):
+            add("error", "no_voltage", "boundaries")
+        if case["physics"]["kind"] == "dc-current" and case["physics"].get("joule_heating", True):
+            if not any(v.get("thermal", {}).get("role") in ("temperature", "convection") for v in b.values()):
+                add("error", "no_temperature", "boundaries")
+        if case["mesh"]["size"] == "coarse":
+            add("warn", "coarse", "mesh")
+        ms = geometry.mesh_state(case)
+        if ms["exists"] and ms["stale"]:
+            add("warn", "mesh_stale", "mesh", fix="generate_mesh(case_id)")
+    elif tp["physics"] == "conjugate":
         roles_ = [v.get("role") for v in b.values()]
         kinds = [i["role"] for i in case.get("bodies", {}).values()]
         if "fluid" not in kinds or "solid" not in kinds:

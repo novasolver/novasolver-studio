@@ -21,6 +21,8 @@ def dims(case: dict) -> list[float]:
         return [units.to_si(p["length"]), units.to_si(p["width"]), units.to_si(p["height"])]
     if kind == "plate_hole":
         return [units.to_si(p["length"]), units.to_si(p["width"]), units.to_si(p["thickness"])]
+    if kind == "tube":
+        return [2 * units.to_si(p["b"]), 2 * units.to_si(p["b"]), units.to_si(p["length"])]
     if kind == "box2d":
         s = units.to_si(p["size"])
         return [s, s, 0.12 * s]
@@ -33,7 +35,7 @@ def dims(case: dict) -> list[float]:
     raise ValueError(kind)
 
 
-MESHER_VERSION = 14        # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
+MESHER_VERSION = 16        # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
 
 
 def _canon(o):
@@ -77,6 +79,9 @@ def worker_job(case: dict, **kw) -> dict:
             job["faces_display"] = str(case_dir(case["case_id"]) / "geom" / "display.json")
     if case["geometry"]["kind"] == "plate_hole":
         job["hole_d"] = units.to_si(case["geometry"]["params"]["hole"])
+    if case["geometry"]["kind"] == "tube":
+        job["a"] = units.to_si(case["geometry"]["params"]["a"])
+        job["b"] = units.to_si(case["geometry"]["params"]["b"])
     job.update(kw)
     return job
 
@@ -141,7 +146,7 @@ def mesh_dir(case: dict) -> Path:
 LOAD_ROLES = ("load", "pressure")
 # elements across the thinnest wall of an imported solid: bending needs more than conduction; the three sizes keep a
 # clear ratio (about 2, then 1.6) so the convergence study sees the trend; small ratios make the GCI inconclusive
-THIN_THROUGH = {"import-structural": 2.0, "import-thermal": 1.2}
+THIN_THROUGH = {"import-structural": 2.0, "import-thermal": 1.2, "import-electrostatic": 1.2, "import-current": 1.2}
 THIN_LEVEL = {"coarse": 0.5, "normal": 1.0, "fine": 1.6}
 STL_SURF_DIV = 40                     # STL surface triangles at the normal level: min(diagonal / this, thinnest wall)
 STL_SURF_FACTOR = {"coarse": 1.6, "normal": 1.0, "fine": 0.7}   # x that size per convergence level

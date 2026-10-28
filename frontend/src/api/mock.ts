@@ -19,9 +19,11 @@ import type {
   WsMessage,
 } from "./types";
 import { parseWithUnit, toSI } from "../lib/units";
+import { translate } from "../i18n";
 
 type L3 = { ja: string; en: string; zh: string };
 const l3 = (ja: string, en: string, zh: string): L3 => ({ ja, en, zh });
+const localized = (key: string): L3 => l3(translate("ja", key), translate("en", key), translate("zh", key));
 
 export interface MockResponse {
   status: number;
@@ -29,6 +31,11 @@ export interface MockResponse {
 }
 
 const TEMPLATES: Template[] = [
+  {
+    id: "capacitor", physics: "electric", title: localized("template.capacitor.title"),
+    description: localized("template.capacitor.description"), has_reference: true,
+    engines: [{ id: "builtin-fem", available: true }], runnable_now: true,
+  },
   {
     id: "cantilever",
     physics: "structural",
@@ -76,7 +83,8 @@ type Key = (typeof KEYS)[number];
 
 interface MockCase {
   schema: CaseSchema;
-  physics: "structural" | "cfd";
+  physics: "structural" | "cfd" | "electric";
+  epsR: number;
   dims: { length: Q; width: Q; height: Q };
   material: { preset: string; E: Q; nu: number };
   fluid: { preset: string; nu: Q };
@@ -100,6 +108,7 @@ const MATERIALS: Record<string, { label: L3; E: number; nu: number }> = {
 const ROLES_STRUCT = ["free", "fixed", "load", "pressure"];
 const ROLES_CFD = ["wall", "moving-wall", "inlet", "outlet", "symmetry"];
 const ROLE_LABEL: Record<string, L3> = {
+  open: localized("bc.role.open"), voltage: localized("bc.role.voltage"), "surface-charge": localized("bc.role.surface-charge"),
   free: l3("自由", "Free", "自由"),
   fixed: l3("固定", "Fixed", "固定"),
   load: l3("荷重", "Load", "载荷"),
@@ -141,29 +150,36 @@ function createCase(templateId: string): MockCase {
   const tpl = TEMPLATES.find((t) => t.id === templateId) ?? TEMPLATES[0];
   const structural = tpl.physics === "structural";
   const dims =
-    tpl.id === "cantilever"
+    tpl.id === "capacitor"
+      ? { length: { value: 50, unit: "mm" }, width: { value: 50, unit: "mm" }, height: { value: 2, unit: "mm" } }
+    : tpl.id === "cantilever"
       ? { length: { value: 200, unit: "mm" }, width: { value: 20, unit: "mm" }, height: { value: 20, unit: "mm" } }
       : tpl.id === "cavity"
         ? { length: { value: 100, unit: "mm" }, width: { value: 100, unit: "mm" }, height: { value: 10, unit: "mm" } }
         : { length: { value: 400, unit: "mm" }, width: { value: 10, unit: "mm" }, height: { value: 40, unit: "mm" } };
-  const roles: Record<Key, string> = structural
+  const roles: Record<Key, string> = tpl.physics === "electric"
+    ? { x0: "open", x1: "open", y0: "open", y1: "open", z0: "voltage", z1: "voltage" }
+    : structural
     ? { x0: "fixed", x1: "load", y0: "free", y1: "free", z0: "free", z1: "free" }
     : tpl.id === "cavity"
       ? { x0: "wall", x1: "wall", y0: "wall", y1: "moving-wall", z0: "plane2d", z1: "plane2d" }
       : { x0: "inlet", x1: "outlet", y0: "wall", y1: "wall", z0: "plane2d", z1: "plane2d" };
-  const values: Partial<Record<Key, Q>> = structural
+  const values: Partial<Record<Key, Q>> = tpl.physics === "electric"
+    ? { z0: { value: 0, unit: "V" }, z1: { value: 100, unit: "V" } }
+    : structural
     ? { x1: { value: 1000, unit: "N" } }
     : tpl.id === "cavity"
       ? { y1: { value: 0.01, unit: "m/s" } }
       : { x0: { value: 0.01, unit: "m/s" } };
   const id = newId();
   const mc: MockCase = {
-    physics: tpl.physics === "cfd" ? "cfd" : "structural",
+    physics: tpl.physics === "cfd" ? "cfd" : tpl.physics === "electric" ? "electric" : "structural",
+    epsR: 2.1,
     dims,
     material: { preset: "steel", E: { value: 205, unit: "GPa" }, nu: 0.3 },
     fluid: { preset: "custom", nu: { value: 1e-5, unit: "m2/s" } },
     roles,
-    locked: structural ? [] : ["z0", "z1"],
+    locked: structural || tpl.physics === "electric" ? [] : ["z0", "z1"],
     values,
     meshSize: "normal",
     meshStats: null,
@@ -177,7 +193,7 @@ function createCase(templateId: string): MockCase {
       revision: 1,
       title: tpl.title,
       template: tpl.id,
-      physics: { kind: structural ? "linear-static" : "incompressible-steady" },
+      physics: { kind: tpl.physics === "electric" ? "electrostatic" : structural ? "linear-static" : "incompressible-steady" },
     },
   };
   cases.set(id, mc);
@@ -186,7 +202,7 @@ function createCase(templateId: string): MockCase {
 
 const si = (q: Q) => toSI(q.value, q.unit);
 const geomKey = (c: MockCase) => JSON.stringify([c.dims, c.meshSize]);
-const inputKey = (c: MockCase) => JSON.stringify([c.dims, c.material, c.fluid, c.roles, c.values, c.meshSize]);
+const inputKey = (c: MockCase) => JSON.stringify([c.dims, c.material, c.fluid, c.roles, c.values, c.meshSize, c.epsR]);
 
 function beam(c: MockCase) {
   const L = si(c.dims.length);
@@ -269,6 +285,7 @@ function params(c: MockCase, lang: Lang): UiParam[] {
     const q = c.values[k];
     if (r === "load") p.push({ path: `boundaries.${k}.force`, label: l3("先端荷重（下向き）", "Tip load (downward)", "端部载荷（向下）")[lang], ...(q ?? { value: 1000, unit: "N" }), units: ["N", "kN"] });
     if (r === "pressure") p.push({ path: `boundaries.${k}.pressure`, label: l3("圧力", "Pressure", "压力")[lang], ...(q ?? { value: 1, unit: "MPa" }), units: ["Pa", "kPa", "MPa"] });
+    if (r === "voltage") p.push({ path: `boundaries.${k}.voltage`, label: translate(lang, "param.voltage"), ...(q ?? { value: 0, unit: "V" }), units: ["V", "kV", "mV"] });
     if (r === "moving-wall" || r === "inlet") p.push({ path: `boundaries.${k}.speed`, label: l3("速度", "Speed", "速度")[lang], ...(q ?? { value: 0.01, unit: "m/s" }), units: ["m/s", "mm/s"] });
   }
   if (c.physics === "structural")
@@ -276,6 +293,7 @@ function params(c: MockCase, lang: Lang): UiParam[] {
       { path: "materials.solid.E", label: l3("ヤング率", "Young's modulus", "杨氏模量")[lang], ...c.material.E, units: ["Pa", "kPa", "MPa", "GPa"] },
       { path: "materials.solid.nu", label: l3("ポアソン比", "Poisson's ratio", "泊松比")[lang], value: c.material.nu, unit: "-", units: ["-"] },
     );
+  else if (c.physics === "electric") p.push({ path: "materials.solid.eps_r", label: translate(lang, "param.eps_r"), value: c.epsR, unit: "-", units: ["-"] });
   else p.push({ path: "materials.fluid.nu", label: l3("動粘度", "Kinematic viscosity", "运动黏度")[lang], ...c.fluid.nu, units: ["m2/s", "mm2/s"] });
   return p;
 }
@@ -302,6 +320,8 @@ function checks(c: MockCase, lang: Lang): Check[] {
         step: "geometry",
         message: l3(`細長比 L/H = ${(b.L / b.h).toFixed(1)}：梁理論との比較は目安です`, `Slenderness L/H = ${(b.L / b.h).toFixed(1)}: beam theory is only indicative`, `长细比 L/H = ${(b.L / b.h).toFixed(1)}：梁理论对比仅供参考`)[lang],
       });
+  } else if (c.physics === "electric") {
+    if (!roles.includes("voltage")) out.push({ level: "error", code: "no_voltage", step: "boundaries", message: translate(lang, "err.no_voltage") });
   } else {
     if (!roles.includes("inlet") && !roles.includes("moving-wall"))
       out.push({ level: "error", code: "no_driver", step: "boundaries", message: l3("流れを起こす境界（入口・移動壁）がありません", "Nothing drives the flow (inlet or moving wall)", "没有驱动流动的边界（入口或移动壁面）")[lang] });
@@ -333,7 +353,8 @@ function steps(c: MockCase, ch: Check[]): Record<StepId, StepStatus> {
 function payload(c: MockCase, lang: Lang): CasePayload {
   const ch = checks(c, lang);
   const structural = c.physics === "structural";
-  const roleIds = structural ? ROLES_STRUCT : ROLES_CFD;
+  const roleIds = c.physics === "electric" ? ["open", "voltage", "surface-charge"] : structural ? ROLES_STRUCT : ROLES_CFD;
+  c.schema.materials = c.physics === "electric" ? { solid: { preset: "ptfe", eps_r: { value: c.epsR, unit: "-" } } } : c.schema.materials;
   c.schema.mesh = { method: "gmsh", size: c.meshSize, order: 2 };
   c.schema.run = { mode: c.mode, max_wall_s: 900 };
   return {
@@ -341,13 +362,14 @@ function payload(c: MockCase, lang: Lang): CasePayload {
     steps: steps(c, ch),
     checks: ch,
     ready: !ch.some((x) => x.level === "error"),
-    engine: structural ? "builtin-fem" : c.schema.template === "cavity" ? "builtin-cavity" : "openfoam",
+    engine: structural || c.physics === "electric" ? "builtin-fem" : c.schema.template === "cavity" ? "builtin-cavity" : "openfoam",
     ui: {
+      physics: c.physics,
       params: params(c, lang),
-      materials: structural
+      materials: c.physics === "electric" ? [{ id: "ptfe", label: translate(lang, "material.ptfe") }] : structural
         ? [...Object.entries(MATERIALS).map(([id, m]) => ({ id, label: m.label[lang] })), { id: "custom", label: l3("カスタム", "Custom", "自定义")[lang] }]
         : [{ id: "custom", label: l3("カスタム", "Custom", "自定义")[lang] }],
-      material_kind: structural ? "solid" : "fluid",
+      material_kind: structural || c.physics === "electric" ? "solid" : "fluid",
       roles: roleIds.map((id) => ({ id, label: ROLE_LABEL[id][lang] })),
       faces: KEYS.map((k) => ({
         key: k,
@@ -364,8 +386,8 @@ function payload(c: MockCase, lang: Lang): CasePayload {
         state: { exists: !!c.meshStats, stale: !!c.meshStats && c.meshKey !== geomKey(c), stats: c.meshStats },
       },
       modes: [
-        { id: "preview", engine: structural ? "builtin-fem" : c.schema.template === "cavity" ? "builtin-cavity" : null },
-        { id: "final", engine: structural ? "calculix" : "openfoam" },
+        { id: "preview", engine: structural || c.physics === "electric" ? "builtin-fem" : c.schema.template === "cavity" ? "builtin-cavity" : null },
+        { id: "final", engine: c.physics === "electric" ? null : structural ? "calculix" : "openfoam" },
       ],
     },
     jobs: [...jobs.values()].filter((j) => j.case_id === c.schema.case_id && (j.state === "running" || j.state === "queued")).map(publicJob),
@@ -375,6 +397,22 @@ function payload(c: MockCase, lang: Lang): CasePayload {
 
 function resultsPayload(c: MockCase, lang: Lang): ResultsPayload {
   const stale = !!c.results && c.results.inputKey !== inputKey(c);
+  if (c.physics === "electric") {
+    const cap = 8.8541878128e-12 * c.epsR * si(c.dims.length) * si(c.dims.width) / si(c.dims.height);
+    const dv = si(c.values.z1 ?? { value: 100, unit: "V" }) - si(c.values.z0 ?? { value: 0, unit: "V" });
+    return { run_id: "r_mock", engine: "builtin-fem", mode: "preview", revision: c.results?.revision, stale,
+      gates: { ran: true, converged: true, verified: true },
+      cards: [
+        { key: "capacitance", label: translate(lang, "card.capacitance"), value: cap * 1e12, unit: "pF" },
+        { key: "charge", label: translate(lang, "card.charge"), value: cap * Math.abs(dv), unit: "C" },
+        { key: "energy", label: translate(lang, "card.energy"), value: 0.5 * cap * dv ** 2, unit: "J" },
+        { key: "e_max", label: translate(lang, "card.e_max"), value: Math.abs(dv) / si(c.dims.height) / 1e6, unit: "kV/mm" },
+      ],
+      verification: { label: translate(lang, "card.capacitance"), reference: cap * 1e12, computed: cap * 1e12,
+        unit: "pF", error_pct: 0, tolerance_pct: 1, pass: true },
+      quantities: [{ id: "v", label: translate(lang, "qty.v"), unit: "V", kind: "sequential" },
+        { id: "emag", label: translate(lang, "qty.emag"), unit: "kV/mm", kind: "sequential" }] };
+  }
   if (c.physics === "structural") {
     const b = beam(c);
     const sigma = (b.P * b.L * (b.h / 2)) / b.I / 1e6;
@@ -467,7 +505,16 @@ function fieldPayload(c: MockCase, quantity: string, lang: Lang): FieldPayload {
   const displacement: number[] = [];
   let auto: number | undefined;
 
-  if (c.physics === "structural") {
+  if (c.physics === "electric") {
+    const low = si(c.values.z0 ?? { value: 0, unit: "V" });
+    const dv = si(c.values.z1 ?? { value: 100, unit: "V" }) - low;
+    for (const face of boxFaces(Lx, Ly, Lz, [16, 16, 2])) {
+      const off = positions.length / 3;
+      positions.push(...face.positions);
+      for (let i = 2; i < face.positions.length; i += 3) scalars.push(q.id === "v" ? low + dv * face.positions[i] / Lz : Math.abs(dv) / Lz / 1e6);
+      indices.push(...face.indices.map((i) => i + off));
+    }
+  } else if (c.physics === "structural") {
     const b = beam(c);
     const k = 1 + b.err;
     const nx = { coarse: 30, normal: 60, fine: 96 }[c.meshSize];
@@ -539,15 +586,15 @@ function applyChange(c: MockCase, path: string, value: unknown, lang: Lang): voi
   const asQ = (v: unknown, fallback: Q): Q => {
     let q: Q;
     if (typeof v === "string") {
-      const p = parseWithUnit(v, ["m", "cm", "mm", "um", "N", "kN", "Pa", "kPa", "MPa", "GPa", "m/s", "mm/s"]);
+      const p = parseWithUnit(v, ["m", "cm", "mm", "um", "N", "kN", "Pa", "kPa", "MPa", "GPa", "m/s", "mm/s", "V", "kV", "mV"]);
       if (!p) throw new BadValue(l3("数値として読めません", "Not a number", "无法识别为数值")[lang]);
       q = { value: p.value, unit: p.unit ?? fallback.unit };
     } else if (v && typeof v === "object" && "value" in (v as Q)) q = { value: Number((v as Q).value), unit: String((v as Q).unit ?? fallback.unit) };
     else q = { value: Number(v), unit: fallback.unit };
-    if (!Number.isFinite(q.value) || q.value <= 0) throw new BadValue(l3("正の値を入力してください", "Enter a positive value", "请输入正值")[lang]);
+    if (!Number.isFinite(q.value) || (q.value <= 0 && !["V", "kV", "mV"].includes(q.unit))) throw new BadValue(l3("正の値を入力してください", "Enter a positive value", "请输入正值")[lang]);
     return q;
   };
-  const bm = path.match(/^boundaries\.([xyz][01])\.(role|force|pressure|speed)$/);
+  const bm = path.match(/^boundaries\.([xyz][01])\.(role|force|pressure|speed|voltage)$/);
   if (bm) {
     const k = bm[1] as Key;
     if (c.locked.includes(k)) throw new BadValue(l3("この面は変更できません", "This face is locked", "此面不可更改")[lang]);
@@ -562,6 +609,9 @@ function applyChange(c: MockCase, path: string, value: unknown, lang: Lang): voi
     return;
   }
   switch (path) {
+    case "materials.solid.eps_r":
+      c.epsR = asQ(value, { value: c.epsR, unit: "-" }).value;
+      return;
     case "materials.solid.preset": {
       const p = MATERIALS[String(value)];
       if (p) c.material = { preset: String(value), E: { value: p.E, unit: "GPa" }, nu: p.nu };

@@ -113,11 +113,11 @@ def case_payload(case_id: str, lang: str = "ja") -> dict:
     info = {f["key"]: f for f in case["geometry"].get("faces", [])}
     for key in templates.face_keys(case):
         b = case["boundaries"].get(key, {})
-        values = {k: v for k, v in b.items() if k != "role"}
+        values = {k: v for k, v in b.items() if k not in ("role", "thermal")}
         faces.append({"key": key, "region": key, "label": face_label(tp, key, lang, case), "role": b.get("role"),
                       "role_label": t(f"role.{b.get('role')}", lang), "locked": key in tp["locked_faces"],
                       "value": b.get("force") or b.get("pressure") or b.get("speed") or b.get("temperature") or b.get("flux"),
-                      "values": values, "area_m2": info.get(key, {}).get("area")})
+                      "values": values, "thermal": b.get("thermal"), "area_m2": info.get(key, {}).get("area")})
     mat_kind = "solid" if "solid" in case["materials"] else "fluid"
     presets = templates.MATERIALS_SOLID if mat_kind == "solid" else templates.MATERIALS_FLUID
     ms = geometry.mesh_state(case)
@@ -128,7 +128,8 @@ def case_payload(case_id: str, lang: str = "ja") -> dict:
         "ready": not any(i["level"] == "error" for i in items),
         "engine": checks.engine_for(case),
         "ui": {"params": params, "roles": roles, "faces": faces,
-               "role_fields": {r: list(templates.ROLE_FIELDS.get(r, {})) for r in tp["roles"]},
+               "thermal_roles": [{"id": r, "label": t(f"role.{r}", lang)} for r in templates.THERMAL_ROLES],
+               "role_fields": {r: list(templates.ROLE_FIELDS.get(r, {})) for r in set(tp["roles"] + templates.THERMAL_ROLES)},
                "field_labels": {k: t(f"field.{k}", lang) for k in templates.VALUE_FIELDS},
                "field_units": {k: units.UNIT_CHOICES.get(units.dimension(v["unit"]), [])
                                for fl in templates.ROLE_FIELDS.values() for k, v in fl.items() if isinstance(v, dict)},
@@ -167,7 +168,7 @@ def create_case(template: str, params: dict | None = None, lang: str = "ja") -> 
 STL_UNITS = {"mm": 1e-3, "m": 1.0, "inch": 0.0254}     # an STL has no units: the user says which
 CAD_EXT = {".step": "step", ".stp": "step", ".iges": "iges", ".igs": "iges", ".brep": "brep", ".brp": "brep", ".stl": "stl"}
 MAX_CAD_BYTES = 200 * 1024 * 1024
-PHYSICS = ("structural", "thermal", "flow", "external", "conjugate")
+PHYSICS = ("structural", "thermal", "flow", "external", "conjugate", "electrostatic", "current")
 
 
 def faceted_step_check(data: bytes) -> None:
@@ -241,7 +242,7 @@ def import_geometry(physics: str, filename: str, data: bytes | None = None, path
                                      "material": "water" if b["key"] == small else "aluminium"} for b in bodies}
         case["geometry"]["bodies"] = bodies
         store.normalize_conjugate(case)
-    elif physics in ("structural", "thermal") and len(disp.get("bodies") or []) >= 2:
+    elif physics in ("structural", "thermal", "electrostatic", "current") and len(disp.get("bodies") or []) >= 2:
         # an assembly: one material per body (all start as the case material; set body_materials.<b>)
         case["body_materials"] = {b["key"]: case["materials"]["solid"]["preset"] for b in disp["bodies"]}
         case["geometry"]["bodies"] = disp["bodies"]
@@ -313,6 +314,9 @@ def describe_case(case_id: str, detail: str = "concise", lang: str = "ja") -> di
                                      "volume_mm3": round(geo.get(b, {}).get("volume", 0) * 1e9, 3),
                                      "centroid_mm": [round(x * 1e3, 3) for x in geo.get(b, {}).get("centroid", [])]}
                                  for b, m in c["body_materials"].items()}
+    if pl["ui"]["physics"] == "electric":
+        out["boundary_values"] = {f: {k: v for k, v in b.items() if k != "role"} for f, b in c["boundaries"].items()}
+        out["joule_heating"] = c["physics"].get("joule_heating", False)
     if detail == "full":
         out["case"] = c
         out["editable"] = store.editable_paths(c)
