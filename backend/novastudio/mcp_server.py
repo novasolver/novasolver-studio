@@ -230,7 +230,12 @@ async def undo_change(case_id: str, redo: bool = False, language: Lang = 'ja') -
     if e:
         return e
     r, e = await _call(C.undo_case, language, case_id, r['case']['revision'], redo=redo, source='ai', lang=language)
-    return e or _ok(r['undone']['summary'], r)
+    if e:
+        return e
+    u = r['undone']
+    # say what happened and whose change it was, so the agent can tell the person ("I undid your edit ...")
+    return _ok(t('mcp.redone' if redo else 'mcp.undone', language, summary=u['summary'], rev=r['case']['revision'],
+                 who=t('mcp.by_ai' if u['source'] == 'ai' else 'mcp.by_person', language)), r)
 
 
 @mcp.tool(annotations=RO)
