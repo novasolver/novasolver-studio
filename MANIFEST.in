@@ -1,0 +1,4 @@
+include tools/build_wheel.py tools/smoke_wheel.py
+recursive-include backend/novastudio/frontend_dist *
+recursive-include backend/novastudio/samples *.step
+recursive-include backend/novastudio/i18n *.json

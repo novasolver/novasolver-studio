@@ -430,5 +430,9 @@
   "face.outer_surface": "外周面",
   "thermal_load.uniform": "全体を一様な温度に",
   "thermal_load.solve": "熱解析で温度分布を求める",
-  "verify.unmodeled_load": "この荷重・条件は理論解に含まれていないため、比較できません：{load}。"
+  "verify.unmodeled_load": "この荷重・条件は理論解に含まれていないため、比較できません：{load}。",
+  "install.macos.calculix": "brew install costerwi/calculix/calculix-ccx で CalculiX をインストールするか、NOVASTUDIO_CCX を設定してください。",
+  "install.macos.openfoam": "brew install gerlero/openfoam/openfoam で OpenFOAM をインストールしてください（Apple Silicon、macOS 14+）。NOVASTUDIO_OPENFOAM でも指定できます。",
+  "install.linux.calculix": "apt install calculix-ccx またはディストリビューションのパッケージで CalculiX をインストールするか、NOVASTUDIO_CCX を設定してください。",
+  "install.linux.openfoam": "https://www.openfoam.com/download/ から ESI OpenFOAM パッケージをインストールするか、NOVASTUDIO_OPENFOAM / WM_PROJECT_DIR を設定してください。"
 }

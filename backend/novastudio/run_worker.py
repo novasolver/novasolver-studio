@@ -664,7 +664,8 @@ def _acquire_solver_slot(jd: Path) -> Path:
     import os
     import psutil
     # machine-wide (not per workspace): every Studio workspace on this PC shares the same memory
-    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "NovaSolverStudio"
+    from .osdirs import data_dir
+    base = data_dir()
     base.mkdir(parents=True, exist_ok=True)
     slot = base / "solver.lock"
     while True:

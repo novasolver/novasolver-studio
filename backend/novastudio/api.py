@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from . import commands as C
-from .config import RESOURCES, STUDIO_ROOT, workspace
+from .config import PACKAGE_ROOT, RESOURCES, STUDIO_ROOT, workspace
 from .i18n import lang_of
 from .store import StudioError
 
@@ -283,6 +283,8 @@ async def ws(websocket: WebSocket):
 # ------------------------------------------------------------------ the built UI (if present)
 
 DIST = RESOURCES / "frontend" / "dist"
+if not DIST.is_dir():
+    DIST = PACKAGE_ROOT / "frontend_dist"
 if DIST.is_dir():
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 

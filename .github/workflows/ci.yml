@@ -1,0 +1,51 @@
+name: Cross-platform CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      LOCALAPPDATA: ${{ github.workspace }}/.tmp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Linux libraries and CalculiX
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglu1-mesa libgl1 libxrender1 libxcursor1 libxft2 libxinerama1 calculix-ccx
+      - name: macOS CalculiX
+        id: calculix
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: brew install costerwi/calculix/calculix-ccx
+      - name: Report optional CalculiX install
+        if: runner.os == 'macOS' && steps.calculix.outcome == 'failure'
+        run: echo '::warning::Homebrew CalculiX unavailable; built-in FEM and discovery tests still run.'
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest backend/tests -q
+      - run: npm ci
+        working-directory: frontend
+      - run: python tools/build_wheel.py
+      - run: python tools/smoke_wheel.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-dist-${{ matrix.os }}
+          path: dist-py/
