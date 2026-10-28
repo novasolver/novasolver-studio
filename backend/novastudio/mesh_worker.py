@@ -1003,7 +1003,9 @@ def describe_faces(gmsh, keys: dict, display: dict, discrete: bool) -> None:
         if discrete:
             total, weight = group_normals.get(key, (np.zeros(3), 0.))
             group_normals[key] = (total+(normals*lens[ok, None]).sum(0), weight+float(lens[ok].sum()))
-        elif np.linalg.norm(mean) > .999:
+        elif f.get('type') == 'Plane' and np.linalg.norm(mean) > .999:
+            # only true planes get a direction: a narrow cylinder's mean normal can sit within 2 degrees of a plane's
+            # and would then join "same direction" selections
             f['normal'] = (mean / np.linalg.norm(mean)).tolist()
         if not discrete:
             name = cad_face_name(gmsh.model.getEntityName(2, tag))
@@ -1033,7 +1035,9 @@ def describe_faces(gmsh, keys: dict, display: dict, discrete: bool) -> None:
             f.update(axis=axis.tolist(), radius=radius, axis_point=point.tolist())
     for key, (total, weight) in group_normals.items():
         mean = total/weight
-        if np.linalg.norm(mean) > .999:
+        # an STL group has no surface type: call it planar only when its normals agree to a fraction of a degree
+        # (|mean of unit normals| = 1 - spread^2/6; .99999 allows about 0.4 degrees, a 4-degree arc gives .9998)
+        if np.linalg.norm(mean) > .99999:
             by_key[key].update(type='Plane', normal=(mean/np.linalg.norm(mean)).tolist())
     for _, curve in gmsh.model.getEntities(1):
         up, _ = gmsh.model.getAdjacencies(1, curve)

@@ -1214,28 +1214,74 @@ export class Viewer {
   private boxFaces(x0: number, y0: number, x1: number, y1: number): FaceId[] {
     if (!this.geoMesh) return [];
     const rect = this.renderer.domElement.getBoundingClientRect();
-    const g = this.geoMesh.geometry;
-    const pos = g.getAttribute('position');
-    const found = new Set<number>();
-    const centroid = new THREE.Vector3();
-    const projected = new THREE.Vector3();
+    // Faces with any visible part inside the rectangle. A small depth buffer over the rectangle only (at most
+    // 256 cells across) is filled once with every triangle, so the cost is one pass over the mesh. A raycast per
+    // triangle was quadratic: 1.6 s for a hidden 6,400-triangle face.
+    const pos = this.geoMesh.geometry.getAttribute('position');
+    const nrm = this.geoMesh.geometry.getAttribute('normal');
+    const mw = this.geoMesh.matrixWorld;
+    const nm = new THREE.Matrix3().getNormalMatrix(mw);
+    const eye = this.camera.position;
+    const pw = new THREE.Vector3(), nw = new THREE.Vector3();
+    // back faces out: at silhouettes their depth ties with the front faces and the bottom of a part got selected
+    const facingAway = (i: number) => {
+      if (!nrm) return false;
+      nw.fromBufferAttribute(nrm, i).applyMatrix3(nm);
+      pw.fromBufferAttribute(pos, i).applyMatrix4(mw);
+      return nw.dot(pw.sub(eye)) > 0;
+    };
+    const n = pos.count;
+    const sx = new Float32Array(n), sy = new Float32Array(n), sz = new Float32Array(n);
+    const v = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mw).project(this.camera);
+      sx[i] = rect.left + (v.x + 1) * rect.width / 2;
+      sy[i] = rect.top + (1 - v.y) * rect.height / 2;
+      sz[i] = v.z;
+    }
+    const bx0 = Math.min(x0, x1), bx1 = Math.max(x0, x1), by0 = Math.min(y0, y1), by1 = Math.max(y0, y1);
+    const cell = Math.max(1, Math.max(bx1 - bx0, by1 - by0) / 256);
+    const W = Math.max(1, Math.ceil((bx1 - bx0) / cell)), H = Math.max(1, Math.ceil((by1 - by0) / cell));
+    const depth = new Float32Array(W * H).fill(Infinity);
+    const owner = new Int32Array(W * H).fill(-1);
+    const skip = this.faceIds.map(id => this.hidden.has(String(id)));
+    const put = (cx: number, cy: number, z: number, fi: number) => {
+      const k = cy * W + cx;
+      if (z < depth[k]) { depth[k] = z; owner[k] = fi; }
+    };
     for (let t = 0; t < this.triFace.length; t++) {
       const fi = this.triFace[t];
-      if (found.has(fi) || this.hidden.has(String(this.faceIds[fi]))) continue;
-      centroid.set(0, 0, 0);
-      for (let j = 0; j < 3; j++) {
-        const i = this.originalIndex[t*3+j];
-        centroid.x += pos.getX(i)/3; centroid.y += pos.getY(i)/3; centroid.z += pos.getZ(i)/3;
+      if (skip[fi]) continue;
+      const a = this.originalIndex[t * 3], b = this.originalIndex[t * 3 + 1], c = this.originalIndex[t * 3 + 2];
+      const za = sz[a], zb = sz[b], zc = sz[c];
+      if (Math.abs(za) > 1 || Math.abs(zb) > 1 || Math.abs(zc) > 1) continue;      // clipped by the camera
+      if (facingAway(a) && facingAway(b) && facingAway(c)) continue;
+      const xa = sx[a], xb = sx[b], xc = sx[c], ya = sy[a], yb = sy[b], yc = sy[c];
+      const cx0 = Math.max(0, Math.floor((Math.min(xa, xb, xc) - bx0) / cell));
+      const cx1 = Math.min(W - 1, Math.floor((Math.max(xa, xb, xc) - bx0) / cell));
+      const cy0 = Math.max(0, Math.floor((Math.min(ya, yb, yc) - by0) / cell));
+      const cy1 = Math.min(H - 1, Math.floor((Math.max(ya, yb, yc) - by0) / cell));
+      if (cx0 > cx1 || cy0 > cy1) continue;
+      const den = (yb - yc) * (xa - xc) + (xc - xb) * (ya - yc);
+      if (Math.abs(den) < 1e-12) continue;
+      if (cx0 === cx1 && cy0 === cy1) {
+        // smaller than a cell: sample its centroid, or tiny faces could never be box-selected
+        put(cx0, cy0, (za + zb + zc) / 3, fi);
+        continue;
       }
-      projected.copy(centroid).project(this.camera);
-      if (Math.abs(projected.z) > 1) continue;
-      const x = rect.left+(projected.x+1)*rect.width/2, y = rect.top+(1-projected.y)*rect.height/2;
-      if (x < Math.min(x0,x1) || x > Math.max(x0,x1) || y < Math.min(y0,y1) || y > Math.max(y0,y1)) continue;
-      this.raycaster.setFromCamera(new THREE.Vector2(projected.x, projected.y), this.camera);
-      const hit = this.raycaster.intersectObject(this.geoMesh, false)[0];
-      const eps = (g.boundingSphere?.radius ?? 1)*1e-5;
-      if (hit && hit.point.distanceTo(centroid) < eps) found.add(fi);
+      for (let cy = cy0; cy <= cy1; cy++) {
+        const py = by0 + (cy + 0.5) * cell;
+        for (let cx = cx0; cx <= cx1; cx++) {
+          const px = bx0 + (cx + 0.5) * cell;
+          const u = ((yb - yc) * (px - xc) + (xc - xb) * (py - yc)) / den;
+          const w = ((yc - ya) * (px - xc) + (xa - xc) * (py - yc)) / den;
+          if (u < 0 || w < 0 || u + w > 1) continue;
+          put(cx, cy, u * za + w * zb + (1 - u - w) * zc, fi);
+        }
+      }
     }
+    const found = new Set<number>();
+    for (const fi of owner) if (fi >= 0) found.add(fi);
     return [...found].map(fi => this.faceIds[fi]);
   }
 

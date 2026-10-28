@@ -387,3 +387,23 @@ def test_cad_face_colours(tmp_path):
     assert {f.get('color') for f in c['geometry']['faces']} == {'#ff0000', None}
     d = [C.face_descriptor(c, f, 'en') for f in c['geometry']['faces'] if f.get('color')]
     assert all(x['color'] == '#ff0000' for x in d)
+
+
+def test_narrow_cylinder_gets_no_direction(tmp_path):
+    """second opinion (0.4) #2: a 4-degree cylindrical face averaged to a planar-looking normal and joined
+    'same direction' selections; only true planes carry a direction."""
+    import math
+    import gmsh
+    p = tmp_path / 'sector.step'
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber('General.Terminal', 0)
+        gmsh.model.occ.addCylinder(0, 0, 0, 0, 0, 20, 100, angle=math.radians(4))
+        gmsh.model.occ.synchronize()
+        gmsh.write(str(p))
+    finally:
+        gmsh.finalize()
+    c = C.import_geometry('structural', p.name, path=str(p))['case']
+    curved = [f for f in c['geometry']['faces'] if f.get('type') == 'Cylinder']
+    assert curved and all('normal' not in f for f in curved)
+    assert all('normal' in f for f in c['geometry']['faces'] if f.get('type') == 'Plane')

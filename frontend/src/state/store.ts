@@ -11,6 +11,7 @@ import type {
   Sample,
   StepId,
   Template,
+  UiFace,
   WsMessage,
 } from "../api/types";
 import { detectLang, pick, translate } from "../i18n";
@@ -165,15 +166,17 @@ export function setState(p: Partial<State> | ((s: State) => Partial<State>)) {
 }
 
 let guiTimer = 0;
-let guiSignature = '';
-let guiSent = '';
+let guiSignature = '';   // latest state to publish
+let guiSent = '';        // last state the server acknowledged
 let guiInFlight = false;
+let guiRetry = 0;
 function scheduleGuiState() {
   const body = { case_id: state.payload?.case.case_id ?? null, revision: state.payload?.case.revision ?? 0,
     step: state.step, selected: state.selectedFaces, hidden: state.hiddenFaces };
   const signature = JSON.stringify(body);
   if (signature === guiSignature) return;
   guiSignature = signature;
+  guiRetry = 0;
   window.clearTimeout(guiTimer);
   guiTimer = window.setTimeout(() => void sendGuiState(), 300);
 }
@@ -181,11 +184,18 @@ async function sendGuiState() {
   if (guiInFlight || guiSent === guiSignature || state.mode === 'mock') return;
   guiInFlight = true;
   const signature = guiSignature;
+  let failed = false;
   try { await api.guiState(JSON.parse(signature)); guiSent = signature; }
-  catch { /* the next state change retries */ }
+  catch { failed = true; }
   finally {
     guiInFlight = false;
     if (signature !== guiSignature) void sendGuiState();
+    // a failed send must not leave the AI reading an older selection: retry the latest state with backoff
+    // (0.6 s, 1.2 s ... capped at 10 s) until the server takes it or the state changes again
+    else if (failed) {
+      window.clearTimeout(guiTimer);
+      guiTimer = window.setTimeout(() => void sendGuiState(), Math.min(10000, 600 * 2 ** guiRetry++));
+    }
   }
 }
 function subscribe(f: () => void) {
@@ -569,8 +579,10 @@ export function selectConnected() {
 }
 export function selectSameDirection() {
   const faces = state.payload?.ui.faces ?? [];
-  const normals = faces.filter(f => state.selectedFaces.includes(f.key)).flatMap(f => f.descriptor?.normal ? [f.descriptor.normal] : []);
-  selectFaces(faces.filter(f => !f.locked && f.descriptor?.normal && normals.some(n => dot(n, f.descriptor!.normal!) >= COS2)).map(f => f.key));
+  // planes only: a curved face has no single direction (cases saved before 0.4 may still carry one)
+  const planar = (f: UiFace) => !!f.descriptor?.normal && (!f.descriptor.type || f.descriptor.type === 'Plane');
+  const normals = faces.filter(f => state.selectedFaces.includes(f.key) && planar(f)).map(f => f.descriptor!.normal!);
+  selectFaces(faces.filter(f => !f.locked && planar(f) && normals.some(n => dot(n, f.descriptor!.normal!) >= COS2)).map(f => f.key));
 }
 /** Faces painted the same colour in the CAD file (designers mark seats and sealing faces that way). */
 export function selectSameColor() {
