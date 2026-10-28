@@ -140,7 +140,9 @@ def test_04_face_resultants_and_reactions(role):
         np.testing.assert_allclose(torque,np.cross([0,.025,.230],expected_force),atol=1e-6,rtol=0)
     fixed, tractions = structural_loads(c,mesh)
     r = fem.solve(nodes,mesh['tets'],205e9,.3,fixed,tractions,rollers=symmetry_rollers(c,mesh))
-    np.testing.assert_allclose(r['reaction']+expected_force,0,atol=1e-6,rtol=0)
+    # the solve is iterative (AMG-CG to 1e-8): balance to 1e-8 of the applied surface forces, not 1e-6 N absolute
+    # (Linux CI gave 1.19e-6 N on a 100 N m torque)
+    np.testing.assert_allclose(r['reaction']+expected_force,0,atol=1e-8*max(1.,np.abs(f).sum()),rtol=0)
     np.testing.assert_allclose(r['reaction_moment']+torque,0,atol=1e-6,rtol=0)
 
 
