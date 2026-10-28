@@ -142,6 +142,12 @@ export class Viewer {
   private hoverFace = -1;
   private externalHover = -1;
   private selected = new Set<number>();
+  private hidden = new Set<string>();
+  private through = false;
+  private originalIndex = new Uint32Array(0);
+  private boxHandlers = new Set<(ids: FaceId[], add: boolean) => void>();
+  private boxStart: { x: number; y: number; add: boolean } | null = null;
+  private boxElement: HTMLDivElement | null = null;
   private pickingEnabled = true;
   private selLine: LineSegments2 | null = null;
   private hoverLine: LineSegments2 | null = null;
@@ -277,10 +283,11 @@ export class Viewer {
     container.appendChild(this.triad);
 
     const el = this.renderer.domElement;
-    el.addEventListener("pointerdown", this.onPointerDown);
+    el.addEventListener("pointerdown", this.onPointerDown, true);
     el.addEventListener("pointerup", this.onPointerUp);
     el.addEventListener("pointermove", this.onPointerMove);
     el.addEventListener("pointerleave", this.onPointerLeave);
+    el.addEventListener('pointercancel', this.onPointerCancel);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -353,6 +360,8 @@ export class Viewer {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    g.setAttribute('faceOpacity', new THREE.BufferAttribute(new Float32Array(nv).fill(1), 1));
+    this.originalIndex = idx.slice();
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     // vertices are per face, so smooth normals stay crisp at face boundaries (CAD look)
     g.computeVertexNormals();
@@ -368,6 +377,12 @@ export class Viewer {
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
     });
+    mat.onBeforeCompile = shader => {
+      shader.vertexShader = 'attribute float faceOpacity; varying float vFaceOpacity;\n' + shader.vertexShader;
+      shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFaceOpacity = faceOpacity;');
+      shader.fragmentShader = 'varying float vFaceOpacity;\n' + shader.fragmentShader;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vFaceOpacity;');
+    };
     this.geoMesh = new THREE.Mesh(g, mat);
     this.scene.add(this.geoMesh);
 
@@ -501,6 +516,40 @@ export class Viewer {
     }
     this.updateGeometryColors();
     this.updateOutlines();
+  }
+
+  setHiddenFaces(ids: FaceId[]): void {
+    this.hidden = new Set(ids.map(String));
+    if (!this.geoMesh) return;
+    const g = this.geoMesh.geometry;
+    const idx = this.originalIndex.slice();
+    this.triFace.forEach((fi, t) => {
+      if (this.hidden.has(String(this.faceIds[fi]))) idx[t*3+1] = idx[t*3+2] = idx[t*3];
+    });
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    if (this.geoEdges) {
+      this.geoEdges.geometry.dispose();
+      this.geoEdges.geometry = new THREE.EdgesGeometry(g, 30);
+    }
+    if (this.wire) { this.disposeObject(this.wire); this.wire = null; if (this.wireOn) this.buildWire(); }
+    this.setHover(-1);
+    this.updateOutlines();
+    this.dirty = true;
+  }
+
+  setSeeThrough(on: boolean): void {
+    this.through = on;
+    this.syncVisibility();
+    this.updateGeometryColors();
+  }
+
+  onBoxPick(cb: (ids: FaceId[], add: boolean) => void): () => void {
+    this.boxHandlers.add(cb);
+    return () => this.boxHandlers.delete(cb);
+  }
+
+  selectBox(x0: number, y0: number, x1: number, y1: number, add = false): void {
+    this.boxHandlers.forEach(h => h(this.boxFaces(x0, y0, x1, y1), add));
   }
 
   /** Hover driven by the host (e.g. a list row): 1 px outline, no hover callbacks. */
@@ -687,10 +736,11 @@ export class Viewer {
     cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
     const el = this.renderer.domElement;
-    el.removeEventListener("pointerdown", this.onPointerDown);
+    el.removeEventListener("pointerdown", this.onPointerDown, true);
     el.removeEventListener("pointerup", this.onPointerUp);
     el.removeEventListener("pointermove", this.onPointerMove);
     el.removeEventListener("pointerleave", this.onPointerLeave);
+    el.removeEventListener('pointercancel', this.onPointerCancel);
     this.controls.dispose();
     this.disposeObject(this.geoMesh);
     this.disposeObject(this.geoEdges);
@@ -710,6 +760,8 @@ export class Viewer {
     el.remove();
     this.triad.remove();
     this.pickHandlers.clear();
+    this.boxHandlers.clear();
+    this.boxElement?.remove();
     this.hoverHandlers.clear();
   }
 
@@ -907,10 +959,11 @@ export class Viewer {
     if (this.geoMesh) {
       this.geoMesh.visible = !showField || slice;
       const m = this.geoMesh.material as THREE.MeshStandardMaterial;
-      if (m.transparent !== slice) {
-        m.transparent = slice;
-        m.opacity = slice ? 0.1 : 1;
-        m.depthWrite = !slice;
+      const transparent = slice || this.through;
+      m.opacity = slice ? 0.1 : 1;
+      if (m.transparent !== transparent) {
+        m.transparent = transparent;
+        m.depthWrite = !transparent;
         m.needsUpdate = true;
       }
     }
@@ -937,6 +990,7 @@ export class Viewer {
   private updateGeometryColors(): void {
     if (!this.geoMesh) return;
     const attr = this.geoMesh.geometry.getAttribute("color") as THREE.BufferAttribute;
+    const opacity = this.geoMesh.geometry.getAttribute('faceOpacity') as THREE.BufferAttribute;
     const arr = attr.array as Float32Array;
     const c = new THREE.Color();
     const base = new THREE.Color().setStyle(this.pal.base, THREE.SRGBColorSpace);
@@ -950,12 +1004,14 @@ export class Viewer {
       if (fi === this.hoverFace || fi === this.externalHover) c.lerp(white, HOVER_LIGHTEN);
       const [start, count] = this.faceVertexRange[fi];
       for (let v = start; v < start + count; v++) {
+        opacity.setX(v, this.through && !this.selected.has(fi) ? .25 : 1);
         arr[v * 3] = c.r;
         arr[v * 3 + 1] = c.g;
         arr[v * 3 + 2] = c.b;
       }
     }
     attr.needsUpdate = true;
+    opacity.needsUpdate = true;
     this.dirty = true;
   }
 
@@ -1003,7 +1059,7 @@ export class Viewer {
       return;
     }
     const build = (faces: number[], mat: LineMaterial) => {
-      const parts = faces.map((fi) => this.faceOutline(fi));
+      const parts = faces.filter(fi => !this.hidden.has(String(this.faceIds[fi]))).map((fi) => this.faceOutline(fi));
       const n = parts.reduce((s, p) => s + p.length, 0);
       if (!n) return null;
       const all = new Float32Array(n);
@@ -1097,34 +1153,102 @@ export class Viewer {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hit = this.raycaster.intersectObject(this.geoMesh, false)[0];
+    const hits = this.raycaster.intersectObject(this.geoMesh, false).filter(hit =>
+      hit.faceIndex != null && !this.hidden.has(String(this.faceIds[this.triFace[hit.faceIndex]])));
+    // The first surface becomes a translucent shell; the next distinct face is available to pick.
+    const first = hits[0];
+    const hit = this.through && first ? hits.find(h => this.triFace[h.faceIndex!] !== this.triFace[first.faceIndex!]) ?? first : first;
     if (!hit || hit.faceIndex == null) return -1;
     return this.triFace[hit.faceIndex] ?? -1;
   }
 
   private onPointerDown = (e: PointerEvent) => {
     this.downAt = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+    if (e.button === 0 && e.ctrlKey && this.pickingEnabled) {
+      e.stopImmediatePropagation();
+      this.controls.enabled = false;
+      this.renderer.domElement.setPointerCapture(e.pointerId);
+      this.boxStart = { x: e.clientX, y: e.clientY, add: e.shiftKey };
+      const el = document.createElement('div');
+      Object.assign(el.style, { position: 'absolute', pointerEvents: 'none', border: '1px solid var(--focus)',
+        background: 'var(--active)', opacity: '.5', zIndex: '3' });
+      this.container.appendChild(el);
+      this.boxElement = el;
+    }
   };
 
   private onPointerUp = (e: PointerEvent) => {
     const d = this.downAt;
     this.downAt = null;
+    const box = this.boxStart;
+    if (box) {
+      this.boxStart = null;
+      this.boxElement?.remove(); this.boxElement = null;
+      this.controls.enabled = true;
+      if (this.renderer.domElement.hasPointerCapture(e.pointerId)) this.renderer.domElement.releasePointerCapture(e.pointerId);
+      if (Math.hypot(e.clientX-box.x, e.clientY-box.y) > 4) {
+        this.selectBox(box.x, box.y, e.clientX, e.clientY, box.add);
+        return;
+      }
+    }
     if (!d || e.button !== 0 || !this.pickingEnabled) return;
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return; // it was a drag
     const fi = this.pickAt(e.clientX, e.clientY);
     const id = fi >= 0 ? this.faceIds[fi] : null;
     const label = fi >= 0 ? this.faceLabels[fi] : undefined;
-    this.pickHandlers.forEach((h) => h(id, { label, shiftKey: e.shiftKey }));
+    this.pickHandlers.forEach((h) => h(id, { label, shiftKey: e.shiftKey || e.ctrlKey || e.metaKey }));
   };
 
   private onPointerMove = (e: PointerEvent) => {
+    if (this.boxStart && this.boxElement) {
+      const rect = this.container.getBoundingClientRect();
+      Object.assign(this.boxElement.style, { left: `${Math.min(e.clientX, this.boxStart.x)-rect.left}px`,
+        top: `${Math.min(e.clientY, this.boxStart.y)-rect.top}px`, width: `${Math.abs(e.clientX-this.boxStart.x)}px`,
+        height: `${Math.abs(e.clientY-this.boxStart.y)}px` });
+      return;
+    }
     if (e.buttons !== 0) return; // no hover updates while orbiting
     this.pendingHover = { x: e.clientX, y: e.clientY };
   };
 
+  private boxFaces(x0: number, y0: number, x1: number, y1: number): FaceId[] {
+    if (!this.geoMesh) return [];
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const g = this.geoMesh.geometry;
+    const pos = g.getAttribute('position');
+    const found = new Set<number>();
+    const centroid = new THREE.Vector3();
+    const projected = new THREE.Vector3();
+    for (let t = 0; t < this.triFace.length; t++) {
+      const fi = this.triFace[t];
+      if (found.has(fi) || this.hidden.has(String(this.faceIds[fi]))) continue;
+      centroid.set(0, 0, 0);
+      for (let j = 0; j < 3; j++) {
+        const i = this.originalIndex[t*3+j];
+        centroid.x += pos.getX(i)/3; centroid.y += pos.getY(i)/3; centroid.z += pos.getZ(i)/3;
+      }
+      projected.copy(centroid).project(this.camera);
+      if (Math.abs(projected.z) > 1) continue;
+      const x = rect.left+(projected.x+1)*rect.width/2, y = rect.top+(1-projected.y)*rect.height/2;
+      if (x < Math.min(x0,x1) || x > Math.max(x0,x1) || y < Math.min(y0,y1) || y > Math.max(y0,y1)) continue;
+      this.raycaster.setFromCamera(new THREE.Vector2(projected.x, projected.y), this.camera);
+      const hit = this.raycaster.intersectObject(this.geoMesh, false)[0];
+      const eps = (g.boundingSphere?.radius ?? 1)*1e-5;
+      if (hit && hit.point.distanceTo(centroid) < eps) found.add(fi);
+    }
+    return [...found].map(fi => this.faceIds[fi]);
+  }
+
   private onPointerLeave = () => {
     this.pendingHover = null;
     this.setHover(-1);
+  };
+
+  private onPointerCancel = () => {
+    this.boxStart = null;
+    this.downAt = null;
+    this.boxElement?.remove(); this.boxElement = null;
+    this.controls.enabled = true;
   };
 
   private loop = () => {

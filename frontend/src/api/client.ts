@@ -128,6 +128,10 @@ async function importCad(file: File, physics: "structural" | "thermal" | "flow" 
 }
 
 export const api = {
+  undo: (id: string, expected_revision: number, redo = false) =>
+    request<CasePayload>('POST', `/api/cases/${encodeURIComponent(id)}/${redo ? 'redo' : 'undo'}`, { expected_revision }),
+  guiState: (body: { case_id: string | null; revision: number; step: string; selected: string[]; hidden: string[] }) =>
+    mock ? Promise.resolve() : request('PUT', '/api/gui-state', body),
   env: () => request<Record<string, unknown>>("GET", "/api/env"),
   templates: () => request<{ templates: Template[] }>("GET", "/api/templates"),
   samples: async (): Promise<Sample[]> => {

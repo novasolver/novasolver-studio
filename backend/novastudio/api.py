@@ -129,6 +129,21 @@ async def delete_case(case_id: str, confirm: str = Query(...), lang: str = "ja")
     return await call(C.delete_case, case_id, confirm, lang)
 
 
+@app.post('/api/cases/{case_id}/undo')
+async def undo(case_id: str, body: dict = Body(...), lang: str = 'ja'):
+    return await call(C.undo_case, case_id, body['expected_revision'], lang=lang)
+
+
+@app.post('/api/cases/{case_id}/redo')
+async def redo(case_id: str, body: dict = Body(...), lang: str = 'ja'):
+    return await call(C.undo_case, case_id, body['expected_revision'], redo=True, lang=lang)
+
+
+@app.put('/api/gui-state')
+async def gui_state(body: dict = Body(...)):
+    return await call(C.put_gui_state, body)
+
+
 @app.get("/api/cases/{case_id}/geometry")
 async def geometry(case_id: str, lang: str = "ja"):
     return await call(C.geometry_payload, case_id, lang)
@@ -182,8 +197,8 @@ async def field(case_id: str, quantity: str = "", lang: str = "ja"):
 
 
 @app.get("/api/cases/{case_id}/render.png")
-async def render(case_id: str, quantity: str = "", lang: str = "ja"):
-    png, _ = await call(C.render_view, case_id, quantity, lang)
+async def render(case_id: str, quantity: str = "", lang: str = "ja", view: str = 'iso', highlight: list[str] = Query(default=[])):
+    png, _ = await call(C.render_view, case_id, quantity, lang, view, highlight or None)
     return Response(png, media_type="image/png")
 
 

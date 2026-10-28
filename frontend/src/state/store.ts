@@ -29,6 +29,7 @@ export interface LogEntry {
 }
 
 export interface Toast {
+  action?: 'undo' | 'redo';
   id: number;
   text: string;
   kind: "ai" | "info" | "error";
@@ -49,6 +50,11 @@ export interface State {
   geometry: GeometryPayload | null;
   step: StepId;
   selectedFaces: string[]; // face keys, e.g. ["x1"] (multi-select with Shift/Ctrl)
+  hiddenFaces: string[];
+  seeThrough: boolean;
+  faceFilter: string[] | null;
+  historyBusy: boolean;
+  resultsBeforeUndo: boolean;
   hoverFace: string | null; // face under the pointer (3D view or list)
   flashFaces: string[];
   fieldErrors: Record<string, string>; // PATCH path -> localized message (400)
@@ -100,6 +106,11 @@ let state: State = {
   geometry: null,
   step: "geometry",
   selectedFaces: [],
+  hiddenFaces: [],
+  seeThrough: false,
+  faceFilter: null,
+  historyBusy: false,
+  resultsBeforeUndo: false,
   hoverFace: null,
   flashFaces: [],
   fieldErrors: {},
@@ -150,6 +161,32 @@ export function setState(p: Partial<State> | ((s: State) => Partial<State>)) {
   const patch = typeof p === "function" ? p(state) : p;
   state = { ...state, ...patch };
   subs.forEach((f) => f());
+  scheduleGuiState();
+}
+
+let guiTimer = 0;
+let guiSignature = '';
+let guiSent = '';
+let guiInFlight = false;
+function scheduleGuiState() {
+  const body = { case_id: state.payload?.case.case_id ?? null, revision: state.payload?.case.revision ?? 0,
+    step: state.step, selected: state.selectedFaces, hidden: state.hiddenFaces };
+  const signature = JSON.stringify(body);
+  if (signature === guiSignature) return;
+  guiSignature = signature;
+  window.clearTimeout(guiTimer);
+  guiTimer = window.setTimeout(() => void sendGuiState(), 300);
+}
+async function sendGuiState() {
+  if (guiInFlight || guiSent === guiSignature || state.mode === 'mock') return;
+  guiInFlight = true;
+  const signature = guiSignature;
+  try { await api.guiState(JSON.parse(signature)); guiSent = signature; }
+  catch { /* the next state change retries */ }
+  finally {
+    guiInFlight = false;
+    if (signature !== guiSignature) void sendGuiState();
+  }
 }
 function subscribe(f: () => void) {
   subs.add(f);
@@ -190,9 +227,9 @@ export function log(level: LogEntry["level"], text: string) {
   setState((s) => ({ logs: [...s.logs.slice(-199), { id: ++seq, t: Date.now(), level, text }] }));
 }
 let toastTimer = 0;
-export function toast(text: string, kind: Toast["kind"] = "info") {
+export function toast(text: string, kind: Toast["kind"] = "info", action?: 'undo' | 'redo') {
   window.clearTimeout(toastTimer);
-  setState({ toast: { id: ++seq, text, kind } });
+  setState({ toast: { id: ++seq, text, kind, action } });
   toastTimer = window.setTimeout(() => setState({ toast: null }), 4200);
 }
 function errMsg(e: unknown): string {
@@ -249,7 +286,7 @@ function onEvent(m: WsMessage) {
   } else if (m.type === "case") {
     const p = state.payload;
     if (!p || m.case_id !== p.case.case_id) return;
-    if (m.revision <= p.case.revision || ownRevisions.has(m.revision) || state.saving || pendingFlush) return;
+    if (m.revision <= p.case.revision || ownRevisions.has(m.revision) || state.saving || pendingFlush || state.historyBusy) return;
     log("info", t("log.external", { rev: m.revision }));
     toast(t("toast.external", { rev: m.revision }), "ai");
     void refreshCase(true);
@@ -316,6 +353,7 @@ export function closeCase() {
     results: null,
     field: null,
     selectedFaces: [],
+    hiddenFaces: [], seeThrough: false, faceFilter: null, resultsBeforeUndo: false,
     hoverFace: null,
     flashFaces: [],
     fieldErrors: {},
@@ -445,6 +483,7 @@ function openPayload(p: CasePayload) {
     geometry: null,
     step: "geometry",
     selectedFaces: [],
+    hiddenFaces: [], seeThrough: false, faceFilter: null, resultsBeforeUndo: false,
     hoverFace: null,
     flashFaces: [],
     fieldErrors: {},
@@ -510,6 +549,85 @@ export function selectFace(key: string | null, mode: "set" | "toggle" = "set") {
 }
 export function selectFaces(keys: string[]) {
   setState({ selectedFaces: [...new Set(keys)] });
+}
+
+const COS2 = Math.cos(2 * Math.PI / 180);
+const dot = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * b[i], 0);
+let coaxialLast: string[] | null = null;
+let coaxialSeeds: string[] = [];
+export function selectConnected() {
+  const faces = state.payload?.ui.faces ?? [];
+  const valid = new Set(faces.filter(f => !f.locked).map(f => f.key));
+  const found = new Set(state.selectedFaces);
+  const queue = [...found];
+  while (queue.length) {
+    const key = queue.shift();
+    const f = faces.find(f => f.key === key);
+    for (const k of f?.descriptor?.smooth_neighbors ?? []) if (valid.has(k) && !found.has(k)) { found.add(k); queue.push(k); }
+  }
+  selectFaces([...found]);
+}
+export function selectSameDirection() {
+  const faces = state.payload?.ui.faces ?? [];
+  const normals = faces.filter(f => state.selectedFaces.includes(f.key)).flatMap(f => f.descriptor?.normal ? [f.descriptor.normal] : []);
+  selectFaces(faces.filter(f => !f.locked && f.descriptor?.normal && normals.some(n => dot(n, f.descriptor!.normal!) >= COS2)).map(f => f.key));
+}
+export function selectCoaxial() {
+  const faces = state.payload?.ui.faces ?? [];
+  const sameRadius = coaxialLast === state.selectedFaces;
+  if (!sameRadius) coaxialSeeds = [...state.selectedFaces];
+  const seeds = faces.filter(f => coaxialSeeds.includes(f.key)).map(f => f.descriptor).filter(d => d?.axis && d.axis_point && d.radius);
+  const bbox = state.geometry?.bbox;
+  const tolerance = bbox ? Math.hypot(...bbox[0].map((v, i) => bbox[1][i] - v)) * .01 : 0;
+  selectFaces(faces.filter(f => {
+    const d = f.descriptor;
+    return !f.locked && d?.axis && d.axis_point && d.radius && seeds.some(s => {
+      if (Math.abs(dot(s!.axis!, d.axis!)) < COS2) return false;
+      const v = d.axis_point!.map((x, i) => x - s!.axis_point![i]);
+      const along = dot(v, s!.axis!);
+      return Math.hypot(...v.map((x, i) => x - along * s!.axis![i])) <= tolerance &&
+        (!sameRadius || Math.abs(d.radius! - s!.radius!) <= s!.radius! * .01);
+    });
+  }).map(f => f.key));
+  coaxialLast = sameRadius ? null : state.selectedFaces;
+}
+export function selectSimilar() {
+  const faces = state.payload?.ui.faces ?? [];
+  const seeds = faces.filter(f => state.selectedFaces.includes(f.key));
+  selectFaces(faces.filter(f => !f.locked && seeds.some(s => {
+    const sameType = s.descriptor?.type && f.descriptor?.type ? s.descriptor.type === f.descriptor.type :
+      s.label.split('·')[1]?.trim() === f.label.split('·')[1]?.trim();
+    return sameType && s.area_m2 && f.area_m2 && Math.abs(f.area_m2 - s.area_m2) <= s.area_m2 * .02;
+  })).map(f => f.key));
+}
+export function invertSelection() {
+  selectFaces((state.payload?.ui.faces ?? []).filter(f => !f.locked && !state.selectedFaces.includes(f.key) &&
+    (!state.faceFilter || state.faceFilter.includes(f.key))).map(f => f.key));
+}
+export function hideSelected() {
+  setState({ hiddenFaces: [...new Set([...state.hiddenFaces, ...state.selectedFaces])], selectedFaces: [] });
+}
+export function showAllFaces() { setState({ hiddenFaces: [] }); }
+export function toggleSeeThrough() { setState({ seeThrough: !state.seeThrough }); }
+export function selectBox(x0: number, y0: number, x1: number, y1: number, add = false) {
+  viewer?.selectBox(x0, y0, x1, y1, add);
+}
+export function deleteFaceGroup(name: string) { change(`face_groups.${name}`, null); }
+export function renameFaceGroup(name: string, next: string) {
+  const keys = state.payload?.case.face_groups?.[name];
+  if (!keys || !next.trim() || next.trim() === name) return;
+  deleteFaceGroup(name);
+  change(`face_groups.${next.trim()}`, keys);
+}
+export function saveFaceGroup(name?: string) {
+  const p = state.payload;
+  if (!p || !state.selectedFaces.length) return;
+  const cadName = p.ui.faces.find(f => state.selectedFaces.includes(f.key) && f.descriptor?.name)?.descriptor?.name;
+  const groups = p.case.face_groups ?? {};
+  let n = 1;
+  while (groups[t('bc.groupDefault', { n })]) n++;
+  const value = name ?? window.prompt(t('bc.groupName'), cadName ?? t('bc.groupDefault', { n }));
+  if (value?.trim()) change(`face_groups.${value.trim()}`, [...state.selectedFaces]);
 }
 export function setHoverFace(key: string | null) {
   if (state.hoverFace !== key) setState({ hoverFace: key });
@@ -616,6 +734,7 @@ async function flush(): Promise<void> {
 
 /** One batch: never throws, so a failed batch cannot block the ones after it (or later edits). */
 async function send({ caseId, changes }: { caseId: string; changes: Record<string, unknown> }): Promise<void> {
+  if (historyBarrier) await historyBarrier;
   try {
     // the revision of the case the edits were made in, also when another case is open by now
     let rev = state.payload?.case.case_id === caseId ? state.payload.case.revision : (await api.getCase(caseId)).case.revision;
@@ -656,10 +775,43 @@ async function send({ caseId, changes }: { caseId: string; changes: Record<strin
 }
 
 async function settle() {
-  window.clearTimeout(flushTimer);
-  if (pendingFlush) await flush();
-  if (inFlight) await inFlight;
+  do {
+    window.clearTimeout(flushTimer);
+    if (pendingFlush || batches.length || Object.keys(pending).length) await flush();
+    if (inFlight) await inFlight;
+  } while (inFlight || batches.length || Object.keys(pending).length);
 }
+
+let historyBarrier: Promise<void> | null = null;
+export async function undoCase(redo = false) {
+  if (!state.payload || state.historyBusy) return;
+  setState({ historyBusy: true });
+  let release: (() => void) | undefined;
+  try {
+    const id = state.payload.case.case_id;
+    await settle();
+    if (state.payload?.case.case_id !== id) return;
+    historyBarrier = new Promise<void>(resolve => { release = resolve; });
+    const p = await api.undo(id, state.payload.case.revision, redo);
+    ownRevisions.add(p.case.revision);
+    if (state.payload?.case.case_id !== id) return;
+    let merged = p;
+    if (pendingCase === id) for (const [path, value] of Object.entries(pending)) merged = applyOptimistic(merged, path, value);
+    setState({ payload: merged, resultsBeforeUndo: true });
+    void loadGeometry();
+    if (state.results) void loadResults(false);
+    toast(t(redo ? 'redo.done' : p.undone?.source === 'ai' ? 'undo.ai' : 'undo.done', { summary: p.undone?.summary ?? '' }),
+      p.undone?.source === 'ai' ? 'ai' : 'info', redo ? 'undo' : 'redo');
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) await refreshCase(true);
+    toast(errMsg(e), 'error');
+  } finally {
+    historyBarrier = null;
+    release?.();
+    setState({ historyBusy: false });
+  }
+}
+export function redoCase() { return undoCase(true); }
 
 // ------------------------------------------------------------------ mesh
 export async function generateMesh() {
@@ -819,7 +971,7 @@ export async function loadResults(resetView: boolean, relabel = false) {
     if (state.payload?.case.case_id !== p.case.case_id) return;
     const q = r.quantities.find((x) => x.id === state.quantity) ?? r.quantities[0];
     const sameRun = state.results?.run_id && state.results.run_id === r.run_id;
-    setState({ results: r });
+    setState({ results: r, ...(r.stale ? {} : { resultsBeforeUndo: false }) });
     if (q && r.gates.ran && (!sameRun || !state.field || resetView || relabel))
       await loadField(q.id, resetView || state.quantity !== q.id);
   } catch (e) {

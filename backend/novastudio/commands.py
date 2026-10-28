@@ -5,6 +5,9 @@ from __future__ import annotations
 import os
 import platform
 import sys
+import copy
+import time
+import json
 from pathlib import Path
 
 from . import __version__, checks, geometry, jobs, results, store, templates, units
@@ -72,11 +75,61 @@ def face_label(tp: dict, key: str, lang: str, case: dict | None = None) -> str:
         info = next((f for f in (case or {}).get("geometry", {}).get("faces", []) if f["key"] == key), None)
         n = info["n"] if info else key
         typ = t(f"surf.{info['type']}", lang) if info and info.get("type") else ""
-        return t("face.generic", lang, n=n) + (f" · {typ}" if typ and not typ.startswith("surf.") else "")
+        base = t('face.generic', lang, n=n)
+        if info and info.get('name'):
+            return t('face.named', lang, name=info['name'], face=base)
+        direction = axis_word((info or {}).get('normal') or (info or {}).get('axis'))
+        if info and info.get('type') == 'Cylinder' and info.get('radius'):
+            return (base + ' · ' + typ + t('face.radius', lang, r=f"{info['radius']*1e3:g}") +
+                    (t('face.axis', lang, axis=direction.lstrip('+-')) if direction else ''))
+        return (base + (f" · {typ}" if typ and not typ.startswith('surf.') else '') +
+                (f' {direction}' if direction else '') +
+                (f" · {info['area']*1e6:,.4g} mm²" if info and info.get('area') is not None else ''))
     base = tp["face_labels"][key]
     if sum(1 for v in tp["face_labels"].values() if v == base) > 1:
         return f"{t(base, lang)} ({t(POSITION[key], lang)})"
     return t(base, lang)
+
+
+def axis_word(vector) -> str:
+    import math
+    if not vector:
+        return ''
+    i = max(range(3), key=lambda j: abs(vector[j]))
+    return ('+' if vector[i] > 0 else '-') + 'XYZ'[i] if abs(vector[i]) >= math.cos(math.radians(2)) else ''
+
+
+def face_descriptor(case: dict, f: dict, lang: str) -> dict:
+    out = {k: f[k] for k in ('key', 'n', 'type', 'name', 'normal', 'axis', 'neighbors', 'smooth_neighbors') if k in f}
+    out['label'] = face_label(templates.get(case['template']), f['key'], lang, case)
+    out['role'] = case['boundaries'].get(f['key'], {}).get('role')
+    for k, scale, suffix in (('area', 1e6, '_mm2'), ('radius', 1e3, '_mm'), ('centroid', 1e3, '_mm'),
+                              ('axis_point', 1e3, '_mm'), ('bbox', 1e3, '_mm')):
+        if k in f:
+            def scaled(v):
+                return [scaled(x) for x in v] if isinstance(v, list) else round(v*scale, 2 if k in ('area', 'centroid') else 3)
+            out[k+suffix] = scaled(f[k])
+    return out
+
+
+def history_summary(entry: dict, lang: str) -> str:
+    paths = entry['paths']
+    faces = list(dict.fromkeys(p.split('.')[1] for p in paths if p.startswith('boundaries.')))
+    if faces:
+        first = face_label(templates.get(entry['before']['template']), faces[0], lang, entry['before']).split(' · ')[0]
+        field = paths[0].rsplit('.', 1)[-1]
+        label = t('field.' + field, lang) if field != 'role' else t('history.role', lang)
+        summary = t('history.faces' if len(faces) > 1 else 'history.face', lang, face=first, n=len(faces)-1, field=label)
+    else:
+        section = paths[0].split('.')[0] if paths else 'case'
+        summary = t('history.' + section, lang)
+    return summary + (t('history.ai', lang) if entry['source'] == 'ai' else '')
+
+
+def history_payload(case_id: str, lang: str) -> dict:
+    h = store.history(case_id)
+    return {'undo': [{'rev': e['rev_after'], 'source': e['source'], 'ts': e['ts'], 'summary': history_summary(e, lang)}
+                     for e in reversed(h['undo'][-10:])], 'redo_count': len(h['redo'])}
 
 
 def job_view(j: dict, lang: str) -> dict:
@@ -117,12 +170,14 @@ def case_payload(case_id: str, lang: str = "ja") -> dict:
         faces.append({"key": key, "region": key, "label": face_label(tp, key, lang, case), "role": b.get("role"),
                       "role_label": t(f"role.{b.get('role')}", lang), "locked": key in tp["locked_faces"],
                       "value": b.get("force") or b.get("pressure") or b.get("speed") or b.get("temperature") or b.get("flux"),
-                      "values": values, "thermal": b.get("thermal"), "area_m2": info.get(key, {}).get("area")})
+                      "values": values, "thermal": b.get("thermal"), "area_m2": info.get(key, {}).get("area"),
+                      "descriptor": info.get(key, {})})
     mat_kind = "solid" if "solid" in case["materials"] else "fluid"
     presets = templates.MATERIALS_SOLID if mat_kind == "solid" else templates.MATERIALS_FLUID
     ms = geometry.mesh_state(case)
     return {
         "case": case,
+        "history": history_payload(case_id, lang),
         "steps": checks.steps(case, items, latest),
         "checks": items,
         "ready": not any(i["level"] == "error" for i in items),
@@ -150,18 +205,18 @@ def case_payload(case_id: str, lang: str = "ja") -> dict:
     }
 
 
-def create_case(template: str, params: dict | None = None, lang: str = "ja") -> dict:
+def create_case(template: str, params: dict | None = None, lang: str = "ja", source: str = 'gui') -> dict:
     tp = templates.TEMPLATES.get(template, {})
     if tp.get("sample"):                       # benchmark built on a bundled CAD file (e.g. sphere drag)
         pl = import_geometry(tp["physics"], tp["sample"], path=str(_samples_dir() / tp["sample"]), lang=lang,
                              template=template)
         if params:
-            update_case(pl["case"]["case_id"], pl["case"]["revision"], params, lang)
+            update_case(pl["case"]["case_id"], pl["case"]["revision"], params, lang, source=source)
             pl = case_payload(pl["case"]["case_id"], lang)
         return pl
     case = store.create(template)
     if params:
-        update_case(case["case_id"], case["revision"], params, lang)
+        update_case(case["case_id"], case["revision"], params, lang, source=source)
     return case_payload(case["case_id"], lang)
 
 
@@ -308,6 +363,9 @@ def describe_case(case_id: str, detail: str = "concise", lang: str = "ja") -> di
            "parameters": {p["path"]: f"{p['value']} {p['unit']}" for p in pl["ui"]["params"]},
            "boundaries": {f["key"]: f["role"] for f in pl["ui"]["faces"]},
            "latest_run": pl["latest_run"]}
+    out['history'] = dict(pl['history'], undo=pl['history']['undo'][:5])
+    out['faces'] = [face_descriptor(c, f, lang) for f in c['geometry'].get('faces', []) if not f.get('interface')]
+    out['face_groups'] = c.get('face_groups', {})
     if c.get("body_materials"):
         geo = {b["key"]: b for b in c["geometry"].get("bodies", [])}
         out["body_materials"] = {b: {"material": m, "overrides": c.get("body_props", {}).get(b, {}),
@@ -324,7 +382,7 @@ def describe_case(case_id: str, detail: str = "concise", lang: str = "ja") -> di
     return out
 
 
-def update_case(case_id: str, expected_revision: int, changes: dict, lang: str = "ja") -> dict:
+def update_case(case_id: str, expected_revision: int, changes: dict, lang: str = "ja", source: str = 'gui') -> dict:
     store.case_dir(case_id)                    # validates the id before a lock file is made from it
     with store.case_lock(case_id):
         case = store.load(case_id)
@@ -334,9 +392,73 @@ def update_case(case_id: str, expected_revision: int, changes: dict, lang: str =
         diff = [d for d in diff if geometry._canon(d["old"]) != geometry._canon(d["new"])]
         if diff:                               # a no-op edit (e.g. 200 -> 200.0 from autosave) keeps the revision
             store.save(new)
+            store.record_change(case, new, [d['path'] for d in diff], source)
     pl = case_payload(case_id, lang)
     pl["diff"] = diff
     return pl
+
+
+def undo_case(case_id: str, expected_revision: int, redo: bool = False, source: str = 'gui', lang: str = 'ja') -> dict:
+    with store.case_lock(case_id):
+        current = store.load(case_id)
+        if int(expected_revision) != current['revision']:
+            raise StudioError('err.revision', 409, current=current['revision'])
+        h = store.history(case_id)
+        src, dst = ('redo', 'undo') if redo else ('undo', 'redo')
+        if not h[src]:
+            raise StudioError('err.nothing_to_' + src, 409)
+        entry = h[src].pop()
+        new = copy.deepcopy(entry['before'])
+        for k in ('revision', 'provenance', 'checks'):
+            if k in current:
+                new[k] = copy.deepcopy(current[k])
+        store.save(new)
+        h[dst].append(dict(entry, before=current))
+        h[dst] = h[dst][-100:]
+        store._write_json(store.case_dir(case_id) / 'history.json', h)
+    pl = case_payload(case_id, lang)
+    pl['diff'] = []
+    pl['undone'] = {'source': entry['source'], 'paths': entry['paths'], 'summary': history_summary(entry, lang)}
+    return pl
+
+
+def put_gui_state(state: dict) -> dict:
+    cid = state.get('case_id')
+    if cid is not None:
+        case = store.load(cid)
+        valid = set(templates.face_keys(case))
+    else:
+        valid = set()
+    if (state.get('step') not in ('geometry', 'mesh', 'physics', 'boundaries', 'run', 'results') or
+            not isinstance(state.get('revision'), int) or any(
+                not isinstance(state.get(k), list) or any(not isinstance(f, str) or f not in valid for f in state[k])
+                for k in ('selected', 'hidden'))):
+        raise StudioError('err.path', 400, path='gui-state')
+    data = {k: state[k] for k in ('case_id', 'revision', 'step', 'selected', 'hidden')}
+    data['ts'] = time.time()
+    store._write_json(workspace() / '.gui_state.json', data)
+    return {'ok': True}
+
+
+def get_gui_selection(lang: str = 'ja') -> dict:
+    path = workspace() / '.gui_state.json'
+    if not path.is_file():
+        return {'message': t('gui.none', lang), 'selected': []}
+    state = json.loads(path.read_text(encoding='utf-8'))
+    age = max(0., time.time() - state['ts'])
+    if age > 1800:
+        return {'message': t('gui.expired', lang), 'selected': [], 'age_s': age}
+    if not state['case_id']:
+        return {'message': t('gui.none', lang), 'selected': [], 'age_s': age}
+    try:
+        case = store.load(state['case_id'])
+    except StudioError:
+        return {'message': t('gui.none', lang), 'selected': []}
+    info = {f['key']: f for f in case['geometry'].get('faces', [])}
+    return {**state, 'age_s': age, 'current_revision': case['revision'],
+            'message': t('gui.selected' if state['selected'] else 'gui.empty', lang, n=len(state['selected'])),
+            'selected': [face_descriptor(case, info.get(k, {'key': k}), lang) for k in state['selected']
+                         if k in templates.face_keys(case)]}
 
 
 def validate_case(case_id: str, lang: str = "ja") -> dict:
@@ -347,10 +469,10 @@ def validate_case(case_id: str, lang: str = "ja") -> dict:
             "items": items}
 
 
-def generate_mesh(case_id: str, size: str | None = None, lang: str = "ja") -> dict:
+def generate_mesh(case_id: str, size: str | None = None, lang: str = "ja", source: str = 'gui') -> dict:
     case = store.load(case_id)
     if size and size != case["mesh"]["size"]:
-        update_case(case_id, case["revision"], {"mesh.size": size}, lang)
+        update_case(case_id, case["revision"], {"mesh.size": size}, lang, source=source)
         case = store.load(case_id)
     stats = geometry.generate_mesh(case)
     return {"ok": True, "case_id": case_id, "revision": case["revision"], "stats": stats}
@@ -370,10 +492,10 @@ def geometry_payload(case_id: str, lang: str = "ja") -> dict:
 
 # ------------------------------------------------------------------ solving
 
-def run_simulation(case_id: str, mode: str | None = None, wait_s: float = 20.0, lang: str = "ja") -> dict:
+def run_simulation(case_id: str, mode: str | None = None, wait_s: float = 20.0, lang: str = "ja", source: str = 'gui') -> dict:
     case = store.load(case_id)
     if mode and mode != case["run"]["mode"]:
-        update_case(case_id, case["revision"], {"run.mode": mode}, lang)
+        update_case(case_id, case["revision"], {"run.mode": mode}, lang, source=source)
         case = store.load(case_id)
     items = checks.run(case, lang)
     if any(i["level"] == "error" for i in items):
@@ -442,7 +564,10 @@ def field(case_id: str, quantity: str, lang: str = "ja") -> dict:
     return results.field(store.load(case_id), quantity, lang_of(lang))
 
 
-def render_view(case_id: str, quantity: str = "", lang: str = "ja") -> tuple[bytes, dict]:
+def render_view(case_id: str, quantity: str = "", lang: str = "ja", view: str = 'iso',
+                highlight: list[str] | None = None) -> tuple[bytes, dict]:
+    if quantity == 'faces':
+        return results.render_faces(store.load(case_id), lang_of(lang), view, highlight)
     return results.render_png(store.load(case_id), quantity, lang_of(lang))
 
 
@@ -452,7 +577,7 @@ def probe_results(case_id: str, points: list | None = None, line: dict | None = 
     return probe(store.load(case_id), points, line, faces, run_id)
 
 
-def clone_case(case_id: str, changes: dict | None = None, title: str | None = None, lang: str = "ja") -> dict:
+def clone_case(case_id: str, changes: dict | None = None, title: str | None = None, lang: str = "ja", source: str = 'gui') -> dict:
     """Copy a case (geometry, face roles, materials, mesh settings; not its runs) under a new id, then apply changes."""
     import shutil
     import time as _time
@@ -462,7 +587,7 @@ def clone_case(case_id: str, changes: dict | None = None, title: str | None = No
     while (store.cases_dir() / cid).exists():
         cid = store.new_id()
     dst = store.cases_dir() / cid
-    shutil.copytree(src, dst, ignore=lambda d, names: [n for n in names if d == str(src) and n in ("run", "revisions")])
+    shutil.copytree(src, dst, ignore=lambda d, names: [n for n in names if d == str(src) and n in ("run", "revisions", "history.json", ".lock")])
     (dst / "revisions").mkdir(exist_ok=True)
     case["case_id"], case["revision"] = cid, 1
     if title:
@@ -472,7 +597,7 @@ def clone_case(case_id: str, changes: dict | None = None, title: str | None = No
     store._write_json(dst / "case.json", case)
     if changes:
         try:
-            update_case(cid, 1, changes, lang)
+            update_case(cid, 1, changes, lang, source=source)
         except StudioError:
             shutil.rmtree(dst, ignore_errors=True)
             raise
@@ -483,7 +608,7 @@ MAX_SWEEP = 8
 
 
 def run_sweep(case_id: str, path: str, values: list, mode: str | None = None, study: str = "single",
-              lang: str = "ja") -> dict:
+              lang: str = "ja", source: str = 'gui') -> dict:
     """One clone per value of `path`, each started as a background job. Compare them with compare_runs."""
     if not 1 <= len(values) <= MAX_SWEEP:
         raise StudioError("err.path", 400, path=f"values: 1..{MAX_SWEEP} items")
@@ -497,7 +622,7 @@ def run_sweep(case_id: str, path: str, values: list, mode: str | None = None, st
         if mode:
             ch["run.mode"] = mode
         label = v if isinstance(v, str) else (f"{v.get('value')} {v.get('unit')}" if isinstance(v, dict) else str(v))
-        pl = clone_case(case_id, ch, f"{stem} [{path.rsplit('.', 1)[-1]}={label}]", lang)
+        pl = clone_case(case_id, ch, f"{stem} [{path.rsplit('.', 1)[-1]}={label}]", lang, source=source)
         cid = pl["case"]["case_id"]
         case = store.load(cid)
         items = checks.run(case, lang)

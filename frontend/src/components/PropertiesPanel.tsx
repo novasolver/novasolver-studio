@@ -19,6 +19,9 @@ import {
   Square,
   TriangleAlert,
   X,
+  EyeOff,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import {
   caseTitle,
@@ -40,6 +43,8 @@ import {
   useStore,
   useT,
   EMPTY,
+  renameFaceGroup,
+  deleteFaceGroup,
 } from "../state/store";
 import type { ConvergenceStudy, StepId, UiFace, UiParam } from "../api/types";
 import { exportImage } from "./ShareMenu";
@@ -55,6 +60,7 @@ import { cn } from "./ui/cn";
 import { fmt, fmtDuration, fmtGci, fmtInt, fmtSignedPct, unitLabel } from "../lib/units";
 import { STEP_ICONS } from "./stepIcons";
 import { cadPhysicsOf, pickCadFile } from "./ImportCad";
+import { SelectionActions } from './SelectionActions';
 
 // ------------------------------------------------------------------ shared bits
 
@@ -374,6 +380,7 @@ function FaceRow({ f, selected, hovered }: { f: UiFace; selected: boolean; hover
   const roles = useStore((s) => s.payload?.ui.roles ?? EMPTY);
   const fixedRoles = useStore((s) => !!s.payload?.ui.fixed_roles);
   const flash = useStore((s) => s.flashFaces.includes(f.key));
+  const hidden = useStore(s => s.hiddenFaces.includes(f.key));
   const ref = useRef<HTMLDivElement>(null);
   const single = useStore((s) => s.selectedFaces.length === 1);
   useEffect(() => {
@@ -407,6 +414,7 @@ function FaceRow({ f, selected, hovered }: { f: UiFace; selected: boolean; hover
       )}
     >
       <Swatch f={f} />
+      {hidden && <span title={t('bc.hidden')}><EyeOff size={12} className="text-fg-3" /></span>}
       <span className={cn("min-w-0 flex-1 truncate text-body", selected ? "text-fg" : "text-fg-2")} title={f.label}>
         {f.label}
       </span>
@@ -456,6 +464,7 @@ function FaceList() {
   const hovered = useStore((s) => s.hoverFace);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<string>("all");
+  const lastSelection = useRef(selected);
   const many = faces.length > 8;
 
   const roleLabel = (id: string) =>
@@ -477,6 +486,17 @@ function FaceList() {
   const visible = faces.filter(
     (f) => (filter === "all" || bucket(f) === filter) && (!needle || f.label.toLowerCase().includes(needle) || f.key.toLowerCase() === needle),
   );
+  const filterSignature = visible.map(f => f.key).join(',');
+  useEffect(() => {
+    setState({ faceFilter: filter !== 'all' || needle ? filterSignature.split(',').filter(Boolean) : null });
+    return () => setState({ faceFilter: null });
+  }, [filterSignature, filter, needle]);
+  useEffect(() => {
+    if (lastSelection.current !== selected && selected.length === 1 && !visible.some(f => f.key === selected[0])) {
+      setQ(''); setFilter('all');
+    }
+    lastSelection.current = selected;
+  }, [selected, filterSignature]);
   const grouped = faces.length > 12 && counts.length > 1 && filter === "all" && !needle;
   const selSet = new Set(selected);
 
@@ -583,6 +603,8 @@ function SelectionEditor() {
       <>
         {withValues.length > 0 && (
           <Section title={t("bc.values")}>
+            <details open={withValues.length <= 5}>
+            <summary className="h-8 cursor-pointer text-label text-fg-2">{t('bc.values')} ({withValues.length})</summary>
             <ul className="-mx-2 flex flex-col">
               {withValues.map((f) => (
                 <li key={f.key}>
@@ -608,6 +630,7 @@ function SelectionEditor() {
                 </li>
               ))}
             </ul>
+            </details>
           </Section>
         )}
         {legacy.length > 0 && withValues.length === 0 && (
@@ -624,18 +647,9 @@ function SelectionEditor() {
 
   const roles = ui.roles;
   const commonRole = sel.every((f) => f.role === sel[0].role) ? sel[0].role : null;
-  const fields = commonRole ? (ui.role_fields?.[commonRole] ?? null) : [];
+  const fields = commonRole ? (ui.role_fields?.[commonRole] ?? null) : null;
   const keys = sel.map((f) => f.key);
   const single = sel.length === 1 ? sel[0] : null;
-
-  // "select similar": same surface type (label suffix) and area within 2 %
-  const similar = single
-    ? ui.faces.filter((f) => {
-        if (f.locked || !single.area_m2 || !f.area_m2) return false;
-        const type = (s: string) => s.split("·").slice(1).join("·").trim();
-        return type(f.label) === type(single.label) && Math.abs(f.area_m2 - single.area_m2) <= single.area_m2 * 0.02;
-      })
-    : [];
 
   const legacyParams = !ui.role_fields && single ? ui.params.filter((q) => q.path.startsWith(`boundaries.${single.key}.`) && !q.path.endsWith(".role")) : [];
 
@@ -756,12 +770,8 @@ function SelectionEditor() {
           {fields && fields.length === 0 && commonRole && <p className="text-label text-fg-3">{t("bc.noValues")}</p>}
           {p.case.physics?.kind === "dc-current" && p.case.physics.joule_heating !== false && <ThermalEditor faces={sel} />}
         </div>
+        <div className="mt-3"><SelectionActions groups /></div>
       </div>
-      {similar.length > 1 && (
-        <Button variant="ghost" size="sm" className="-ml-2.5 mt-2" onClick={() => selectFaces(similar.map((f) => f.key))}>
-          {t("bc.selectSimilar", { n: similar.length })}
-        </Button>
-      )}
     </Section>
   );
 }
@@ -877,6 +887,7 @@ function BoundariesStep() {
   if (external) return <ExternalBoundaries />;
   return (
     <>
+      <FaceGroups />
       <Section
         title={t("bc.faces")}
         right={
@@ -892,6 +903,21 @@ function BoundariesStep() {
       <SelectionEditor />
     </>
   );
+}
+
+function FaceGroups() {
+  const t = useT();
+  const groups = useStore(s => s.payload?.case.face_groups);
+  if (!groups || !Object.keys(groups).length) return null;
+  return <Section title={t('bc.groups')}>
+    {Object.entries(groups).map(([name, keys]) => <div key={name} className="flex h-8 items-center gap-1 text-body text-fg-2">
+      <button className="min-w-0 flex-1 truncate text-left hover:text-fg" onClick={() => selectFaces(keys)}>{name} ({keys.length})</button>
+      <button className="flex h-8 w-8 items-center justify-center rounded-[6px] hover:bg-hover" title={t('bc.renameGroup')} aria-label={t('bc.renameGroup')}
+        onClick={() => { const next = window.prompt(t('bc.groupName'), name); if (next) renameFaceGroup(name, next); }}><Pencil size={14} strokeWidth={1.5} /></button>
+      <button className="flex h-8 w-8 items-center justify-center rounded-[6px] hover:bg-hover" title={t('bc.deleteGroup')} aria-label={t('bc.deleteGroup')}
+        onClick={() => deleteFaceGroup(name)}><Trash2 size={14} strokeWidth={1.5} /></button>
+    </div>)}
+  </Section>;
 }
 
 // ------------------------------------------------------------------ run

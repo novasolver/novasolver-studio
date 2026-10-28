@@ -9,6 +9,10 @@ import {
   registerViewer,
   runCase,
   selectFace,
+  selectFaces,
+  getState,
+  undoCase,
+  redoCase,
   setHoverFace,
   useStore,
   useT,
@@ -22,6 +26,7 @@ import { Tooltip } from "./ui/Tooltip";
 import { Spinner } from "./ui/misc";
 import { cn } from "./ui/cn";
 import { fmt, fmtGci, fmtSignedPct, unitLabel } from "../lib/units";
+import { SelectionActions } from './SelectionActions';
 
 /** "+x" -> [1, 0, 0] */
 function flowVector(id: string | null): [number, number, number] | null {
@@ -171,11 +176,12 @@ function StripSkeleton() {
 function StaleBanner() {
   const t = useT();
   const stale = useStore((s) => !!s.results?.stale);
+  const beforeUndo = useStore(s => s.resultsBeforeUndo);
   if (!stale) return null;
   return (
     <div className="hud anim-in absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2.5 rounded-[8px] py-1 pl-3 pr-1 text-body">
       <TriangleAlert size={14} className="text-orange" />
-      <span className="text-fg">{t("results.stale")}</span>
+      <span className="text-fg">{t(beforeUndo ? 'results.beforeUndo' : 'results.stale')}</span>
       <button
         type="button"
         onClick={() => void runCase()}
@@ -188,6 +194,7 @@ function StaleBanner() {
 }
 
 function ToastView() {
+  const t = useT();
   const toast = useStore((s) => s.toast);
   if (!toast) return null;
   return (
@@ -202,6 +209,7 @@ function ToastView() {
         <CircleAlert size={14} className="shrink-0 text-red" />
       ) : null}
       <span className="line-clamp-2">{toast.text}</span>
+      {toast.action && <button className="h-8 shrink-0 text-accent-text hover:underline" onClick={() => void (toast.action === 'redo' ? redoCase() : undoCase())}>{t(toast.action + '.label')}</button>}
     </div>
   );
 }
@@ -238,6 +246,8 @@ export function ViewerPane() {
   const roles = useStore((s) => s.payload?.ui.roles);
   const step = useStore((s) => s.step);
   const selected = useStore((s) => s.selectedFaces);
+  const hidden = useStore(s => s.hiddenFaces);
+  const seeThrough = useStore(s => s.seeThrough);
   const listHover = useStore((s) => s.hoverFace);
   const flash = useStore((s) => s.flashFaces);
   const field = useStore((s) => s.field);
@@ -368,6 +378,10 @@ export function ViewerPane() {
   useEffect(() => {
     viewer?.setSelection(step === "boundaries" ? selected : []);
   }, [viewer, selected, viewerGeometry, step]);
+  useEffect(() => {
+    viewer?.setHiddenFaces(step === 'boundaries' ? hidden : []);
+    viewer?.setSeeThrough(step === 'boundaries' && seeThrough);
+  }, [viewer, hidden, seeThrough, viewerGeometry, step]);
 
   useEffect(() => {
     viewer?.setHoverFace(listHover && listHover !== hover?.key ? listHover : null);
@@ -393,9 +407,15 @@ export function ViewerPane() {
       setHover(id == null ? null : { key: String(id), label });
       setHoverFace(id == null ? null : String(id));
     });
+    const offBox = viewer.onBoxPick((ids, add) => {
+      const keys = ids.map(String).filter(k => !faces?.find(f => f.key === k)?.locked);
+      selectFaces(add ? [...getState().selectedFaces, ...keys] : keys);
+      if (step !== 'boundaries') goStep('boundaries');
+    });
     return () => {
       offPick();
       offHover();
+      offBox();
     };
   }, [viewer, step, faces, external]);
 
@@ -454,6 +474,7 @@ export function ViewerPane() {
       )}
 
       <ViewButtons />
+      {step === 'boundaries' && <div className="hud absolute bottom-3 left-3 rounded-[8px] p-1"><SelectionActions /></div>}
       <ShareProgress />
       <ToastView />
     </div>

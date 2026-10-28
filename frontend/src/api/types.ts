@@ -30,6 +30,7 @@ export interface Quantity {
 }
 
 export interface CaseSchema {
+  face_groups?: Record<string, string[]>;
   schema_version: string;
   case_id: string;
   revision: number;
@@ -66,6 +67,7 @@ export interface UiParam {
 }
 
 export interface UiFace {
+  descriptor?: FaceDescriptor;
   key: string;
   region?: string | null;
   label: string;
@@ -77,6 +79,20 @@ export interface UiFace {
   values?: Record<string, { value: number; unit: string } | string>;
   thermal?: { role: string; [key: string]: { value: number; unit: string } | string } | null;
   area_m2?: number | null;
+}
+
+export interface FaceDescriptor {
+  key: string;
+  name?: string;
+  type?: string;
+  normal?: number[];
+  axis?: number[];
+  axis_point?: number[];
+  radius?: number;
+  area?: number;
+  bbox?: number[][];
+  neighbors?: string[];
+  smooth_neighbors?: string[];
 }
 
 export interface Sample {
@@ -133,6 +149,8 @@ export interface Job {
 }
 
 export interface CasePayload {
+  history?: { undo: { rev: number; source: string; summary: string; ts: number }[]; redo_count: number };
+  undone?: { source: string; paths: string[]; summary: string };
   case: CaseSchema;
   steps: Record<StepId, StepStatus>;
   checks: Check[];
