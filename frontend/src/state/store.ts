@@ -572,6 +572,12 @@ export function selectSameDirection() {
   const normals = faces.filter(f => state.selectedFaces.includes(f.key)).flatMap(f => f.descriptor?.normal ? [f.descriptor.normal] : []);
   selectFaces(faces.filter(f => !f.locked && f.descriptor?.normal && normals.some(n => dot(n, f.descriptor!.normal!) >= COS2)).map(f => f.key));
 }
+/** Faces painted the same colour in the CAD file (designers mark seats and sealing faces that way). */
+export function selectSameColor() {
+  const faces = state.payload?.ui.faces ?? [];
+  const cols = new Set(faces.filter(f => state.selectedFaces.includes(f.key)).flatMap(f => f.descriptor?.color ? [f.descriptor.color] : []));
+  selectFaces(faces.filter(f => !f.locked && f.descriptor?.color && cols.has(f.descriptor.color)).map(f => f.key));
+}
 export function selectCoaxial() {
   const faces = state.payload?.ui.faces ?? [];
   const sameRadius = coaxialLast === state.selectedFaces;

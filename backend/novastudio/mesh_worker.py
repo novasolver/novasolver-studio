@@ -1009,6 +1009,14 @@ def describe_faces(gmsh, keys: dict, display: dict, discrete: bool) -> None:
             name = cad_face_name(gmsh.model.getEntityName(2, tag))
             if name:
                 f['name'] = name
+            # face colours from the CAD file (STEP/XCAF, read with OCCImportLabels): designers often colour the
+            # faces that matter (seats, sealing faces), so they are a selection key. Uncoloured entities report alpha 0.
+            try:
+                r_, g_, b_, a_ = gmsh.model.getColor(2, tag)
+            except Exception:
+                a_ = 0
+            if a_:
+                f['color'] = '#{:02x}{:02x}{:02x}'.format(r_, g_, b_)
         if f.get('type') == 'Cylinder':
             # Cylinder normals span the radial plane; their null direction is the axis even for short fillets.
             uv = gmsh.model.getParametrization(2, tag, centers.ravel().tolist())

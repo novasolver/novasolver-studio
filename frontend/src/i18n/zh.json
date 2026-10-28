@@ -366,6 +366,7 @@
   "bc.connected": "相连的面",
   "bc.direction": "相同朝向的面",
   "bc.coaxial": "同轴圆柱面",
+  "bc.sameColor": "相同颜色的面",
   "bc.coaxialHint": "选择同轴圆柱面。再次点击可限定相同半径。",
   "bc.invert": "反选",
   "bc.hide": "隐藏所选面",

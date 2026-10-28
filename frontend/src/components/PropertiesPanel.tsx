@@ -415,8 +415,10 @@ function FaceRow({ f, selected, hovered }: { f: UiFace; selected: boolean; hover
     >
       <Swatch f={f} />
       {hidden && <span title={t('bc.hidden')}><EyeOff size={12} className="text-fg-3" /></span>}
-      <span className={cn("min-w-0 flex-1 truncate text-body", selected ? "text-fg" : "text-fg-2")} title={f.label}>
-        {f.label}
+      {/* "面 1 · 平面 -X · 2,400 mm²": keep the name whole, let the description shrink (it was cut mid-number) */}
+      <span className="flex min-w-0 flex-1 items-baseline gap-1.5" title={f.label}>
+        <span className={cn("shrink-0 text-body", selected ? "text-fg" : "text-fg-2")}>{f.label.split(" · ")[0]}</span>
+        <span className="min-w-0 truncate text-label text-fg-3">{f.label.split(" · ").slice(1).join(" · ")}</span>
       </span>
       {f.locked ? (
         <span className="flex shrink-0 items-center gap-1 pr-1.5 text-label text-fg-3">

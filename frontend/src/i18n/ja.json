@@ -366,6 +366,7 @@
   "bc.connected": "つながった面",
   "bc.direction": "同じ向きの面",
   "bc.coaxial": "同じ軸の円筒",
+  "bc.sameColor": "同じ色の面",
   "bc.coaxialHint": "同じ軸の円筒を選択。もう一度押すと同じ半径に絞ります",
   "bc.invert": "選択を反転",
   "bc.hide": "選択した面を隠す",

@@ -100,7 +100,7 @@ def axis_word(vector) -> str:
 
 
 def face_descriptor(case: dict, f: dict, lang: str) -> dict:
-    out = {k: f[k] for k in ('key', 'n', 'type', 'name', 'normal', 'axis', 'neighbors', 'smooth_neighbors') if k in f}
+    out = {k: f[k] for k in ('key', 'n', 'type', 'name', 'color', 'normal', 'axis', 'neighbors', 'smooth_neighbors') if k in f}
     out['label'] = face_label(templates.get(case['template']), f['key'], lang, case)
     out['role'] = case['boundaries'].get(f['key'], {}).get('role')
     for k, scale, suffix in (('area', 1e6, '_mm2'), ('radius', 1e3, '_mm'), ('centroid', 1e3, '_mm'),
@@ -112,18 +112,19 @@ def face_descriptor(case: dict, f: dict, lang: str) -> dict:
     return out
 
 
-def history_summary(entry: dict, lang: str) -> str:
+def history_summary(entry: dict, lang: str, mark_ai: bool = True) -> str:
     paths = entry['paths']
     faces = list(dict.fromkeys(p.split('.')[1] for p in paths if p.startswith('boundaries.')))
     if faces:
         first = face_label(templates.get(entry['before']['template']), faces[0], lang, entry['before']).split(' · ')[0]
-        field = paths[0].rsplit('.', 1)[-1]
+        # a role change comes with its values ("pressure + 1 MPa"): name the role change, not the first value
+        field = 'role' if any(p.endswith('.role') for p in paths) else paths[0].rsplit('.', 1)[-1]
         label = t('field.' + field, lang) if field != 'role' else t('history.role', lang)
         summary = t('history.faces' if len(faces) > 1 else 'history.face', lang, face=first, n=len(faces)-1, field=label)
     else:
         section = paths[0].split('.')[0] if paths else 'case'
         summary = t('history.' + section, lang)
-    return summary + (t('history.ai', lang) if entry['source'] == 'ai' else '')
+    return summary + (t('history.ai', lang) if mark_ai and entry['source'] == 'ai' else '')
 
 
 def history_payload(case_id: str, lang: str) -> dict:
@@ -418,7 +419,8 @@ def undo_case(case_id: str, expected_revision: int, redo: bool = False, source: 
         store._write_json(store.case_dir(case_id) / 'history.json', h)
     pl = case_payload(case_id, lang)
     pl['diff'] = []
-    pl['undone'] = {'source': entry['source'], 'paths': entry['paths'], 'summary': history_summary(entry, lang)}
+    # the toast already says who made the change ("AIの変更を元に戻しました"), so no "(AI)" mark here
+    pl['undone'] = {'source': entry['source'], 'paths': entry['paths'], 'summary': history_summary(entry, lang, mark_ai=False)}
     return pl
 
 

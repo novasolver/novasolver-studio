@@ -238,7 +238,14 @@ async def get_gui_selection(language: Lang = 'ja') -> CallToolResult:
     """Call first when the person says 'these faces', 'the faces I selected' or 選んだ面. Read the GUI selection,
     labels, descriptors in mm, roles and age; an empty or expired selection is a normal answer."""
     r, e = await _call(C.get_gui_selection, language, language)
-    return e or _ok(r['message'], r)
+    if e:
+        return e
+    # the text alone must be enough to act on: case, which faces (key + label + current role) and how fresh
+    s = r['message']
+    if r.get('case_id'):
+        s += f"\ncase {r['case_id']} rev {r.get('current_revision')}, step {r.get('step')}, {r.get('age_s', 0):.0f} s ago"
+    s += "".join(f"\n{f['key']}: {f['label']} [{f.get('role')}]" for f in r.get('selected', []))
+    return _ok(s, r)
 
 
 @mcp.tool(annotations=WRITE)

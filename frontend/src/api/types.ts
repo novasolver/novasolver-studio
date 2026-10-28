@@ -84,6 +84,8 @@ export interface UiFace {
 export interface FaceDescriptor {
   key: string;
   name?: string;
+  /** face colour from the CAD file, "#rrggbb" */
+  color?: string;
   type?: string;
   normal?: number[];
   axis?: number[];

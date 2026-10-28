@@ -459,12 +459,17 @@ def render_faces(case: dict, lang: str, view: str = 'iso', highlight: list[str] 
     depth = np.full((h, w), -np.inf)
     ids = np.full((h, w), -1, int)
     image = np.ones((h, w, 3))
-    palette = {'base': '#b3b7be', 'fixed': '#4d525a', 'loaded': '#f1f2f4', 'exchange': '#8597b0', 'unassigned': '#f59e0b'}
-    fixed = {'fixed', 'symmetry', 'constraint', 'temperature', 'voltage'}
-    loaded = {'load', 'pressure', 'heat-flux', 'inlet', 'moving-wall', 'surface-charge', 'current'}
+    # one colour per role: the picture is for a person to check "which face got what", so two roles must never share
+    # a tone (fixed and free were both grey and could not be told apart)
+    passive = '#c9ccd1'
+    role_colour = {'fixed': '#2563eb', 'symmetry': '#0d9488', 'constraint': '#7c3aed', 'load': '#ea580c',
+                   'pressure': '#dc2626', 'temperature': '#9333ea', 'heat-flux': '#ea580c', 'convection': '#38bdf8',
+                   'voltage': '#9333ea', 'surface-charge': '#ea580c', 'current': '#ea580c', 'inlet': '#16a34a',
+                   'outlet': '#d97706', 'moving-wall': '#ea580c', 'water-inlet': '#16a34a', 'water-outlet': '#d97706'}
     roles = [case['boundaries'].get(f['key'], {}).get('role') for f in faces]
-    groups = ['fixed' if r in fixed else 'loaded' if r in loaded else 'exchange' if r in ('convection', 'outlet')
-              else 'base' if r else 'unassigned' for r in roles]
+    palette = {r: role_colour.get(r, passive) for r in roles if r}
+    palette[None] = '#f59e0b'                                 # no role at all: should not happen, make it stand out
+    groups = roles
     for p, world, owner in zip(projected, triangles, owners):
         a, b, c = p
         xmin, ymin = np.maximum(np.floor(p[:, :2].min(0)).astype(int), 0)
@@ -482,12 +487,28 @@ def render_faces(case: dict, lang: str, view: str = 'iso', highlight: list[str] 
         mask = (u >= -1e-8) & (v >= -1e-8) & (u+v <= 1+1e-8) & (z > dest)
         dest[mask] = z[mask]
         ids[ymin:ymax+1, xmin:xmax+1][mask] = owner
-        color = ('#0891b2' if faces[owner]['key'] in highlight else palette['base']) if highlight is not None else palette[groups[owner]]
+        color = ('#0891b2' if faces[owner]['key'] in highlight else passive) if highlight is not None else palette[groups[owner]]
         normal = np.cross(world[1]-world[0], world[2]-world[0])
         shade = .72+.28*abs(normal @ direction)/max(np.linalg.norm(normal), 1e-30)
         image[ymin:ymax+1, xmin:xmax+1][mask] = np.asarray(colors.to_rgb(color))*shade
+    # face borders: a pixel whose neighbour belongs to another face (or to the background) is an edge
+    edge = np.zeros((h, w), bool)
+    edge[:, 1:] |= ids[:, 1:] != ids[:, :-1]
+    edge[1:, :] |= ids[1:, :] != ids[:-1, :]
+    near = np.zeros_like(edge)
+    near[:, :-1] |= edge[:, 1:]
+    near[:-1, :] |= edge[1:, :]
+    image[(edge | near) & ((ids >= 0) | np.roll(ids >= 0, 1, 0) | np.roll(ids >= 0, 1, 1))] = colors.to_rgb('#30343a')
+    # crop to the part with a margin, so the part fills the picture
+    ys, xs = np.nonzero(ids >= 0)
+    if len(xs):
+        x0, x1 = max(xs.min() - 30, 0), min(xs.max() + 30, w - 1)
+        y0, y1 = max(ys.min() - 30, 0), min(ys.max() + 30, h - 1)
+    else:
+        x0, x1, y0, y1 = 0, w - 1, 0, h - 1
     fig, ax = plt.subplots(figsize=(9, 6.7), dpi=110)
     ax.imshow(image, origin='lower'); ax.set_axis_off()
+    ax.set_xlim(x0, x1); ax.set_ylim(y0, y1)
     labelled = []
     for i, f in enumerate(faces):
         candidates = projected[owners == i].mean(axis=1)
@@ -500,7 +521,7 @@ def render_faces(case: dict, lang: str, view: str = 'iso', highlight: list[str] 
                         bbox=dict(boxstyle='round,pad=.2', fc='white', ec='0.4', lw=.5))
                 labelled.append(f['key'])
                 break
-    legend = [Patch(facecolor=palette[g], label=t('role.'+r, lang)) for r,g in dict(zip(roles, groups)).items() if r]
+    legend = [Patch(facecolor=palette[r], edgecolor='#30343a', label=t('role.'+r, lang)) for r in dict.fromkeys(roles) if r]
     if highlight is not None:
         legend = [Patch(facecolor='#0891b2', label=t('render.highlight', lang))]
     fig.legend(handles=legend, loc='lower center', ncol=min(5, max(1, len(legend))), frameon=False)

@@ -345,3 +345,45 @@ def test_mcp_contract_and_i18n():
     for folder in ('backend/novastudio/i18n', 'frontend/src/i18n'):
         tables = [json.loads((root/folder/(lang+'.json')).read_text(encoding='utf-8')) for lang in ('ja','en','zh')]
         assert tables[0].keys() == tables[1].keys() == tables[2].keys()
+
+
+def colored_box(path: Path, paint=(1, 3)):
+    """A 40x20x10 box STEP with faces painted red the way CAD tools write it (STYLED_ITEM + COLOUR_RGB)."""
+    import re
+    import gmsh
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber('General.Terminal', 0)
+        gmsh.model.occ.addBox(0, 0, 0, 40, 20, 10)
+        gmsh.model.occ.synchronize()
+        raw = path.with_name('raw.step')
+        gmsh.write(str(raw))
+    finally:
+        gmsh.finalize()
+    s = raw.read_text()
+    nxt = max(int(i) for i in re.findall(r'^#(\d+)\s*=', s, re.M)) + 1
+    faces = re.findall(r'^#(\d+)\s*=\s*ADVANCED_FACE', s, re.M)
+    ctx = re.search(r'^#(\d+)\s*=.*GEOMETRIC_REPRESENTATION_CONTEXT', s, re.M).group(1)
+    lines, styled = [], []
+    for k in paint:
+        a, b, c, d, e, g, h, st = range(nxt, nxt + 8)
+        nxt += 8
+        lines += [f"#{a}=COLOUR_RGB('',1.,0.,0.);", f"#{b}=FILL_AREA_STYLE_COLOUR('',#{a});",
+                  f"#{c}=FILL_AREA_STYLE('',(#{b}));", f"#{d}=SURFACE_STYLE_FILL_AREA(#{c});",
+                  f"#{e}=SURFACE_SIDE_STYLE('',(#{d}));", f"#{g}=SURFACE_STYLE_USAGE(.BOTH.,#{e});",
+                  f"#{h}=PRESENTATION_STYLE_ASSIGNMENT((#{g}));", f"#{st}=STYLED_ITEM('color',(#{h}),#{faces[k - 1]});"]
+        styled.append(f'#{st}')
+    lines.append(f"#{nxt}=MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION('',({','.join(styled)}),#{ctx});")
+    path.write_text(re.sub(r'ENDSEC;\s*END-ISO', '\n'.join(lines) + '\nENDSEC;\nEND-ISO', s, count=1))
+    return path
+
+
+def test_cad_face_colours(tmp_path):
+    """Faces painted in the CAD file keep their colour (x = 0 and y = 0 faces here), the others have none."""
+    p = colored_box(tmp_path / 'colored.step')
+    c = C.import_geometry('structural', p.name, path=str(p))['case']
+    painted = sorted(tuple(round(x * 1e3) for x in f['centroid']) for f in c['geometry']['faces'] if f.get('color'))
+    assert painted == [(0, 10, 5), (20, 0, 5)]
+    assert {f.get('color') for f in c['geometry']['faces']} == {'#ff0000', None}
+    d = [C.face_descriptor(c, f, 'en') for f in c['geometry']['faces'] if f.get('color')]
+    assert all(x['color'] == '#ff0000' for x in d)
