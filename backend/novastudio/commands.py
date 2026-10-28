@@ -10,7 +10,7 @@ import time
 import json
 from pathlib import Path
 
-from . import __version__, checks, geometry, jobs, results, store, templates, units
+from . import __version__, checks, config, geometry, jobs, results, store, templates, units
 from .config import engines, workspace
 from .i18n import lang_of, t
 from .store import StudioError
@@ -27,9 +27,11 @@ def environment_check(lang: str = "ja") -> dict:
     # runs the module with the interpreter that is serving now
     frozen = bool(getattr(sys, "frozen", False))
     mcp_command = {"command": sys.executable, "args": ["mcp"] if frozen else ["-m", "novastudio", "mcp"]}
+    if config.INSTALLED:
+        mcp_command = {"command": "uvx", "args": ["novasolver-studio", "mcp"]}
     # an MCP client starts the server itself and does not inherit this process: a source checkout needs its backend
     # folder on the path, and a workspace override must follow so the AI sees the same cases as the UI
-    env = {} if frozen else {"PYTHONPATH": str(Path(__file__).resolve().parents[1])}
+    env = {} if frozen or config.INSTALLED else {"PYTHONPATH": str(Path(__file__).resolve().parents[1])}
     if os.environ.get("NOVASTUDIO_WORKSPACE"):
         env["NOVASTUDIO_WORKSPACE"] = str(workspace())
     if env:
@@ -38,10 +40,16 @@ def environment_check(lang: str = "ja") -> dict:
             "cpu_count": os.cpu_count(), "mcp_command": mcp_command,
             "engines": [{"id": k, "name": ENGINE_NAMES[k], "available": v["available"], "kind": v["kind"]}
                         for k, v in eng.items()],
-            "how_to_install": {
-                "calculix": "Put ccx.exe in studio/solvers/calculix/ or set NOVASTUDIO_CCX.",
+            "how_to_install": _solver_install(lang)}
+
+
+def _solver_install(lang: str) -> dict:
+    if sys.platform == "win32":
+        return {"calculix": "Put ccx.exe in studio/solvers/calculix/ or set NOVASTUDIO_CCX.",
                 "openfoam": "Install the OpenFOAM (ESI) Windows MinGW package into studio/solvers/openfoam/ "
-                            "or set NOVASTUDIO_OPENFOAM to its folder."}}
+                            "or set NOVASTUDIO_OPENFOAM to its folder."}
+    os_key = "macos" if sys.platform == "darwin" else "linux"
+    return {name: t(f"install.{os_key}.{name}", lang) for name in ("calculix", "openfoam")}
 
 
 def list_templates(lang: str = "ja") -> dict:

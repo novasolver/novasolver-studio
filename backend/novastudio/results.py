@@ -344,8 +344,8 @@ def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None) 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
-    prefs = {"zh": ("Microsoft YaHei", "SimHei", "Noto Sans CJK SC"),
-             "ja": ("Yu Gothic", "Meiryo", "MS Gothic", "Noto Sans CJK JP")}.get(lang_of(lang), ("Segoe UI", "Arial"))
+    prefs = {"zh": ("Microsoft YaHei", "SimHei", "PingFang SC", "Noto Sans CJK SC"),
+             "ja": ("Yu Gothic", "Meiryo", "MS Gothic", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans CJK JP")}.get(lang_of(lang), ("Segoe UI", "Arial"))
     names = {f.name for f in font_manager.fontManager.ttflist}
     for fam in prefs:
         if fam in names:
@@ -431,7 +431,7 @@ def render_faces(case: dict, lang: str, view: str = 'iso', highlight: list[str] 
              'front': [0, -1, 0], 'back': [0, 1, 0], 'left': [-1, 0, 0], 'right': [1, 0, 0]}
     if view not in views:
         raise StudioError('err.path', 400, path='view='+view)
-    prefs = {'ja': ['Yu Gothic', 'Meiryo'], 'zh': ['Microsoft YaHei', 'SimHei']}.get(lang, ['Segoe UI', 'Arial'])
+    prefs = {'ja': ['Yu Gothic', 'Meiryo', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans CJK JP'], 'zh': ['Microsoft YaHei', 'SimHei', 'PingFang SC', 'Noto Sans CJK SC']}.get(lang, ['Segoe UI', 'Arial'])
     fonts = {f.name for f in font_manager.fontManager.ttflist}
     for font in prefs:
         if font in fonts:

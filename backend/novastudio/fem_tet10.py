@@ -25,7 +25,11 @@ def committable_bytes() -> int | None:
         import sys
         if sys.platform != "win32":
             import psutil
-            return int(psutil.virtual_memory().available + psutil.swap_memory().free)
+            memory = psutil.virtual_memory()
+            if sys.platform == "darwin":
+                # macOS grows swap on demand: current swap would refuse borderline, feasible runs.
+                return int(memory.available + 0.5 * memory.total)
+            return int(memory.available + psutil.swap_memory().free)
 
         class MS(ctypes.Structure):
             _fields_ = [("len", ctypes.c_ulong), ("load", ctypes.c_ulong), ("phys", ctypes.c_ulonglong),

@@ -328,5 +328,9 @@
   "check.uniform_temperature": "There is no heat input, so the whole part will reach ambient temperature. Apply heat flux to a heated face or specify faces at different temperatures.",
   "face.radius": " R{r}",
   "face.axis": " axis {axis}",
-  "history.face": "{field} of {face}"
+  "history.face": "{field} of {face}",
+  "install.macos.calculix": "Install CalculiX with brew install costerwi/calculix/calculix-ccx, or set NOVASTUDIO_CCX.",
+  "install.macos.openfoam": "Install OpenFOAM with brew install gerlero/openfoam/openfoam (Apple Silicon, macOS 14+), or set NOVASTUDIO_OPENFOAM.",
+  "install.linux.calculix": "Install CalculiX with apt install calculix-ccx or your distro package, or set NOVASTUDIO_CCX.",
+  "install.linux.openfoam": "Install the ESI OpenFOAM packages from https://www.openfoam.com/download/ or set NOVASTUDIO_OPENFOAM / WM_PROJECT_DIR."
 }

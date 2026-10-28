@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "novasolver-studio"
+dynamic = ["version"]
+description = "Desktop CAE with built-in FEM, a browser GUI and an MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{name = "NovaSolver", email = "info@novasolver.jp"}]
+dependencies = [
+    "numpy>=2.5.4; python_version >= '3.12'", "numpy>=2.2.6; python_version < '3.12'",
+    "scipy>=1.18.1; python_version >= '3.12'", "scipy>=1.15.3; python_version < '3.12'",
+    "pyamg>=5.3.0", "gmsh>=4.15.2",
+    "pymeshlab>=2025.7.post1", "fastapi>=0.162.0", "uvicorn[standard]>=0.54.0",
+    "mcp>=2.3.0,<3", "matplotlib>=3.11.2; python_version >= '3.11'",
+    "matplotlib>=3.10.8; python_version < '3.11'", "psutil>=7.2.2", "pydantic>=2.14.1",
+    "python-multipart>=0.0.32", "websockets>=17.3; python_version >= '3.11'",
+    "websockets>=15.0.1; python_version < '3.11'", "anyio>=4.15.1",
+]
+
+[project.optional-dependencies]
+dev = ["build", "pytest>=9.1.1"]
+
+[project.scripts]
+novasolver-studio = "novastudio.__main__:main"
+novastudio = "novastudio.__main__:main"
+
+[project.urls]
+Homepage = "https://novasolver.jp/en/studio/"
+Repository = "https://github.com/novasolver/novasolver-studio"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["novastudio", "novastudio.i18n"]
+
+[tool.setuptools.dynamic]
+version = {attr = "novastudio.__version__"}
+
+[tool.setuptools.package-data]
+novastudio = ["i18n/*.json", "frontend_dist/*", "frontend_dist/**/*", "samples/*.step"]

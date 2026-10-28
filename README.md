@@ -23,6 +23,40 @@
 - **MCP server** with typed tools: create or import a case, set conditions, run, check convergence, verify, render.
   No shell or code-execution tool. Your AI's edits appear live in the GUI.
 
+## Install with Python (macOS / Linux / Windows)
+
+macOS / Linux (preview, community-tested).
+
+After the first PyPI release, launch the GUI with `uvx novasolver-studio`, or install once with
+`pipx install novasolver-studio` and run `novasolver-studio`. Python 3.10+ is required; Python 3.12 is tested in CI.
+Older Python versions use compatible NumPy/SciPy/Matplotlib/WebSocket releases. The built-in FEM needs no external
+solver. For an MCP client:
+
+```json
+{
+  "mcpServers": {
+    "novasolver-studio": {
+      "command": "uvx",
+      "args": ["novasolver-studio", "mcp"]
+    }
+  }
+}
+```
+
+With pipx, use `"command": "novasolver-studio", "args": ["mcp"]` instead.
+Cases go to `~/NovaSolverStudio/workspace` on macOS/Linux and `~/Documents/NovaSolverStudio/workspace` on Windows;
+`NOVASTUDIO_WORKSPACE` overrides this. Source checkouts keep their `workspace/` folder.
+
+| OS | CalculiX (optional structural/thermal solver) | OpenFOAM (optional CFD solver) |
+|---|---|---|
+| macOS | `brew install costerwi/calculix/calculix-ccx` | `brew install gerlero/openfoam/openfoam` (Apple Silicon, macOS 14+) |
+| Linux | `sudo apt install calculix-ccx` or the distro package | Install ESI packages from [openfoam.com](https://www.openfoam.com/download/); detected under `/usr/lib/openfoam` or via `WM_PROJECT_DIR`. |
+| Windows | Put `ccx_static.exe` in `solvers/calculix/` or set `NOVASTUDIO_CCX`. | ESI Windows MinGW build plus Microsoft MPI, as described below. |
+
+On headless Linux, Gmsh needs `libglu1-mesa libgl1 libxrender1 libxcursor1 libxft2 libxinerama1`.
+`NOVASTUDIO_CCX` and `NOVASTUDIO_OPENFOAM` can select an installation on every OS.
+macOS OpenFOAM tools run through the app environment launcher; Linux tools source the installation's `etc/bashrc`.
+
 ## Quick start (developers) / 開発者向けの起動手順
 
 ```bash
