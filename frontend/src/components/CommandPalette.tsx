@@ -36,7 +36,7 @@ import {
   viewCmd,
 } from "../state/store";
 import type { Lang } from "../api/types";
-import { pickCadFile } from "./ImportCad";
+import { CAD_PHYSICS, pickCadFile } from "./ImportCad";
 
 interface Cmd {
   id: string;
@@ -91,10 +91,8 @@ export function CommandPalette() {
       );
     }
     list.push(
-      { id: "import-structural", group: t("palette.group.app"), label: t("cmd.import", { physics: t("physics.structural") }), icon: <FileUp size={15} />, run: () => pickCadFile("structural") },
-      { id: "import-thermal", group: t("palette.group.app"), label: t("cmd.import", { physics: t("physics.thermal") }), icon: <FileUp size={15} />, run: () => pickCadFile("thermal") },
-      { id: "import-flow", group: t("palette.group.app"), label: t("cmd.import", { physics: t("physics.flow") }), icon: <FileUp size={15} />, run: () => pickCadFile("flow") },
-      { id: "import-external", group: t("palette.group.app"), label: t("cmd.import", { physics: t("physics.external") }), icon: <FileUp size={15} />, run: () => pickCadFile("external") },
+      // every analysis the start screen can import (electrostatics and current were missing here)
+      ...CAD_PHYSICS.map((ph) => ({ id: `import-${ph}`, group: t("palette.group.app"), label: t("cmd.import", { physics: t(`physics.${ph}`) }), icon: <FileUp size={15} />, run: () => pickCadFile(ph) })),
       { id: "new", group: t("palette.group.app"), label: t("cmd.newCase"), icon: <Plus size={15} />, run: () => closeCase() },
       { id: "theme", group: t("palette.group.app"), label: t("cmd.theme"), icon: <MoonStar size={15} />, run: () => toggleTheme() },
       { id: "brand", group: t("palette.group.app"), label: t("brand.toggle"), icon: <Stamp size={15} />, run: () => toggleBrandMark() },

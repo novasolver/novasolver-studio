@@ -47,7 +47,14 @@ MEM_PER_NODE = {"structural": 7.5e3, "scalar": 2.5e3}
 def check_memory(n_nodes: int, kind: str) -> None:
     """Stop with a clear message before assembling a model that cannot fit, instead of a MemoryError deep in the AMG
     set-up after minutes of work."""
-    need = MEM_BASE + MEM_PER_NODE[kind] * n_nodes
+    # the calibration is the whole worker's peak, and the commit limit is what can still be added: subtract what this
+    # process already holds (interpreter, libraries, mesh), or a small model would be refused for memory it never needs
+    try:
+        import psutil
+        held = psutil.Process().memory_info().private
+    except Exception:
+        held = 0
+    need = max(0.0, MEM_BASE + MEM_PER_NODE[kind] * n_nodes - held)
     have = committable_bytes()
     if have is not None and need > have:
         from .store import StudioError

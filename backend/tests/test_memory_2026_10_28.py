@@ -51,11 +51,21 @@ def test_block_amg_matches_direct(monkeypatch):
 def test_memory_check_stops_with_a_message(monkeypatch):
     nodes, tets, x0, x1, _ = block_mesh(n=2)
     monkeypatch.setattr(fem_tet10, "committable_bytes", lambda: 10**8)
+    monkeypatch.setattr(fem_tet10, "MEM_BASE", 1e11)      # a model far beyond what is available
     with pytest.raises(StudioError) as e:
         fem_tet10.solve(nodes, tets, 200e9, 0.3, [x0], [(x1, np.array([0.0, 0.0, -1e6]))])
     assert e.value.key == "err.memory" and float(e.value.kw["need"]) > float(e.value.kw["have"])
     with pytest.raises(StudioError):
         fem_tet10.solve_scalar(nodes, tets, 1.0, [(x0, 0.0), (x1, 1.0)], [], [])
+
+
+def test_small_model_passes_with_little_memory(monkeypatch):
+    """second opinion (0.3.1) #1: the whole-worker estimate was compared with the memory that can still be added, so a
+    254-element block that peaks near 200 MB was refused with 500 MB available."""
+    nodes, tets, x0, x1, _ = block_mesh(n=2)
+    monkeypatch.setattr(fem_tet10, "committable_bytes", lambda: 500 * 2**20)
+    r = fem_tet10.solve(nodes, tets, 200e9, 0.3, [x0], [(x1, np.array([0.0, 0.0, -1e6]))])
+    assert r["imbalance"] < 1e-6
 
 
 def test_memory_estimate_is_known():
