@@ -429,5 +429,6 @@
   "analysis.steady": "稳态",
   "face.outer_surface": "外圆面",
   "thermal_load.uniform": "整体均匀温度",
-  "thermal_load.solve": "由热分析求温度分布"
+  "thermal_load.solve": "由热分析求温度分布",
+  "verify.unmodeled_load": "理论解未包含以下载荷或条件，无法进行比较：{load}。"
 }

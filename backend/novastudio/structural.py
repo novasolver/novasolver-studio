@@ -124,6 +124,10 @@ def comparison(case, quantity, computed, expected, unit, formula, **extra):
 
 
 def modal_reference(case, table):
+    from .reference_loads import unsupported_loads
+    excluded = unsupported_loads(case)
+    if excluded:
+        return excluded
     b = case['boundaries']
     na = {'applicable': False, 'why_key': 'verify.structural_pattern_reason'}
     if case['template'] != 'cantilever-modal' or case.get('body_materials') or b['x0']['role'] != 'fixed' or any(
@@ -145,6 +149,13 @@ def modal_reference(case, table):
 
 def reference(case, mesh, r, metrics):
     from .templates import solid_props
+    from .reference_loads import unsupported_loads
+    tid = case['template']
+    expected = {'thermal-bar-fixed': {'thermal'}, 'thermal-bar-free': {'thermal'}, 'hanging-bar': {'gravity'},
+                'rotating-disk': {'rotation'}}
+    excluded = unsupported_loads(case, expected.get(tid, ()))
+    if excluded:
+        return excluded
     na = {'applicable': False, 'why_key': 'verify.structural_pattern_reason'}
     if case.get('body_materials'):
         return na
@@ -152,15 +163,6 @@ def reference(case, mesh, r, metrics):
     mat = solid_props(case)
     E, nu, rho, alpha = (mat[k] for k in ('E','nu','rho','alpha'))
     x, u, stress = mesh['nodes'], r['u'], r['s']
-    physics = case.get('physics', {})
-    active = {key for key in ('gravity','rotation') if physics.get(key,{}).get('enabled')}
-    thermal = physics.get('thermal_load',{})
-    if (thermal if isinstance(thermal,str) else thermal.get('mode','none')) != 'none':
-        active.add('thermal')
-    expected = {'thermal-bar-fixed':{'thermal'}, 'thermal-bar-free':{'thermal'}, 'hanging-bar':{'gravity'},
-                'rotating-disk':{'rotation'}, 'shaft-torsion':set()}
-    if tid in expected and active != expected[tid]:
-        return na
     if tid.startswith('thermal-bar-'):
         fixed = tid.endswith('fixed')
         expected_roles = {'x0': 'constraint', 'x1': 'constraint' if fixed else 'free', 'y0': 'symmetry',

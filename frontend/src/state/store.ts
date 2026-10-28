@@ -161,11 +161,16 @@ export function toggleBrandMark() {
 }
 
 const subs = new Set<() => void>();
+let fieldProbeGeneration = 0;
 export function getState() {
   return state;
 }
 export function setState(p: Partial<State> | ((s: State) => Partial<State>)) {
   const patch = typeof p === "function" ? p(state) : p;
+  if (('selectedMode' in patch && patch.selectedMode !== state.selectedMode) ||
+      ('payload' in patch && patch.payload?.case.case_id !== state.payload?.case.case_id) ||
+      ('results' in patch && patch.results?.run_id !== state.results?.run_id) ||
+      ('field' in patch && patch.field !== state.field) || ('section' in patch && patch.section !== state.section)) fieldProbeGeneration++;
   state = { ...state, ...patch };
   subs.forEach((f) => f());
   scheduleGuiState();
@@ -1046,6 +1051,30 @@ export async function loadField(quantity: string, reset = true) {
 export async function selectMode(mode: number) {
   setState({ selectedMode: mode, probeValue: null });
   await loadField('mode', false);
+}
+
+export async function probeFieldPoint(at: number[], value: number, unit: string) {
+  const token = ++fieldProbeGeneration;
+  const {field, payload, results, selectedMode} = state;
+  const cid = payload?.case.case_id, quantity = field?.quantity;
+  if (!field?.section || state.mode === 'mock') {
+    setState({probeValue: {at, value, unit}});
+    return;
+  }
+  if (!cid || !quantity) return;
+  setState({probeValue: null});
+  try {
+    // The picked triangle supplies the original position; the element supplies the numerical value.
+    const reply = await api.probePoint(cid, at.map(v => v*1000), selectedMode, results?.run_id);
+    if (token !== fieldProbeGeneration) return;
+    const sample = reply.points[0];
+    if (sample?.inside && Number.isFinite(sample.values[quantity])) {
+      const scale = ['emag','jmag','q'].includes(quantity) ? 1e-6 : 1;
+      setState({probeValue: {at, value: sample.values[quantity]*scale, unit}});
+    }
+  } catch (e) {
+    if (token === fieldProbeGeneration) toast(errMsg(e), 'error');
+  }
 }
 let sectionTimer = 0;
 export function setSection(section: SectionPlane | null) {

@@ -429,5 +429,6 @@
   "analysis.steady": "steady",
   "face.outer_surface": "Outer surface",
   "thermal_load.uniform": "uniform temperature",
-  "thermal_load.solve": "temperature from a heat solve"
+  "thermal_load.solve": "temperature from a heat solve",
+  "verify.unmodeled_load": "The analytic reference does not include this load or condition: {load}."
 }

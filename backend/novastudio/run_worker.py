@@ -325,6 +325,10 @@ def run_electric_builtin(case: dict, jd: Path, prog) -> dict:
 
 
 def reference_electric(case, metrics):
+    from .reference_loads import unsupported_loads
+    excluded = unsupported_loads(case)
+    if excluded:
+        return excluded
     b = case["boundaries"]
     tid = case["template"]
     p = case["geometry"].get("params", {})
@@ -379,6 +383,10 @@ def reference_electric(case, metrics):
 
 
 def reference_thermal_block(case: dict, face_flows: dict) -> dict:
+    from .reference_loads import unsupported_loads
+    excluded = unsupported_loads(case)
+    if excluded:
+        return excluded
     b = case["boundaries"]
     ok = b["x0"]["role"] == "temperature" and b["x1"]["role"] == "temperature" and \
         all(b[f]["role"] == "insulated" for f in ("y0", "y1", "z0", "z1"))
@@ -397,6 +405,10 @@ def reference_thermal_block(case: dict, face_flows: dict) -> dict:
 
 def reference_plate_hole(case: dict, nodes, vm, metrics: dict) -> dict:
     """Net-section stress concentration factor vs Heywood: Kt_n = 2 + (1 - d/W)^3 (uniaxial tension, finite width)."""
+    from .reference_loads import unsupported_loads
+    excluded = unsupported_loads(case)
+    if excluded:
+        return excluded
     b = case["boundaries"]
     ok = b["x0"]["role"] == "fixed" and b["x1"]["role"] == "load" and b["x1"].get("direction") == "+x" and \
         all(b[k]["role"] == "free" for k in ("y0", "y1", "z0", "z1", "hole"))
@@ -420,6 +432,10 @@ def reference_plate_hole(case: dict, nodes, vm, metrics: dict) -> dict:
 
 def reference_fin(case: dict, face_flows: dict) -> dict:
     """Heat through the base of a straight fin with a convective tip (1D fin theory)."""
+    from .reference_loads import unsupported_loads
+    excluded = unsupported_loads(case)
+    if excluded:
+        return excluded
     b = case["boundaries"]
     sides = ("x1", "y0", "y1", "z0", "z1")
     ok = b["x0"]["role"] == "temperature" and all(b[k]["role"] == "convection" for k in sides)
@@ -444,8 +460,12 @@ def reference_fin(case: dict, face_flows: dict) -> dict:
 
 
 def reference_cantilever(case: dict, tip: float) -> dict:
+    from .reference_loads import unsupported_loads
+    excluded = unsupported_loads(case)
+    if excluded:
+        return excluded
     b = case["boundaries"]
-    pattern_ok = b["x0"]["role"] == "fixed" and b["x1"]["role"] == "load" and \
+    pattern_ok = b["x0"]["role"] == "fixed" and b["x1"]["role"] == "load" and b['x1'].get('direction') == '-z' and \
         all(b[k]["role"] == "free" for k in ("y0", "y1", "z0", "z1"))
     p = case["geometry"]["params"]
     L, w, h = units.to_si(p["length"]), units.to_si(p["width"]), units.to_si(p["height"])

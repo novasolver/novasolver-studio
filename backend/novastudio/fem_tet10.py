@@ -423,12 +423,32 @@ def rigid_body_modes(nodes):
     return B.reshape(3*len(nodes),6)
 
 
-def modal_constraints(nodes, fixed_faces, rollers):
+def modal_constraints(nodes, fixed_faces, rollers, tets=None):
     fixed = [3*np.unique(f)[:, None]+np.arange(3) for f in fixed_faces]
     fixed += [3*np.unique(tri)+c for tri,c in rollers]
     fixed = np.unique(np.concatenate([f.ravel() for f in fixed])) if fixed else np.array([],int)
-    rigid = rigid_body_modes(nodes)
-    return fixed, rigid, 6-np.linalg.matrix_rank(rigid[fixed]) if len(fixed) else 6
+    if tets is None:
+        labels, count = np.zeros(len(nodes), int), 1
+    else:
+        a = np.repeat(tets[:, :1], tets.shape[1]-1, axis=1).ravel()
+        b = tets[:, 1:].ravel()
+        graph = sp.coo_matrix((np.ones(len(a)), (a, b)), shape=(len(nodes), len(nodes)))
+        count, labels = sp.csgraph.connected_components(graph, directed=False)
+    rows, cols, values = [], [], []
+    nrigid = 0
+    constrained = np.zeros(3*len(nodes), bool)
+    constrained[fixed] = True
+    components = np.split(np.argsort(labels), np.cumsum(np.bincount(labels))[:-1])
+    for component, idx in enumerate(components):
+        dofs = (3*idx[:, None]+np.arange(3)).ravel()
+        local = rigid_body_modes(nodes[idx])
+        held = local[constrained[dofs]]
+        nrigid += np.linalg.matrix_rank(local)- (np.linalg.matrix_rank(held) if len(held) else 0)
+        r, c = np.nonzero(local)
+        rows.append(dofs[r]); cols.append(6*component+c); values.append(local[r, c])
+    rigid = sp.csr_matrix((np.concatenate(values), (np.concatenate(rows), np.concatenate(cols))),
+                          shape=(3*len(nodes), 6*count))
+    return fixed, rigid, nrigid
 
 
 def solve_modal(nodes, tets, E, nu, rho, fixed_faces=(), rollers=(), modes=6, progress=lambda *_: None):
@@ -437,12 +457,12 @@ def solve_modal(nodes, tets, E, nu, rho, fixed_faces=(), rollers=(), modes=6, pr
     progress('job.assembling', .1)
     K = structural_system(nodes, tets, E, nu)[0]
     M = mass_matrix(nodes, tets, rho)
-    fixed,rigid,nrigid = modal_constraints(nodes,fixed_faces,rollers)
+    fixed,rigid,nrigid = modal_constraints(nodes,fixed_faces,rollers,tets=tets)
     free = np.setdiff1d(np.arange(3*len(nodes)), fixed)
     A, B = K[free][:, free], M[free][:, free]
     free_free = not len(fixed)
     count = min(int(modes) + nrigid, len(free)-1)
-    # A dimensioned negative shift leaves the six rigid modes factorisable, without moving the elastic roots.
+    # A dimensioned negative shift leaves rigid modes factorisable, without moving the elastic roots.
     shift = -max(1., float(np.mean(A.diagonal())/np.mean(B.diagonal()))*1e-9)
     progress('job.solving', .45)
     if len(free) <= MODAL_DIRECT_LIMIT:
@@ -452,7 +472,7 @@ def solve_modal(nodes, tets, E, nu, rho, fixed_faces=(), rollers=(), modes=6, pr
         scale_k,scale_m = float(A.diagonal().mean()),float(B.diagonal().mean())
         Ah,Bh = A/scale_k,B/scale_m
         hierarchy = pyamg.smoothed_aggregation_solver(Ah-shift*scale_m/scale_k*Bh,
-                                                     B=rigid[free], symmetry='symmetric')
+                                                     B=rigid[free].toarray(), symmetry='symmetric')
         X = np.random.default_rng(0).normal(size=(len(free), count))
         values, vectors = spla.lobpcg(Ah, X, B=Bh, M=hierarchy.aspreconditioner(), largest=False,
                                      tol=1e-10, maxiter=1000)
@@ -460,10 +480,8 @@ def solve_modal(nodes, tets, E, nu, rho, fixed_faces=(), rollers=(), modes=6, pr
     order = np.argsort(values)
     values, vectors = values[order], vectors[:, order]
     if nrigid:
-        # A connected 3-D solid has six rigid modes. Threshold against the first elastic frequency, not the shift.
-        elastic = max(values[nrigid], 1e-30)
-        keep = values > elastic*1e-6
-        values, vectors = values[keep], vectors[:, keep]
+        # Topology and supports determine the nullity; a threshold can discard soft elastic modes.
+        values, vectors = values[nrigid:], vectors[:, nrigid:]
     values, vectors = values[:modes], vectors[:, :modes]
     if not len(values) or np.any(values <= 0):
         raise RuntimeError('no positive elastic modes')

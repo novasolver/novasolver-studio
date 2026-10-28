@@ -174,7 +174,11 @@ def test_06_export_results(benchmark):
     else:
         assert rows[0][:4] == ['node','x_m','y_m','z_m'] and len(rows) == len(mesh['nodes'])+1
     report = Path(C.export_results(cid,'report',lang='en')['path']).read_text(encoding='utf-8')
-    assert all(s in report for s in ('ran','converged','verified','reference','data:image/png;base64,'))
+    # the gates by their translated names, the comparison table and the pictures (not English key words: the
+    # report is written for people, in their language)
+    from novastudio.i18n import t
+    assert all(t(k, 'en') in report for k in ('gate.ran', 'gate.converged', 'gate.verified', 'export.verdict', 'export.computed'))
+    assert report.count('data:image/png;base64,') >= 3
     assert str(Path.home()) not in report and str(Path.home()).replace('\\','/') not in report
     assert 'NovaSolver Studio' in report
     if tid == 'cantilever-modal':

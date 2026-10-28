@@ -317,9 +317,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 raise StudioError("err.path", 400, path=f"{path}={value} (one or more of x, y, z, e.g. \"xy\")")
             nv = "".join(c for c in "xyz" if c in value)
         elif key == "direction":
-            vector = isinstance(value, list) and len(value) == 3 and all(isinstance(v, (int, float)) and math.isfinite(v) for v in value) and sum(v*v for v in value) > 0
-            if not vector and (not isinstance(value, str) or value not in templates.DIRECTIONS or
-                               (value == 'normal' and (parts[0] == 'physics' or parent.get('role') in ('moment', 'bearing', 'remote-force')))):
+            if not valid_direction(value, parent.get('role'), normal=parts[0] != 'physics'):
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(templates.DIRECTIONS)})")
             nv = value
         elif key == "preset":
@@ -340,7 +338,11 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 nv = units.normalize(value, ref_old)
                 si = units.to_si(nv)
             except (units.UnitError, TypeError, ValueError) as e:
+                if key == 'point':
+                    raise StudioError('err.path', 400, path=path)
                 raise StudioError("err.unit", 400, msg=str(e))
+            if key == 'point' and (not isinstance(si, list) or len(si) != 3):
+                raise StudioError('err.path', 400, path=path)
             if isinstance(si, list):
                 if key != 'point' or len(si) != 3 or not all(math.isfinite(v) for v in si):
                     raise StudioError('err.path', 400, path=path)
@@ -423,6 +425,27 @@ def normalize_conjugate(case: dict) -> None:
     normalize_boundaries(case)
 
 
+def valid_direction(value, role, normal=True):
+    if isinstance(value, list):
+        return len(value) == 3 and all(isinstance(v, (int, float)) and math.isfinite(v) for v in value) and sum(v*v for v in value) > 0
+    return isinstance(value, str) and value in templates.DIRECTIONS and (value != 'normal' or
+        (normal and role not in ('moment', 'bearing', 'remote-force')))
+
+
+def valid_boundary_value(key, value, default, role):
+    if key == 'direction':
+        return valid_direction(value, role)
+    if key == 'components':
+        return isinstance(value, str) and bool(value) and set(value) <= set('xyz') and len(set(value)) == len(value)
+    try:
+        si = units.to_si(units.normalize(value, default))
+        if key == 'point':
+            return isinstance(si, list) and len(si) == 3 and all(math.isfinite(v) for v in si)
+        return not isinstance(si, list) and math.isfinite(si)
+    except (units.UnitError, TypeError, ValueError, KeyError):
+        return False
+
+
 def normalize_boundaries(case: dict) -> None:
     """Each face carries exactly the value fields its role needs (defaults filled in, others dropped)."""
     for face, b in case["boundaries"].items():
@@ -432,7 +455,7 @@ def normalize_boundaries(case: dict) -> None:
             if k != "role" and k not in want:
                 b.pop(k)
         for k, default in want.items():
-            if k not in b:
+            if k not in b or not valid_boundary_value(k, b[k], default, b['role']):
                 b[k] = copy.deepcopy(default)
         if thermal is not None:
             fields = templates.ROLE_FIELDS.get(thermal.get("role"), {})

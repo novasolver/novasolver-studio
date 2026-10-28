@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Download, Play, Pause } from 'lucide-react';
 import { api, exportUrl } from '../api/client';
 import type { ProbeLine } from '../api/types';
-import { getViewer, selectMode, setSection, setState, toast, useStore, useT } from '../state/store';
+import { getState, getViewer, selectMode, setSection, setState, toast, useStore, useT } from '../state/store';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 import { Slider } from './ui/Slider';
@@ -71,7 +71,11 @@ function LinePlot() {
   const [data,setData] = useState<ProbeLine | null>(null);
   const [quantity,setQuantity] = useState('');
   const [busy,setBusy] = useState(false);
-  useEffect(() => { setData(null); }, [mode,runId]);
+  const generation = useRef(0);
+  useEffect(() => {
+    setData(null); setBusy(false);
+    return () => { generation.current++; };
+  }, [cid,mode,runId]);
   useEffect(() => {
     if (!bbox) return;
     const ext = bbox[0].map((v,i) => bbox[1][i]-v);
@@ -81,9 +85,19 @@ function LinePlot() {
     setFrom(a);setTo(b);
   }, [bbox]);
   const run = async () => {
+    const token = ++generation.current;
+    const current = () => {
+      const state = getState();
+      return generation.current === token && state.payload?.case.case_id === cid &&
+        state.results?.run_id === runId && state.selectedMode === mode;
+    };
     setBusy(true);
-    try { const r = await api.probe(cid,{from,to,n:80},mode); setData(r); setQuantity(Object.keys(r.quantities)[0]); }
-    catch(e) { toast(e instanceof Error ? e.message:String(e),'error'); } finally { setBusy(false); }
+    try {
+      const r = await api.probe(cid,{from,to,n:80},mode,runId);
+      if (current()) { setData(r); setQuantity(Object.keys(r.quantities)[0]); }
+    }
+    catch(e) { if (current()) toast(e instanceof Error ? e.message:String(e),'error'); }
+    finally { if (current()) setBusy(false); }
   };
   const samples = data?.line.samples ?? [];
   const vals = samples.filter(s => s.inside).map(s => s.values[quantity]).filter(Number.isFinite);

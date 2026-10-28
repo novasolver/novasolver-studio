@@ -216,7 +216,7 @@ async def export(case_id: str, format: str = 'vtu', lang: str = 'ja'):
 
 @app.post('/api/cases/{case_id}/probe')
 async def probe(case_id: str, body: dict = Body(...), lang: str = 'ja'):
-    return await call(C.probe_results,case_id,points=body.get('points'),line=body.get('line'),lang=lang,mode=body.get('mode',1))
+    return await call(C.probe_results,case_id,points=body.get('points'),line=body.get('line'),run_id=body.get('run_id'),lang=lang,mode=body.get('mode',1))
 
 
 # ------------------------------------------------------------------ live updates

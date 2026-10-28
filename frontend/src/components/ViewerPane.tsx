@@ -11,6 +11,7 @@ import {
   selectFace,
   selectFaces,
   getState,
+  probeFieldPoint,
   undoCase,
   redoCase,
   setHoverFace,
@@ -359,7 +360,7 @@ export function ViewerPane() {
     viewer.setDeformScale(deform ?? field.auto_deform_scale ?? 1);
   }, [viewer, deform, field]);
   useEffect(() => { viewer?.setModeAnimation(showField && !!modal && animation); }, [viewer,showField,modal,animation]);
-  useEffect(() => viewer?.onFieldPick((at,value,unit) => setState({ probeValue:{at,value,unit} })), [viewer]);
+  useEffect(() => viewer?.onFieldPick((at,value,unit) => { void probeFieldPoint(at,value,unit); }), [viewer]);
   useEffect(() => {
     if (!viewer) return;
     const vector = (d: string | number[] | undefined): number[] => Array.isArray(d) ? d : flowVector(d ?? null) ?? [0,0,-1];

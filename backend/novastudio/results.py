@@ -153,7 +153,7 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     gates_detail = {"converged": r.get("converged_detail"),
                     "verified": None if verification else t(
                         "verify.none_reason" if case["reference"].get("kind") in (None, "none") else "verify.pattern_reason", lang),
-                    "verified_detail": None if verification else t(ref["why_key"], lang) if ref.get("why_key") else ref.get("why")}
+                    "verified_detail": None if verification else t(ref["why_key"], lang, **ref.get('why_args', {})) if ref.get("why_key") else ref.get("why")}
     quantities = [{"id": q, "label": t(f"qty.{q}", lang), "unit": u, "kind": k} for q, u, k in quantities_for(r)]
     warnings = []
     if r.get('free_free'):

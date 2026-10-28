@@ -66,4 +66,18 @@ const S=mod.exports;
  S.hideSelected();assert.deepEqual(S.getState().hiddenFaces,['b','c']);assert.equal(S.getState().selectedFaces.length,0);
  S.showAllFaces();assert.equal(S.getState().hiddenFaces.length,0);S.toggleSeeThrough();assert.equal(S.getState().seeThrough,true);
  console.log('PASS: Connected, direction, coaxial/radius, filtered inversion, hide/show and see-through actions.');
+ let resolvePoint, pointArgs;
+ api.probePoint=(...args)=>{pointArgs=args;return new Promise(resolve=>resolvePoint=resolve);};
+ S.setState({payload:base(),results:{run_id:'j_one'},selectedMode:1,mode:'backend',
+  field:{quantity:'uz',section:{normal:[1,0,0],position:.25}}});
+ const at=[.25,.1,.1];
+ const point=S.probeFieldPoint(at,125,'mm');
+ assert.deepEqual(pointArgs,['c_test',[250,100,100],1,'j_one']);
+ resolvePoint({points:[{inside:true,values:{uz:62.5}}]});await point;
+ assert.deepEqual(S.getState().probeValue,{at,value:62.5,unit:'mm'});
+ const stale=S.probeFieldPoint(at,125,'mm');
+ S.setState({selectedMode:2});S.setState({selectedMode:1});
+ resolvePoint({points:[{inside:true,values:{uz:999}}]});await stale;
+ assert.equal(S.getState().probeValue,null);
+ console.log('PASS: Section clicks query the original element and discard stale point responses.');
 })().catch(e=>{console.error(e);process.exitCode=1});

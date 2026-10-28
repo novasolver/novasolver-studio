@@ -429,5 +429,6 @@
   "analysis.steady": "定常",
   "face.outer_surface": "外周面",
   "thermal_load.uniform": "全体を一様な温度に",
-  "thermal_load.solve": "熱解析で温度分布を求める"
+  "thermal_load.solve": "熱解析で温度分布を求める",
+  "verify.unmodeled_load": "この荷重・条件は理論解に含まれていないため、比較できません：{load}。"
 }

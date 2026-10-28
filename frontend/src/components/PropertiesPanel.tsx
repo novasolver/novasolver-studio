@@ -713,7 +713,7 @@ function SelectionEditor() {
                     value={mixed ? null : cur}
                     placeholder={<span className="text-fg-3">{t("bc.mixed")}</span>}
                     ariaLabel={label}
-                    options={(ui.directions ?? []).map((d) => ({ value: d.id, label: d.label }))}
+                    options={(ui.directions ?? []).filter(d => d.id !== 'normal' || commonRole === 'load').map((d) => ({ value: d.id, label: d.label }))}
                     onChange={(v) => {
                       for (const k of keys) change(`boundaries.${k}.${field}`, v);
                     }}

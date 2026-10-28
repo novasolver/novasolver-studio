@@ -177,7 +177,7 @@ def _nset(name, nodes_):
     return [f"*NSET, NSET={name}"] + [", ".join(map(str, s[i:i + 12])) for i in range(0, len(s), 12)]
 
 
-def compile_calculix(case: dict, mesh: dict) -> str:
+def compile_calculix(case: dict, mesh: dict, temperature=...) -> str:
     """Linear static analysis. Loads are the same per-triangle tractions the built-in solver uses."""
     from .fem_tet10 import canonical_tets, tri_areas
     from .run_worker import structural_loads, symmetry_rollers
@@ -196,7 +196,7 @@ def compile_calculix(case: dict, mesh: dict) -> str:
     from .templates import element_prop
     loads = surface_forces(nodes, tractions)
     a = acceleration(case)
-    T = None if modal else temperatures(case,mesh,lambda *_: None)
+    T = None if modal else temperatures(case,mesh,lambda *_: None) if temperature is ... else temperature
     if a is not None and not modal:
         loads += body_forces(nodes,tets,element_prop(case,mesh,'rho'),a)
     bc = []
@@ -213,7 +213,7 @@ def compile_calculix(case: dict, mesh: dict) -> str:
         '*DENSITY',f"{p['rho']:.12e}", '*EXPANSION, ZERO='+str(tref), f"{p['alpha']:.12e}"])
     if modal:
         from .fem_tet10 import modal_constraints
-        nrigid = modal_constraints(nodes,fixed_faces,symmetry_rollers(case,mesh))[2]
+        nrigid = modal_constraints(nodes,fixed_faces,symmetry_rollers(case,mesh),tets=tets)[2]
         count = int(case['physics'].get('modes',6))+nrigid
         out += ['*BOUNDARY',*bc] if bc else []
         out += ['*STEP','*FREQUENCY',str(count),'*NODE FILE','U','*END STEP','']
@@ -288,7 +288,10 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
     thermal = tpl(case["template"])["physics"] == "thermal"
     wd = jd / "ccx"
     wd.mkdir(exist_ok=True)
-    text = compile_calculix_thermal(case, mesh) if thermal else compile_calculix(case, mesh)
+    from .structural import temperatures
+    modal = case.get('physics', {}).get('analysis') == 'modal'
+    T = None if thermal or modal else temperatures(case, mesh, prog)
+    text = compile_calculix_thermal(case, mesh) if thermal else compile_calculix(case, mesh, temperature=T)
     (wd / "job.inp").write_text(text, encoding="utf-8")
     prog("job.solving", 0.3)
     rc = _proc([ccx, "-i", "job"], wd, wd / "ccx.log", jd)
@@ -329,9 +332,11 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
     U, S = r["DISP"], r["STRESS"]
     vm = np.sqrt(0.5 * ((S[:, 0] - S[:, 1]) ** 2 + (S[:, 1] - S[:, 2]) ** 2 + (S[:, 2] - S[:, 0]) ** 2)
                  + 3 * (S[:, 3] ** 2 + S[:, 4] ** 2 + S[:, 5] ** 2))
-    np.savez_compressed(jd / "results.npz", u=U, vm=vm, s=S[:, :6])
+    np.savez_compressed(jd / "results.npz", u=U, vm=vm, s=S[:, :6], **({'T': T} if T is not None else {}))
     umag = np.linalg.norm(U, axis=1)
     metrics = {"max_disp_m": float(umag.max()), "max_vm_pa": float(vm.max()), **common}
+    if T is not None:
+        metrics.update(t_min_k=float(T.min()), t_max_k=float(T.max()))
     if case["template"] == "cantilever":
         metrics["tip_disp_m"] = float(-U[np.unique(mesh["face_x1"]), 2].mean())
         ref = reference_cantilever(case, metrics["tip_disp_m"])
@@ -374,12 +379,10 @@ def calculix_modes(case,mesh,jd,wd):
     from .fem_tet10 import modal_constraints
     from .run_worker import symmetry_rollers
     fixed = [mesh['face_'+f] for f,b in case['boundaries'].items() if b['role'] == 'fixed']
-    nrigid = modal_constraints(mesh['nodes'],fixed,symmetry_rollers(case,mesh))[2]
+    nrigid = modal_constraints(mesh['nodes'],fixed,symmetry_rollers(case,mesh),tets=mesh['tets'])[2]
     if not frequencies or len(shapes) != len(frequencies):
         raise RuntimeError('CalculiX did not return a complete frequency/mode table')
-    keep = np.arange(len(frequencies))
-    if nrigid:
-        keep = keep[np.asarray(frequencies) > max(frequencies[nrigid],1e-30)*1e-3]
+    keep = np.arange(nrigid, len(frequencies))
     keep = keep[:int(case['physics'].get('modes',6))]
     M = mass_matrix(mesh['nodes'],mesh['tets'],element_prop(case,mesh,'rho'))
     phi = np.asarray(shapes)[keep]

@@ -269,6 +269,7 @@ export interface FieldPayload {
 
 export interface SectionPlane { normal: number[]; position: number }
 export interface ProbeLine { quantities: Record<string,string>; line: { samples: { at_mm: number[]; distance_mm?: number; inside: boolean; values: Record<string,number> }[]; from_mm: number[]; to_mm: number[] } }
+export interface ProbePoint { quantities: Record<string,string>; points: { inside: boolean; values: Record<string,number> }[] }
 
 export interface RunResponse {
   job_id: string;

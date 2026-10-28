@@ -15,6 +15,7 @@ import type {
   WsMessage,
   SectionPlane,
   ProbeLine,
+  ProbePoint,
 } from "./types";
 
 type MockModule = typeof import("./mock");
@@ -167,8 +168,10 @@ export const api = {
   results: (id: string) => request<ResultsPayload>("GET", `/api/cases/${encodeURIComponent(id)}/results`),
   field: (id: string, quantity: string, mode = 1, section: SectionPlane | null = null) =>
     request<FieldPayload>("GET", `/api/cases/${encodeURIComponent(id)}/field?quantity=${encodeURIComponent(quantity)}&mode=${mode}${section ? '&section='+encodeURIComponent(JSON.stringify(section)) : ''}`),
-  probe: (id: string, line: { from: number[]; to: number[]; n: number }, mode = 1) =>
-    request<ProbeLine>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { line, mode }),
+  probe: (id: string, line: { from: number[]; to: number[]; n: number }, mode = 1, run_id?: string) =>
+    request<ProbeLine>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { line, mode, run_id }),
+  probePoint: (id: string, at: number[], mode = 1, run_id?: string) =>
+    request<ProbePoint>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { points: [at], mode, run_id }),
 };
 
 /** Subscribe to server push (WS /ws). Reconnects with backoff. Returns an unsubscribe. */
