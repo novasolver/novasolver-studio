@@ -277,6 +277,8 @@
   "qty.study.charge": "電荷",
   "qty.study.resistance": "抵抗",
   "qty.study.current": "電流",
+  "qty.study.power": "消費電力",
+  "qty.study.energy": "静電エネルギー",
   "verify.capacitor": "静電容量（平行平板の解析解）",
   "verify.coax": "静電容量（同軸円筒の解析解）",
   "verify.busbar": "温度上昇（両端を冷却した棒）",

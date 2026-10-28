@@ -846,6 +846,10 @@ def mesh_job(job: dict) -> None:
         else:
             gmsh.model.addPhysicalGroup(3, [t for _, t in gmsh.model.getEntities(3)], tag=100000, name="solid")
             body_info = []
+        if job["kind"] != "import":
+            # the corner points of an OCC primitive carry a default size of their own (about 20 mm on a 100 mm cube):
+            # it overruled h, so "normal" and "fine" gave the same mesh and a mesh study could not refine
+            gmsh.model.mesh.setSize(gmsh.model.getEntities(0), h)
         gmsh.option.setNumber("Mesh.MeshSizeMax", h)
         gmsh.option.setNumber("Mesh.MeshSizeMin", job["_hmin"] * 0.5 if job.get("_hmin") else h * (0.5 if job["kind"] != "import" else 0.1))
         gmsh.option.setNumber("Mesh.Algorithm3D", 1)

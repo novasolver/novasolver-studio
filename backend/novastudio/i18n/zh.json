@@ -277,6 +277,8 @@
   "qty.study.charge": "电荷",
   "qty.study.resistance": "电阻",
   "qty.study.current": "电流",
+  "qty.study.power": "功率",
+  "qty.study.energy": "静电能量",
   "verify.capacitor": "电容（平行板解析解）",
   "verify.coax": "电容（同轴解析解）",
   "verify.busbar": "温升（两端冷却的棒）",

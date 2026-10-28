@@ -130,6 +130,11 @@ def test_04_series_dielectrics(tmp_path):
     number("series_interface_V", v["values"]["v"], vref)
     assert m["capacitance_f"] == pytest.approx(cref, rel=0.01)
     assert v["values"]["v"] == pytest.approx(vref, rel=0.01)
+    # second opinion (EM) #2: the field keeps its jump at the interface (82 kV/m in PTFE, 18 kV/m in alumina); averaged
+    # across it, the nodes 0.25 mm inside PTFE read 68 kV/m
+    e = [pt["values"]["emag"] for pt in C.probe_results(cid, points=[[5, 5, 0.75], [5, 5, 1.25]])["points"]]
+    assert e[0] == pytest.approx(vref / 0.001, rel=0.01)
+    assert e[1] == pytest.approx((100 - vref) / 0.001, rel=0.01)
     assert m["imbalance"] < 1e-3
 
 
@@ -252,6 +257,49 @@ def test_multielectrode_reference_and_units():
     case = templates.new_case("capacitor", "c_test")
     case["boundaries"]["y0"] = {"role": "voltage", "voltage": {"value": 25, "unit": "V"}}
     assert not reference_electric(case, {})["applicable"]
-    assert primary_quantity(case, {"kind": "electrostatic", "metrics": {"face_charge_c": {"a": -2e-9, "b": 1e-9}}}) == ("charge", 2e-9, "C")
+    # several electrodes: no capacitance, and the study tracks the energy (a response), not a charge
+    m = {"face_charge_c": {"a": -2e-9, "b": 1e-9}, "energy_j": 3e-7}
+    assert primary_quantity(case, {"kind": "electrostatic", "metrics": m}) == ("energy", 3e-7, "J")
     for value, si in (("2 mV", 0.002), ("3 kV", 3000), ("4 mA", 0.004), ("5 pF", 5e-12), ("6 mohm", 0.006)):
         assert units.to_si(value) == pytest.approx(si)
+
+
+def solve_changed(tid, changes):
+    p = C.create_case(tid)
+    cid = p["case"]["case_id"]
+    C.update_case(cid, p["case"]["revision"], changes)
+    out = C.run_simulation(cid, wait_s=1)
+    job = out.get("job_id") or out["job"]["job_id"]
+    assert jobs.wait(job, 1800)["state"] == "done", C.job_status(job)
+    return results.load(cid)[1]
+
+
+# second opinion (EM) #1 and #5: a prescribed current is not a study quantity, and the current card is the current
+# that goes through the part (+1 A), not the ground's reaction (-1 A)
+def test_prescribed_current_card_and_study_quantity():
+    from novastudio.run_worker import primary_quantity
+    r = solve_changed("busbar", {"physics.joule_heating": False, "boundaries.x0.role": "current",
+                                 "boundaries.x0.current": "1 A"})
+    m = r["metrics"]
+    assert m["current_a"] == pytest.approx(1.0, rel=1e-6)
+    assert "resistance_ohm" not in m
+    assert primary_quantity({}, r)[0] == "power"
+
+
+# second opinion (EM) #4: an extra surface charge must not turn into a "capacitance"
+def test_surface_charge_suppresses_capacitance():
+    r = solve_changed("capacitor", {"boundaries.x0.role": "surface-charge", "boundaries.x0.charge": "0.001 C/m2"})
+    assert "capacitance_f" not in r["metrics"]
+    assert not r["reference"]["applicable"]
+
+
+# second opinion (EM) #3: with convection only, the rise is measured from the ambient air
+def test_convection_rise_from_ambient():
+    ch = {}
+    for f in ("x0", "x1", "y0", "y1", "z0", "z1"):
+        ch.update({f"boundaries.{f}.thermal.role": "convection", f"boundaries.{f}.thermal.h": "10 W/m2K",
+                   f"boundaries.{f}.thermal.tinf": "20 degC"})
+    m = solve_changed("busbar", ch)["metrics"]
+    assert m["t_rise_k"] == pytest.approx(m["t_max_k"] - 293.15, rel=1e-9)
+    # nearly all of the Joule heat leaves through the surface: the part sits well above the air
+    assert m["t_rise_k"] > 10 * (m["t_max_k"] - m["t_min_k"])

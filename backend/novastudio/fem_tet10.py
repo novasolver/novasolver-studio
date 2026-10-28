@@ -78,16 +78,30 @@ LG = np.column_stack([1 - GAUSS.sum(axis=1), GAUSS])
 SHAPE = np.column_stack([LG * (2 * LG - 1), 4 * LG[:, EDGES[:, 0]] * LG[:, EDGES[:, 1]]])
 
 
-def gauss_to_nodes(tets, values, n):
-    """Linear extrapolation to corners, nodal average, then edge means (also for vector fields)."""
+def gauss_to_nodes(tets, values, n, groups=None):
+    """Linear extrapolation to corners, nodal average, then edge means (also for vector fields).
+    groups: element index arrays of the materials. A field that jumps across an interface (E across two dielectrics)
+    is then averaged within each material only, so the jump stays at the interface: only nodes on it take the mean of
+    both sides, instead of the average leaking into the midside nodes next to it."""
     values = np.asarray(values)
     tail = values.shape[2:]
     corners = np.einsum("cg,egk->eck", np.linalg.inv(LG), values.reshape(len(tets), 4, -1))
-    acc = np.zeros((n, corners.shape[2])); cnt = np.zeros(n)
-    np.add.at(acc, tets[:, :4].ravel(), corners.reshape(-1, corners.shape[2]))
-    np.add.at(cnt, tets[:, :4].ravel(), 1)
+    k = corners.shape[2]
+    acc = np.zeros((n, k)); cnt = np.zeros(n)
+    for idx in (groups if groups is not None and len(groups) > 1 else [np.arange(len(tets))]):
+        ga = np.zeros((n, k)); gc = np.zeros(n)
+        np.add.at(ga, tets[idx, :4].ravel(), corners[idx].reshape(-1, k))
+        np.add.at(gc, tets[idx, :4].ravel(), 1)
+        gv = np.divide(ga, gc[:, None], out=np.zeros_like(ga), where=gc[:, None] > 0)
+        # midside nodes from this material's own corner values
+        mids, a, b = tets[idx, 4:].ravel(), tets[idx][:, EDGES[:, 0]].ravel(), tets[idx][:, EDGES[:, 1]].ravel()
+        gm = np.zeros(n, bool)
+        gm[mids] = True
+        gv[mids] = 0.5 * (gv[a] + gv[b])
+        used = (gc > 0) | gm
+        acc[used] += gv[used]
+        cnt[used] += 1
     out = np.divide(acc, cnt[:, None], out=np.zeros_like(acc), where=cnt[:, None] > 0)
-    out[tets[:, 4:].ravel()] = 0.5 * (out[tets[:, EDGES[:, 0]].ravel()] + out[tets[:, EDGES[:, 1]].ravel()])
     return out.reshape((n,) + tail)
 
 

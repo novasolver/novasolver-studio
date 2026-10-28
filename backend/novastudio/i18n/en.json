@@ -277,6 +277,8 @@
   "qty.study.charge": "charge",
   "qty.study.resistance": "resistance",
   "qty.study.current": "current",
+  "qty.study.power": "power",
+  "qty.study.energy": "electrostatic energy",
   "verify.capacitor": "Capacitance (parallel-plate solution)",
   "verify.coax": "Capacitance (coaxial solution)",
   "verify.busbar": "Temperature rise (bar with cooled ends)",

@@ -116,6 +116,21 @@ class _Locator:
                 return L
         return np.array([1 - xi.sum(), *xi])
 
+    def gradient(self, e: int, L: np.ndarray, f: np.ndarray) -> np.ndarray:
+        """Physical gradient of a nodal field inside element e at volume coordinates L (exact for the element's own
+        interpolant; used for E = -grad V, which jumps at material interfaces and must not come from nodal averages)."""
+        conn = self.tets[e]
+        dL = np.array([[-1.0, -1.0, -1.0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])        # dL_i / d(L1, L2, L3)
+        if len(conn) >= 10:
+            pairs = self._pairs(conn)
+            idx = conn[:10]
+            dN = np.vstack([(4 * L[i] - 1) * dL[i] for i in range(4)] +
+                           [4 * (L[a] * dL[b] + L[b] * dL[a]) for a, b in pairs])       # (10, 3)
+        else:
+            idx, dN = conn[:4], dL
+        J = self.nodes[idx].T @ dN                                                     # dx / dxi (3, 3)
+        return np.linalg.solve(J.T, dN.T @ f[idx])
+
     def weights(self, e: int, L: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         conn = self.tets[e]
         if len(conn) == 4:
@@ -210,6 +225,10 @@ def probe(case: dict, points: list | None = None, line: dict | None = None, face
         raise StudioError("err.path", 400, path=f"{len(pts)} probe points (max {MAX_POINTS})")
     if pts:
         loc = _Locator(nodes, tets)
+        sigma = None
+        if "J" in data.files:                     # per element: J = sigma E in the element that holds the point
+            from .templates import element_prop
+            sigma = np.broadcast_to(element_prop(case, dict(mesh), "sigma"), len(tets))
         res = []
         for _, p_mm in pts:
             if p_mm.shape != (3,):
@@ -217,8 +236,16 @@ def probe(case: dict, points: list | None = None, line: dict | None = None, face
             x = p_mm * 1e-3
             hit = loc.locate(x)
             if hit is not None and len(hit) == 2:
-                idx, w = loc.weights(hit[0], loc.curved(hit[0], x, hit[1]))
+                Lc = loc.curved(hit[0], x, hit[1])
+                idx, w = loc.weights(hit[0], Lc)
                 vals = {q: float(v[idx] @ w) for q, (v, _) in F.items()}
+                if "V" in data.files:
+                    # E from the potential of this element: nodal E is an average and blurs the jump at an interface
+                    Ep = -loc.gradient(hit[0], Lc, data["V"])
+                    vals.update(ex=float(Ep[0]), ey=float(Ep[1]), ez=float(Ep[2]), emag=float(np.linalg.norm(Ep)))
+                    if sigma is not None:
+                        s_e = float(sigma[hit[0]])
+                        vals.update(jmag=s_e * vals["emag"], q=s_e * vals["emag"] ** 2)
                 res.append({"at_mm": p_mm.round(4).tolist(), "inside": True, "values": vals})
             else:
                 dist, j = loc.node_tree.query(x)

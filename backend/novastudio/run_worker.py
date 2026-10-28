@@ -229,7 +229,9 @@ def run_electric_builtin(case: dict, jd: Path, prog) -> dict:
     r = fem.solve_scalar(nodes, tets, coeff, fixed, fluxes, [], progress=prog)
     V = r["value"]
     Eg = -r["gradient"]
-    E = fem.gauss_to_nodes(r["tets"], Eg, len(nodes))
+    # nodal fields are recovered per material: E, J and q jump across a dielectric or conductor interface
+    groups = [idx for idx, _ in element_groups(case, m.get("tet_body", np.zeros(len(tets), int)))]
+    E = fem.gauss_to_nodes(r["tets"], Eg, len(nodes), groups)
     qg = np.broadcast_to(coeff, len(tets))[:, None] * np.sum(Eg ** 2, axis=2)
     integral = float(np.sum(qg * r["weights"]))
     emag = np.linalg.norm(E, axis=1)
@@ -241,14 +243,19 @@ def run_electric_builtin(case: dict, jd: Path, prog) -> dict:
     levels = sorted(set(volts.values()))
     dv = levels[-1] - levels[0]
     high_flow = sum(flows[f] for f in names if volts[f] == levels[-1])
+    # what goes through the part: everything that enters (the same as what leaves), whichever terminal drives it
+    through = sum(v for v in flows.values() if v > 0)
+    # a prescribed current or charge adds its own share to the electrode reactions: then a ratio of one electrode's
+    # charge (or current) to the voltage is not the capacitance (or resistance) of the part
+    sourced = any(abs(q) > 0 for _, q in fluxes)
     converged = r["imbalance"] < 1e-3 and np.isfinite(V).all()
     detail = {"electric_balance_error": r["imbalance"], "limit": 1e-3}
     if current:
-        J = fem.gauss_to_nodes(r["tets"], np.broadcast_to(coeff, len(tets))[:, None, None] * Eg, len(nodes))
-        fields.update(J=J, q=fem.gauss_to_nodes(r["tets"], qg, len(nodes)))
-        metrics.update(face_current_a=flows, current_a=high_flow, power_w=integral,
+        J = fem.gauss_to_nodes(r["tets"], np.broadcast_to(coeff, len(tets))[:, None, None] * Eg, len(nodes), groups)
+        fields.update(J=J, q=fem.gauss_to_nodes(r["tets"], qg, len(nodes), groups))
+        metrics.update(face_current_a=flows, current_a=through, power_w=integral,
                        j_max_a_m2=float(np.linalg.norm(J, axis=1).max()))
-        if len(levels) == 2 and high_flow != 0:
+        if len(levels) == 2 and not sourced and high_flow != 0:
             metrics["resistance_ohm"] = dv / high_flow
         if case["physics"].get("joule_heating", True):
             tf, tq, tc, order = thermal_groups(case, m, nested=True)
@@ -258,13 +265,15 @@ def run_electric_builtin(case: dict, jd: Path, prog) -> dict:
             metrics.update(t_max_k=float(T.max()), t_min_k=float(T.min()), q_joule_w=tr["source_total"],
                            heat_imbalance=tr["imbalance"], q_in_w=tr["total_in"],
                            face_flows_w={f: q for g in order for f, q in zip(order[g], tr["flows"][g])})
-            # Convection-only cases use the minimum solved temperature as the study datum.
-            metrics["t_rise_k"] = float(T.max() - min((t for _, t in tf), default=float(T.min())))
+            # rise above the coldest thermal reference: a fixed temperature, else the convection ambient (the part
+            # warms as a whole above the air; max - min of the part alone would miss that)
+            refs = [t for _, t in tf] or [tinf for _, _, tinf in tc]
+            metrics["t_rise_k"] = float(T.max() - min(refs)) if refs else float(T.max() - T.min())
             converged = converged and tr["imbalance"] < 1e-3 and np.isfinite(T).all()
             detail["heat_balance_error"] = tr["imbalance"]
     else:
         metrics.update(face_charge_c=flows, energy_j=integral / 2)
-        if len(levels) == 2:
+        if len(levels) == 2 and not sourced:
             metrics["capacitance_f"] = abs(high_flow) / dv
     air_elements = []
     body_mats = case.get("body_materials", {})
@@ -461,16 +470,18 @@ def primary_quantity(case: dict, res: dict) -> tuple[str, float, str]:
     """The one number a mesh study tracks (name, value in SI, unit)."""
     m = res["metrics"]
     k = res["kind"]
+    # the mesh study must track a response of the solution: a prescribed current or charge comes back unchanged on
+    # every mesh (conservation), so it would "converge" whatever the accuracy
     if k == "electrostatic":
         if "capacitance_f" in m:
             return ("capacitance", m["capacitance_f"], "F")
-        return ("charge", max(abs(q) for q in m["face_charge_c"].values()), "C")
+        return ("energy", m["energy_j"], "J")
     if k == "current":
         if "t_rise_k" in m:
             return ("t_rise", m["t_rise_k"], "K")
         if "resistance_ohm" in m:
             return ("resistance", m["resistance_ohm"], "ohm")
-        return ("current", m["current_a"], "A")
+        return ("power", m["power_w"], "W")
     if k == "structural":
         return ("max_disp", m["max_disp_m"], "m")
     if k == "thermal":
