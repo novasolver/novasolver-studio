@@ -28,6 +28,10 @@ Free-free modal analysis skips the rigid-body modes, also for several separate p
 - A textbook comparison is only made when the case matches the textbook: adding gravity, rotation or a temperature
   load to the cantilever now tells you why the reference no longer applies instead of "verified".
 
+### macOS / Linux (preview)
+`uvx --from https://github.com/novasolver/novasolver-studio/releases/download/v0.5.0/novasolver_studio-0.5.0-py3-none-any.whl novasolver-studio`
+(see 0.4.1 for CalculiX / OpenFOAM on these systems). Tested on GitHub's macOS 14, Ubuntu and Windows runners.
+
 ---
 
 ## NovaSolver Studio 0.5.0（プレビュー版）
@@ -53,3 +57,7 @@ Free-free modal analysis skips the rigid-body modes, also for several separate p
 
 ### 検証をより正直に
 - 教科書の解との比較は、条件が教科書と同じときだけ行います。片持ち梁に重力・回転・温度の荷重を足すと、「検証済み」ではなく、参照解が使えない理由を表示します。
+
+### macOS / Linux（プレビュー）
+`uvx --from https://github.com/novasolver/novasolver-studio/releases/download/v0.5.0/novasolver_studio-0.5.0-py3-none-any.whl novasolver-studio`
+（CalculiX・OpenFOAM の入れ方は 0.4.1 のノートを参照）。GitHub の macOS 14・Ubuntu・Windows 環境でテスト済みです。
