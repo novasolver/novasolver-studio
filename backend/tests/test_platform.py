@@ -161,6 +161,9 @@ def test_openfoam_linux_packages(monkeypatch, tmp_path):
 
 def test_openfoam_windows_and_msmpi(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "platform", "win32")
+    # shutil.which takes its Windows code path (it needs _winapi) once sys.platform says win32, so on a Linux/macOS
+    # runner it must be faked; the solver lookup is what is under test here
+    monkeypatch.setattr(config.shutil, "which", lambda *a, **k: None)
     monkeypatch.setattr(config, "STUDIO_ROOT", tmp_path)
     root = tmp_path / "OpenFOAM"
     binary = root / "OpenFOAM-v2606" / "platforms" / "mingw" / "bin" / "blockMesh.exe"

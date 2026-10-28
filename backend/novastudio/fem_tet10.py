@@ -55,7 +55,8 @@ def check_memory(n_nodes: int, kind: str) -> None:
     # process already holds (interpreter, libraries, mesh), or a small model would be refused for memory it never needs
     try:
         import psutil
-        held = psutil.Process().memory_info().private
+        mi = psutil.Process().memory_info()
+        held = getattr(mi, "private", None) or mi.rss       # "private" exists on Windows only; rss elsewhere
     except Exception:
         held = 0
     need = max(0.0, MEM_BASE + MEM_PER_NODE[kind] * n_nodes - held)
