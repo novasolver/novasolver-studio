@@ -556,6 +556,9 @@ for _tid in ('plastic-bar','plastic-beam-collapse'):
     _mat.update(model='elastoplastic',sy={'value':250,'unit':'MPa'},H={'value':0 if _tid.endswith('collapse') else 2.05e9,'unit':'Pa'})
 for _tid in ('large-cantilever','plastic-beam-collapse'):
     TEMPLATES[_tid]['case']['boundaries']['x0'] = {'role':'beam-clamp'}
+# A spring-steel strip: the elastica bends it to about 1 GPa, which mild steel (235 MPa) would not survive elastically.
+TEMPLATES['large-cantilever']['case']['materials']['solid'] = {**copy.deepcopy(MATERIALS_SOLID['steel']),
+    'preset':'custom','sy':{'value':1400,'unit':'MPa'}}
 TEMPLATES['rubber-tension'] = _structural_template('rubber-tension',_box(10,10,50),copy.deepcopy(_nonlinear),
     {**copy.deepcopy(_free),'x0':{'role':'symmetry'},'y0':{'role':'symmetry'},'z0':{'role':'constraint','components':'z'},
      'z1':{'role':'displacement','ux':None,'uy':None,'uz':{'value':50,'unit':'mm'}}},'axial_stress',_box_fields)

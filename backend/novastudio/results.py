@@ -169,13 +169,14 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
                     "verified_detail": None if verification else t(ref["why_key"], lang, **ref.get('why_args', {})) if ref.get("why_key") else ref.get("why")}
     quantities = [{"id": q, "label": t(f"qty.{q}", lang), "unit": u, "kind": k} for q, u, k in quantities_for(r)]
     warnings = []
-    if r.get('error'):
-        warnings.append({'code':'nonlinear_diverged','message':t(r['error']['key'],lang,fraction=r['error']['fraction'])})
+    # Reaching the limit load is the expected end of a collapse run, not a divergence to warn about twice.
     if r.get('limit_reached'):
         warnings.append({'code':'limit_reached','message':t('result.limit_reached',lang,fraction=r['error']['fraction'])})
+    elif r.get('error'):
+        warnings.append({'code':'nonlinear_diverged','message':t(r['error']['key'],lang,fraction=r['error']['fraction'])})
     if r['kind'] == 'modal' and any(b['role'] == 'displacement' and any(b.get(k) is not None and units.to_si(b[k]) != 0 for k in ('ux','uy','uz')) for b in case['boundaries'].values()):
         warnings.append({'code':'modal_displacement_ignored','message':t('check.modal_displacement_ignored',lang)})
-    if r['kind'] == 'structural' and not r.get('large_deformation') and (m.get('max_strain',0)>.01 or m.get('max_rotation',0)>.0872665):
+    if r['kind'] == 'structural' and not r.get('large_deformation') and not r.get('limit_reached') and (m.get('max_strain',0)>.01 or m.get('max_rotation',0)>.0872665):
         warnings.append({'code':'large_deformation','message':t('result.large_deformation',lang)})
     if r.get('free_free'):
         warnings.append({'code':'free_free', 'message':t('result.free_free',lang)})
