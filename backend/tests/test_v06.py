@@ -231,6 +231,8 @@ def test_06_plastic_unload_and_divergence_retention():
     assert collapse['error']['key'] == 'err.nonlinear_diverged'
     assert not C.get_results(cid)['gates']['converged']
     assert len(np.load(jd/'results.npz')['step_u']) == len(collapse['curve'])>1
+    # Perfect plasticity: no nodal stress may sit outside the yield surface (extrapolation gave 282 MPa).
+    assert collapse['metrics']['max_vm_pa'] <= 250e6*(1+1e-9)
 
 
 def test_09_mcp_round_trip_undo_validation_and_localization():
@@ -557,6 +559,19 @@ def test_fix10_progress_reports_converged_fraction_without_eta():
     view = job_view(j,'en')
     assert view['eta_s'] is None
     assert view['progress'] == pytest.approx(.4)
+    # The cut-back messages near a limit load are nonlinear progress too: no ETA, and the text names the increment.
+    view = job_view({**j,'message_key':'job.nonlinear_limit','message_args':{'fraction':.925,'increment':.0125,'converged_fraction':.925}},'en')
+    assert view['eta_s'] is None and '0.0125' in view['message']
+
+
+def test_fix12_flat_gauss_average_stays_inside_bounds():
+    m = generate((.1,.02,.01),(4,2,1)); nodes,tets = m['nodes'],m['tets']
+    rng = np.random.default_rng(1)
+    values = rng.uniform(-1,1,(len(tets),4))
+    flat = np.ones(len(tets),bool)
+    out = fem.gauss_to_nodes(tets,values,len(nodes),flat=flat)
+    assert out.max() <= values.max()+1e-12 and out.min() >= values.min()-1e-12
+    assert fem.gauss_to_nodes(tets,values,len(nodes)).max() > values.max()   # plain extrapolation overshoots
 
 
 def test_fix11_self_equilibrated_cards(monkeypatch):

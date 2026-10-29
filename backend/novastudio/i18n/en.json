@@ -450,6 +450,8 @@
   "check.near_incompressible": "Poisson’s ratio exceeds 0.495. Check volumetric locking with a mesh study.",
   "result.large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
   "job.nonlinear": "Step {step}/{steps}, iteration {iteration} (load {fraction:.4g})",
+  "job.nonlinear_cutback": "Not converging beyond load factor {fraction:.4g}; refining the increment to {increment:.3g}",
+  "job.nonlinear_limit": "Searching for the limit load: converged to load factor {fraction:.4g}, refining the increment to {increment:.3g}",
   "history.contacts": "Contact settings",
   "role.displacement": "Prescribed displacement",
   "role.spring": "Spring support",

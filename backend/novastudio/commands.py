@@ -150,7 +150,7 @@ def history_payload(case_id: str, lang: str) -> dict:
 
 def job_view(j: dict, lang: str) -> dict:
     eta = None
-    nonlinear = j.get('message_key') == 'job.nonlinear'
+    nonlinear = str(j.get('message_key','')).startswith('job.nonlinear')
     if j["state"] == "running" and not nonlinear and j.get("progress", 0) > 0.02:
         import time
         elapsed = time.time() - j["created_at"]

@@ -450,6 +450,8 @@
   "check.near_incompressible": "ポアソン比が 0.495 を超えています。メッシュ収束で体積ロッキングの影響を確認してください。",
   "result.large_deformation": "ひずみが 1% または回転が 5° を超えています。大変形解析を検討してください。",
   "job.nonlinear": "ステップ {step}/{steps}、反復 {iteration}（荷重係数 {fraction:.4g}）",
+  "job.nonlinear_cutback": "荷重係数 {fraction:.4g} の先で収束しないため、刻みを {increment:.3g} に細かくしています",
+  "job.nonlinear_limit": "限界荷重を探しています: 荷重係数 {fraction:.4g} まで収束、刻みを {increment:.3g} に細かくしています",
   "history.contacts": "接触設定",
   "role.displacement": "強制変位",
   "role.spring": "ばね支持",

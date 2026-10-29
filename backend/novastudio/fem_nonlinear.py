@@ -283,6 +283,9 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
     snapshots,curve,histories = [],[],[]
     current,failed = 0.,False
     limit_control = not prescribed and any(p.get('model') == 'elastoplastic' and p.get('H',p['E']/100) == 0 for _,p in groups)
+    plastic_elements = np.zeros(len(tets),bool)
+    for idx,p in groups:
+        plastic_elements[idx] = p.get('model') == 'elastoplastic'
     minimum_increment = 1/count/(64 if limit_control else 2**8)
     last = None; attempts = 0; increment = 1/count; target_index = 0
     iterations = 0
@@ -407,14 +410,17 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
                 limit_reached = limit_control and last is not None
                 break
             increment *= .5
+            # Cut-backs near a limit load take most of the run without advancing the fraction; say so, or the bar looks stuck.
+            progress('job.nonlinear_limit' if limit_control else 'job.nonlinear_cutback',min(1.,abs(current)),
+                     {'fraction':current,'increment':increment,'converged_fraction':min(1.,abs(current))})
             continue
         attempts = 0
         previous_u,previous_fraction = u,current
         u,lam,current = trial_u,trial_lam,fraction
         mech.ep,mech.peeq = ep,eq
-        sn = fem.gauss_to_nodes(tets,sg,n)
+        sn = fem.gauss_to_nodes(tets,sg,n,flat=plastic_elements)
         fields = {'u':u.reshape(-1,3).copy(),'s':sn,'vm':von_mises(sn),
-                  'peeq':np.maximum(fem.gauss_to_nodes(tets,eq,n),0)}
+                  'peeq':np.maximum(fem.gauss_to_nodes(tets,eq,n,flat=plastic_elements),0)}
         cf,interfaces,comp = contact.fields(u,lam,fraction)
         contact.commit(u,lam,fraction)
         if contact_pairs:

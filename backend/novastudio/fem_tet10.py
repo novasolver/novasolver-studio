@@ -128,14 +128,18 @@ LG = np.column_stack([1 - GAUSS.sum(axis=1), GAUSS])
 SHAPE = np.column_stack([LG * (2 * LG - 1), 4 * LG[:, EDGES[:, 0]] * LG[:, EDGES[:, 1]]])
 
 
-def gauss_to_nodes(tets, values, n, groups=None):
+def gauss_to_nodes(tets, values, n, groups=None, flat=None):
     """Linear extrapolation to corners, nodal average, then edge means (also for vector fields).
     groups: element index arrays of the materials. A field that jumps across an interface (E across two dielectrics)
     is then averaged within each material only, so the jump stays at the interface: only nodes on it take the mean of
-    both sides, instead of the average leaking into the midside nodes next to it."""
+    both sides, instead of the average leaking into the midside nodes next to it.
+    flat: elements whose corners take the Gauss mean instead. Extrapolation leaves the yield surface in a plastic
+    material (a 250 MPa yield showed 282 MPa); averages of admissible stresses stay admissible, since vm is convex."""
     values = np.asarray(values)
     tail = values.shape[2:]
     corners = np.einsum("cg,egk->eck", np.linalg.inv(LG), values.reshape(len(tets), 4, -1))
+    if flat is not None and np.any(flat):
+        corners[flat] = values.reshape(len(tets), 4, -1)[flat].mean(axis=1, keepdims=True)
     k = corners.shape[2]
     acc = np.zeros((n, k)); cnt = np.zeros(n)
     for idx in (groups if groups is not None and len(groups) > 1 else [np.arange(len(tets))]):

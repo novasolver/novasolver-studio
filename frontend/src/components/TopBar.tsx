@@ -12,13 +12,14 @@ export const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(na
 
 export function Logo({ className }: { className?: string }) {
   return (
-    <span className={cn("flex items-center gap-2 select-none", className)}>
+    <span className={cn("flex shrink-0 items-center gap-2 whitespace-nowrap select-none", className)}>
       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
         <path d="M12 1.5 22.5 12 12 22.5 1.5 12Z" fill="var(--accent-fill)" />
         <path d="M12 7.2 16.8 12 12 16.8 7.2 12Z" fill="var(--bg)" />
       </svg>
       <span className="text-body font-semibold text-fg">
-        NovaSolver <span className="font-normal text-fg-2">Studio</span>
+        {/* below 960 px the word gives way to the case title next to it */}
+        NovaSolver <span className="font-normal text-fg-2 max-[959px]:hidden">Studio</span>
       </span>
     </span>
   );
@@ -79,7 +80,7 @@ export function TopBar() {
     <header className="relative z-20 grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line bg-bg px-3">
       <div className="flex min-w-0 items-center gap-1">
         <Tooltip content={t("top.home")}>
-          <button type="button" onClick={() => closeCase()} className="rounded-[6px] px-1.5 py-1 hover:bg-hover">
+          <button type="button" onClick={() => closeCase()} className="shrink-0 rounded-[6px] px-1.5 py-1 hover:bg-hover">
             <Logo />
           </button>
         </Tooltip>
@@ -100,7 +101,7 @@ export function TopBar() {
       <button
         type="button"
         onClick={() => ui.palette(true)}
-        className="flex h-8 w-[min(480px,34vw)] items-center gap-2 rounded-[6px] border border-line bg-raised px-2.5 text-body text-fg-3 transition-colors duration-[var(--dur-2)] hover:border-line-strong"
+        className="flex h-8 w-[min(480px,34vw)] max-[959px]:w-[200px] items-center gap-2 rounded-[6px] border border-line bg-raised px-2.5 text-body text-fg-3 transition-colors duration-[var(--dur-2)] hover:border-line-strong"
       >
         <Search size={14} />
         <span className="flex-1 truncate text-left">{t("top.search")}</span>

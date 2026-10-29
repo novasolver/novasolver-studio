@@ -450,6 +450,8 @@
   "check.near_incompressible": "泊松比超过 0.495，请通过网格收敛研究检查体积锁死。",
   "result.large_deformation": "应变超过 1% 或转角超过 5°，建议进行大变形分析。",
   "job.nonlinear": "步 {step}/{steps}，迭代 {iteration}（载荷系数 {fraction:.4g}）",
+  "job.nonlinear_cutback": "载荷系数 {fraction:.4g} 之后未收敛，正在将增量细化到 {increment:.3g}",
+  "job.nonlinear_limit": "正在搜索极限载荷：已收敛到载荷系数 {fraction:.4g}，正在将增量细化到 {increment:.3g}",
   "history.contacts": "接触设置",
   "role.displacement": "指定位移",
   "role.spring": "弹簧支撑",
