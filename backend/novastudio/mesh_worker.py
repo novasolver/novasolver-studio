@@ -684,8 +684,9 @@ def mesh_job(job: dict) -> None:
                 gmsh.option.setNumber('Geometry.OCCImportLabels', 1)
                 gmsh.model.occ.importShapes(job["file"])
                 gmsh.model.occ.synchronize()
+                face_names = step_face_names(gmsh, job["file"])
                 for _, tag in gmsh.model.getEntities(2):
-                    name = cad_face_name(gmsh.model.getEntityName(2, tag))
+                    name = cad_face_name(gmsh.model.getEntityName(2, tag) or face_names.get(tag, ''))
                     if name:
                         imported_names.append((name, gmsh.model.occ.getMass(2, tag),
                                                np.asarray(gmsh.model.occ.getCenterOfMass(2, tag))))
@@ -977,6 +978,25 @@ def mesh_job(job: dict) -> None:
             (out / "mesh_stats.json").write_text(json.dumps(stats), encoding="utf-8")
     finally:
         gmsh.finalize()
+
+
+def step_face_names(gmsh, path: str) -> dict:
+    """{face tag: name} from the face names in a STEP file, which gmsh does not read. Never fails the import."""
+    if not path.lower().endswith((".step", ".stp")):
+        return {}
+    try:
+        raw = Path(path).read_bytes()
+        try:
+            text = raw.decode("utf-8")              # some writers put UTF-8 in the strings instead of \X2\ escapes
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1")
+        if not re.search(r"(?:ADVANCED_FACE|FACE_SURFACE)\s*\(\s*'[^']", text):
+            return {}
+        from . import step_names
+        return step_names.match(text, *step_names.gmsh_topology(gmsh))
+    except Exception as e:                          # names are a convenience: a file we cannot read still imports
+        print("step face names:", type(e).__name__, e, file=sys.stderr)
+        return {}
 
 
 def cad_face_name(name: str) -> str:
