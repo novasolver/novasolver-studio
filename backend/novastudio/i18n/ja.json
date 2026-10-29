@@ -546,7 +546,7 @@
   "err.archive_zip": "このファイルは .nscase（zip）として読めません。",
   "err.archive_path": "アーカイブに許可されていないパスがあります: {path}。安全のため開きません。",
   "err.archive_ratio": "アーカイブの {path} の圧縮率が異常に高いため開きません。",
-  "err.archive_size": "アーカイブが大きすぎます（展開後 2 GB まで）。",
+  "err.archive_size": "アーカイブが大きすぎます（展開後 1 GB まで）。",
   "err.archive_too_many": "アーカイブのファイル数が多すぎます（{count} 個、上限 2000）。",
   "err.archive_manifest": "アーカイブの目録（nscase.json）が無いか、中身と一致しません。",
   "err.archive_hash": "アーカイブの {path} が壊れています（SHA-256 が一致しません）。",
@@ -554,5 +554,6 @@
   "warn.archive_results_dropped": "結果は今の Studio では読めないため外しました。ケースは開けるので、もう一度計算してください。",
   "err.examples_offline": "解析済みの例の一覧を取得できません（オフライン）。{url} から .nscase をダウンロードし、「ケースファイルを開く」で開けます。",
   "err.example_unknown": "解析済みの例「{name}」はありません。list_examples で名前を確認してください。",
-  "err.example_corrupt": "解析済みの例「{name}」のダウンロードが壊れていたため削除しました。もう一度開いてください。"
+  "err.example_corrupt": "解析済みの例「{name}」のダウンロードが壊れていたため削除しました。もう一度開いてください。",
+  "err.examples_missing": "この版の解析済みの例はまだ公開されていません。公開済みの例は {url} にあります。"
 }

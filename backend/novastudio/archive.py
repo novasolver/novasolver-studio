@@ -14,6 +14,7 @@ import secrets
 import shutil
 import time
 import zipfile
+import zlib
 from pathlib import Path
 
 from . import __version__, store
@@ -22,7 +23,7 @@ from .store import StudioError
 
 FORMAT = 1
 MAX_ENTRIES = 2000
-MAX_TOTAL = 2 * 1024 ** 3
+MAX_TOTAL = 1024 ** 3                  # held in memory while checked; the largest solved example is ~10 MB
 MAX_RATIO = 200
 EPOCH = (2026, 1, 1, 0, 0, 0)
 TEXT = ('.json', '.log', '.txt')
@@ -32,6 +33,26 @@ SKIP = {'of_location.txt', 'STOP', '.lock'}
 _JOB = r'r_[0-9a-z_]{4,40}'
 _ALLOWED = re.compile(rf'^(nscase\.json|case\.json|(geom|mesh|geometry)/[A-Za-z0-9_.-]+'
                       rf'|run/{_JOB}/(levels/(coarse|normal|fine)/(mesh/)?)?[A-Za-z0-9_.-]+)$')
+# Windows opens these as devices whatever the extension: geom/CON.json would write to the console, not a file.
+_RESERVED = re.compile(r'^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$', re.I)
+CAD_FILE = re.compile(r'^geometry/[A-Za-z0-9_.-]+\.(step|stp|iges|igs|brep|stl)$', re.I)
+
+
+def allowed(name: str) -> bool:
+    return (bool(_ALLOWED.match(name)) and name.lower().endswith(SUFFIXES) and '..' not in name.split('/')
+            and not any(_RESERVED.match(part) for part in name.split('/')))
+
+
+_STEP_FILE_NAME = re.compile(rb"FILE_NAME\s*\(.*?\)\s*;", re.S)
+
+
+def anonymous_step(data: bytes) -> bytes:
+    """CAD systems write the original full path, author and organisation into the STEP header."""
+    head, sep, body = data.partition(b'ENDSEC;')
+    if not sep:
+        return data
+    head = _STEP_FILE_NAME.sub(b"FILE_NAME('model.step','',(''),(''),'','','');", head, count=1)
+    return head + sep + body
 
 
 def _slug(case: dict) -> str:
@@ -70,6 +91,7 @@ def _finished_run(d: Path) -> Path | None:
 
 def _member(name: str, data: bytes, zf: zipfile.ZipFile) -> None:
     info = zipfile.ZipInfo(name, EPOCH)
+    info.create_system = 0                         # the same bytes from Windows and POSIX
     info.compress_type = zipfile.ZIP_DEFLATED
     info.external_attr = 0o644 << 16
     zf.writestr(info, data, compresslevel=6)
@@ -91,11 +113,15 @@ def export_case(case_id: str, include_results: bool = True, verification: dict |
         job = json.loads((jd / 'job.json').read_text(encoding='utf-8'))
         job.update(pid=None, pid_ctime=None)
         files[f'run/{jd.name}/job.json'] = json.dumps(job, ensure_ascii=False, indent=1).encode()
-        created = time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(job.get('updated_at') or job.get('created_at') or 0))
+        created = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(job.get('updated_at') or job.get('created_at') or 0))
     files['case.json'] = json.dumps(case, ensure_ascii=False, indent=1).encode()
+    # Only what import accepts (an engine's own subfolder such as run/<id>/ccx/ would make the archive unopenable).
+    files = {n: b for n, b in files.items() if allowed(n)}
     for name in list(files):
         if name.endswith(TEXT):
             files[name] = _scrub(files[name].decode('utf-8', errors='replace')).encode('utf-8')
+        elif CAD_FILE.match(name) and name.lower().endswith(('.step', '.stp')):
+            files[name] = anonymous_step(files[name])
     manifest = {'format': FORMAT, 'studio_version': __version__, 'template': case['template'],
                 'physics': case.get('physics', {}).get('kind'), 'created_at': created,
                 'case_id': case_id, 'run_id': jd.name if jd is not None else None,
@@ -125,11 +151,14 @@ def read_manifest(zf: zipfile.ZipFile) -> dict:
     if len(infos) > MAX_ENTRIES:
         _invalid('too_many', count=len(infos))
     total = 0
+    seen = set()
     for i in infos:
         name = i.filename
-        if (name.startswith(('/', '\\')) or '\\' in name or ':' in name or '..' in name.split('/')
-                or not _ALLOWED.match(name) or not name.lower().endswith(SUFFIXES)):
+        if name.startswith(('/', '\\')) or '\\' in name or ':' in name or not allowed(name):
             _invalid('path', path=name[:120])
+        if name.casefold() in seen:                                # mesh/key.txt and mesh/KEY.txt are one file on Windows
+            _invalid('path', path=name[:120])
+        seen.add(name.casefold())
         if (i.external_attr >> 16) & 0o170000 == 0o120000:        # symlink
             _invalid('path', path=name[:120])
         total += i.file_size
@@ -138,18 +167,37 @@ def read_manifest(zf: zipfile.ZipFile) -> dict:
     if total > MAX_TOTAL:
         _invalid('size')
     try:
-        manifest = json.loads(zf.read('nscase.json'))
+        manifest = json.loads(_read(zf, 'nscase.json', 4 * 1024 ** 2))
     except (KeyError, ValueError):
         _invalid('manifest')
     if not isinstance(manifest, dict) or not isinstance(manifest.get('format'), int):
         _invalid('manifest')
     if manifest['format'] > FORMAT:
         raise StudioError('err.archive_newer', 400, version=str(manifest.get('studio_version', '?')))
-    listed = {f.get('path'): f for f in manifest.get('files', []) if isinstance(f, dict)}
+    files = manifest.get('files')
+    if not isinstance(files, list) or not all(
+            isinstance(f, dict) and isinstance(f.get('path'), str) and isinstance(f.get('size'), int)
+            and 0 <= f['size'] <= MAX_TOTAL and isinstance(f.get('sha256'), str) for f in files):
+        _invalid('manifest')
+    listed = {f['path'] for f in files}
     names = {i.filename for i in infos} - {'nscase.json'}
-    if set(listed) != names or 'case.json' not in names:
+    if listed != names or len(listed) != len(files) or 'case.json' not in names or sum(f['size'] for f in files) > MAX_TOTAL:
         _invalid('manifest')
     return manifest
+
+
+def _read(zf: zipfile.ZipFile, name: str, limit: int) -> bytes:
+    """Inflate in chunks, counting real bytes: the sizes in the zip headers are the sender's claim."""
+    out, got = [], 0
+    with zf.open(name) as fh:
+        while True:
+            chunk = fh.read(1 << 20)
+            if not chunk:
+                return b''.join(out)
+            got += len(chunk)
+            if got > limit:
+                _invalid('size')
+            out.append(chunk)
 
 
 def import_case(path: str | None = None, data: bytes | None = None, example: str | None = None) -> tuple[str, list[str]]:
@@ -159,32 +207,41 @@ def import_case(path: str | None = None, data: bytes | None = None, example: str
             raise StudioError('err.cad_missing', 404, path=Path(path or '').name)
         data = Path(path).read_bytes()
     try:
-        zf = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            manifest = read_manifest(zf)
+            contents, total = {}, 0
+            for f in manifest['files']:
+                b = _read(zf, f['path'], f['size'])       # never more than the manifest promised
+                total += len(b)
+                if len(b) != f['size'] or hashlib.sha256(b).hexdigest() != f['sha256']:
+                    _invalid('hash', path=f['path'][:120])
+                contents[f['path']] = b
+    except StudioError:
+        raise
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, NotImplementedError, RuntimeError, EOFError, OSError,
+            ValueError, zlib.error):
         _invalid('zip')
-    with zf:
-        manifest = read_manifest(zf)
-        contents = {}
-        for f in manifest['files']:
-            b = zf.read(f['path'])
-            if len(b) != f.get('size') or hashlib.sha256(b).hexdigest() != f.get('sha256'):
-                _invalid('hash', path=f['path'][:120])
-            contents[f['path']] = b
     from .templates import TEMPLATES
     try:
         case = json.loads(contents['case.json'])
         old = case['case_id']
         ok = (store._ID.match(old) and case['template'] in TEMPLATES and isinstance(case['revision'], int)
               and all(isinstance(case.get(k), dict) for k in ('geometry', 'physics', 'materials', 'boundaries', 'mesh', 'run')))
-    except (ValueError, KeyError, TypeError):
+        # geometry.file is joined to the case folder by the mesher: an absolute or ../ value would read any file
+        cad = case['geometry'].get('file') if ok else None
+        if cad is not None and not (isinstance(cad, str) and CAD_FILE.match(cad) and cad in contents):
+            ok = False
+    except (ValueError, KeyError, TypeError, AttributeError):
         ok = False
     if not ok:
         _invalid('manifest')
+    # Run-time keys (a convergence level's _mesh_dir) are paths of the sending machine.
+    contents['case.json'] = json.dumps({k: v for k, v in case.items() if not k.startswith('_')}, ensure_ascii=False, indent=1).encode()
     new = store.new_id()
     while (store.cases_dir() / new).exists():
         new = store.new_id()
     runs = sorted({p.split('/')[1] for p in contents if p.startswith('run/')})
-    job_ids = {r: 'r_' + time.strftime('%Y%m%d_%H%M%S') + '_' + secrets.token_hex(2) for r in runs}
+    job_ids = {r: 'r_' + time.strftime('%Y%m%d_%H%M%S') + '_' + secrets.token_hex(4) for r in runs}
     warnings = []
 
     def rename(b: bytes) -> bytes:

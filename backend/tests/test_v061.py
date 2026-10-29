@@ -129,6 +129,68 @@ def test_symlink_hash_and_count_rejected():
     assert e.value.key == 'err.archive_too_many'
 
 
+def test_review_findings_archive_hardening(tmp_path):
+    from novastudio import archive
+    # 1. an engine subfolder (CalculiX writes run/<id>/ccx/ccx.log) is left out, so the archive still opens
+    cid = solved()
+    jd = next((store.case_dir(cid) / 'run').glob('r_*'))
+    (jd / 'ccx').mkdir(exist_ok=True); (jd / 'ccx' / 'ccx.log').write_text('x')
+    path = Path(C.export_case(cid, lang='en')['path'])
+    with zipfile.ZipFile(path) as zf:
+        assert all(archive.allowed(n) for n in zf.namelist())
+    C.import_case(path=str(path), lang='en')
+    # 4. Windows device names and case-only duplicates
+    for entries in ({'case.json': CASE, 'geom/CON.json': b'{}'}, {'case.json': CASE, 'geom/nul.npz': b'x'},
+                    {'case.json': CASE, 'mesh/key.txt': b'a', 'mesh/KEY.txt': b'b'}):
+        with pytest.raises(StudioError) as e:
+            C.import_case(data=make_zip(entries), lang='en')
+        assert e.value.key == 'err.archive_path'
+    # 2. a header that lies about the size cannot inflate more than the manifest promised
+    big = b'0' * (20 * 1024 ** 2)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('nscase.json', json.dumps({'format': 1, 'files': [
+            {'path': 'case.json', 'size': len(CASE), 'sha256': hashlib.sha256(CASE).hexdigest()},
+            {'path': 'mesh/a.json', 'size': 10, 'sha256': '0' * 64}]}))
+        zf.writestr('case.json', CASE)
+        zf.writestr('mesh/a.json', big)
+    raw = buf.getvalue()
+    # rewrite the local and central header sizes of mesh/a.json to 10 bytes
+    raw = raw.replace(len(big).to_bytes(4, 'little'), (10).to_bytes(4, 'little'))
+    with pytest.raises(StudioError) as e:
+        C.import_case(data=raw, lang='en')
+    assert e.value.key in ('err.archive_size', 'err.archive_zip', 'err.archive_hash')
+    # 3. malformed manifests are a clean 400, not a crash
+    for files in ('x', [{'path': 1}], [{'path': 'case.json', 'size': '1', 'sha256': 'x'}]):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as zf:
+            zf.writestr('nscase.json', json.dumps({'format': 1, 'files': files}))
+            zf.writestr('case.json', CASE)
+        with pytest.raises(StudioError) as e:
+            C.import_case(data=buf.getvalue(), lang='en')
+        assert e.value.key == 'err.archive_manifest'
+    # 5. geometry.file must stay inside the archive
+    exported = zipfile.ZipFile(path)
+    case = json.loads(exported.read('case.json'))
+    for bad in ('C:\\Windows\\win.ini', '../../x.step', 'geometry/missing.step'):
+        c = {**case, 'geometry': {**case['geometry'], 'kind': 'import', 'file': bad}}
+        b = json.dumps(c).encode()
+        entries = {n: exported.read(n) for n in exported.namelist() if n != 'nscase.json'} | {'case.json': b}
+        with pytest.raises(StudioError) as e:
+            C.import_case(data=make_zip(entries), lang='en')
+        assert e.value.key == 'err.archive_manifest'
+
+
+def test_step_header_is_anonymised():
+    from novastudio import archive
+    step = (b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('x'),'2;1');\n"
+            b"FILE_NAME('C:\\\\Users\\\\someone\\\\part.step','2026-01-01',('Some Author'),('Some Org'),'pp','sys','');\n"
+            b"FILE_SCHEMA(('AP214'));\nENDSEC;\nDATA;\n#1=CARTESIAN_POINT('',(0.,0.,0.));\nENDSEC;\nEND-ISO-10303-21;\n")
+    out = archive.anonymous_step(step)
+    assert b'someone' not in out and b'Some Author' not in out and b'Some Org' not in out
+    assert out.endswith(step[step.index(b'ENDSEC;'):])
+
+
 def test_newer_format_refused():
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w') as zf:

@@ -546,7 +546,7 @@
   "err.archive_zip": "This file cannot be read as a .nscase (zip) archive.",
   "err.archive_path": "The archive contains a path that is not allowed: {path}. It was not opened, for safety.",
   "err.archive_ratio": "The archive entry {path} is compressed suspiciously well, so it was not opened.",
-  "err.archive_size": "The archive is too large (at most 2 GB uncompressed).",
+  "err.archive_size": "The archive is too large (at most 1 GB uncompressed).",
   "err.archive_too_many": "The archive has too many files ({count}; the limit is 2000).",
   "err.archive_manifest": "The archive manifest (nscase.json) is missing or does not match the contents.",
   "err.archive_hash": "The archive entry {path} is damaged (its SHA-256 does not match).",
@@ -554,5 +554,6 @@
   "warn.archive_results_dropped": "The result could not be read by this Studio and was left out. The case opens; run it again.",
   "err.examples_offline": "Could not fetch the solved examples (offline). Download a .nscase from {url} and use Open case file.",
   "err.example_unknown": "There is no solved example named \"{name}\". Check the names with list_examples.",
-  "err.example_corrupt": "The download of the solved example \"{name}\" was damaged and has been deleted. Open it again."
+  "err.example_corrupt": "The download of the solved example \"{name}\" was damaged and has been deleted. Open it again.",
+  "err.examples_missing": "No solved examples are published for this version yet. Published examples are at {url}."
 }

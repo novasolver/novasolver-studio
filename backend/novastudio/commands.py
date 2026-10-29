@@ -380,7 +380,7 @@ def open_sample(name: str, physics: str | None = None, lang: str = "ja") -> dict
     return import_geometry(physics or s["physics"], s["file"], path=str(_samples_dir() / s["file"]), lang=lang)
 
 
-MAX_ARCHIVE_BYTES = 2 * 1024 ** 3
+MAX_ARCHIVE_BYTES = 1024 ** 3
 
 
 def export_case(case_id: str, include_results: bool = True, lang: str = "ja") -> dict:
@@ -400,7 +400,8 @@ def export_case(case_id: str, include_results: bool = True, lang: str = "ja") ->
 def import_case(path: str | None = None, data: bytes | None = None, lang: str = "ja", example: str | None = None) -> dict:
     """Open a .nscase archive as a new case; a result inside it opens as the current result."""
     from . import archive
-    if path is not None and Path(path).is_file() and Path(path).stat().st_size > MAX_ARCHIVE_BYTES:
+    if (path is not None and Path(path).is_file() and Path(path).stat().st_size > MAX_ARCHIVE_BYTES) or \
+            (data is not None and len(data) > MAX_ARCHIVE_BYTES):
         raise StudioError("err.archive_size", 400)
     cid, warns = archive.import_case(path, data, example)
     try:

@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -68,9 +69,12 @@ def index() -> dict:
             raise ValueError('index')
         _write(cached, data)
         return {**parsed, 'offline': False}
-    except (OSError, ValueError):
+    except (OSError, ValueError) as e:
         if cached.is_file():
             return {**json.loads(cached.read_text(encoding='utf-8')), 'offline': True}
+        # reachable but not published (a release without examples, or a development version): not "offline"
+        if isinstance(e, urllib.error.HTTPError) and e.code == 404:
+            raise StudioError('err.examples_missing', 404, url=release_page())
         raise StudioError('err.examples_offline', 503, url=release_page())
 
 

@@ -283,9 +283,12 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
     snapshots,curve,histories = [],[],[]
     current,failed = 0.,False
     limit_control = not prescribed and any(p.get('model') == 'elastoplastic' and p.get('H',p['E']/100) == 0 for _,p in groups)
-    plastic_elements = np.zeros(len(tets),bool)
+    plastic_elements = np.zeros(len(tets),bool); yield_stress = np.full(len(tets),np.inf); hardening = np.zeros(len(tets))
     for idx,p in groups:
-        plastic_elements[idx] = p.get('model') == 'elastoplastic'
+        if p.get('model') == 'elastoplastic':
+            plastic_elements[idx] = True; yield_stress[idx] = p['sy']
+            H = p.get('H',p['E']/100); hardening[idx] = p['E']*H/(p['E']-H)
+    to_corners = np.linalg.inv(fem.LG)
     minimum_increment = 1/count/(64 if limit_control else 2**8)
     last = None; attempts = 0; increment = 1/count; target_index = 0
     iterations = 0
@@ -418,9 +421,13 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
         previous_u,previous_fraction = u,current
         u,lam,current = trial_u,trial_lam,fraction
         mech.ep,mech.peeq = ep,eq
-        sn = fem.gauss_to_nodes(tets,sg,n,flat=plastic_elements)
+        # Average only where extrapolation would leave the current yield surface: an elastic notch keeps the
+        # extrapolated peak a linear model shows, a yielded hinge and its neighbours stay at sy.
+        corner_vm = von_mises(np.einsum('cg,egk->eck',to_corners,sg)).max(axis=1)
+        flat = plastic_elements & (corner_vm > (yield_stress+hardening*np.asarray(eq).max(axis=1))*(1+1e-9))
+        sn = fem.gauss_to_nodes(tets,sg,n,flat=flat)
         fields = {'u':u.reshape(-1,3).copy(),'s':sn,'vm':von_mises(sn),
-                  'peeq':np.maximum(fem.gauss_to_nodes(tets,eq,n,flat=plastic_elements),0)}
+                  'peeq':np.maximum(fem.gauss_to_nodes(tets,eq,n,flat=flat),0)}
         cf,interfaces,comp = contact.fields(u,lam,fraction)
         contact.commit(u,lam,fraction)
         if contact_pairs:

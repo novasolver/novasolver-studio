@@ -117,6 +117,8 @@ async def open_sample(name: str, physics: str | None = None, lang: str = "ja"):
 @app.post("/api/import-case")
 async def import_case(request: Request, lang: str = "ja"):
     """Raw .nscase bytes in the body."""
+    if int(request.headers.get("content-length") or 0) > C.MAX_ARCHIVE_BYTES:
+        raise StudioError("err.archive_size", 400)
     return await call(C.import_case, None, await request.body(), lang)
 
 
@@ -128,7 +130,7 @@ async def examples_(lang: str = "ja"):
     try:
         return await call(C.list_examples, lang)
     except StudioError as e:
-        if e.key != "err.examples_offline":
+        if e.key not in ("err.examples_offline", "err.examples_missing"):
             raise
         # Not an error for the Start screen: it shows one line and the download page instead of the list.
         from .examples import release_page
@@ -138,11 +140,17 @@ async def examples_(lang: str = "ja"):
 
 @app.post("/api/examples/{name}")
 async def open_example(name: str, lang: str = "ja"):
-    _downloads[name] = [0, 0]
+    # One entry per request: a second open of the same example must not remove the first one's progress.
+    mine = [0, 0]
+    _downloads[name] = mine
+
+    def progress(got, total):
+        mine[:] = [got, total]
     try:
-        return await call(C.open_example, name, lang, lambda got, total: _downloads.__setitem__(name, [got, total]))
+        return await call(C.open_example, name, lang, progress)
     finally:
-        _downloads.pop(name, None)
+        if _downloads.get(name) is mine:
+            _downloads.pop(name, None)
 
 
 @app.get("/api/examples/{name}/progress")
