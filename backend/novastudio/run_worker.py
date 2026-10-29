@@ -780,27 +780,69 @@ def _acquire_solver_slot(jd: Path) -> Path:
     base = data_dir()
     base.mkdir(parents=True, exist_ok=True)
     slot = base / "solver.lock"
-    while True:
-        try:
-            os.mkdir(slot)
-            (slot / "owner.json").write_text(json.dumps({"pid": os.getpid(), "job": jd.name,
-                                                         "ctime": psutil.Process().create_time()}))
-            return slot
-        except FileExistsError:
-            o = {}
+    # First come, first served: waiters used to race for the slot, and a job queued for an hour lost every race
+    # to jobs started after it. Each waiter holds a ticket; only the oldest live ticket may take the slot.
+    queue = base / "solver.queue"
+    queue.mkdir(exist_ok=True)
+    me = {"pid": os.getpid(), "ctime": psutil.Process().create_time(), "job": jd.name}
+    ticket = queue / f"{time.time_ns():020d}_{jd.name}.json"
+    ticket.write_text(json.dumps(me))
+
+    def first_in_line() -> bool:
+        for t in sorted(queue.glob("*.json")):
+            if t == ticket:
+                return True
             try:
-                o = json.loads((slot / "owner.json").read_text())
-                alive = psutil.pid_exists(o["pid"]) and abs(psutil.Process(o["pid"]).create_time() - o["ctime"]) < 1
-            except Exception:
-                alive = (time.time() - slot.stat().st_mtime) < 10      # owner file not written yet
-            if not alive:
-                import shutil
-                shutil.rmtree(slot, ignore_errors=True)
+                o = json.loads(t.read_text())
+                if psutil.pid_exists(o["pid"]) and abs(psutil.Process(o["pid"]).create_time() - o["ctime"]) < 1:
+                    return False                               # an older waiter is alive: it goes first
+            except (OSError, ValueError, KeyError, psutil.Error):
+                try:
+                    if time.time() - t.stat().st_mtime < 10:
+                        return False                           # being written right now
+                except OSError:
+                    continue                                   # its owner just removed it
+            t.unlink(missing_ok=True)                          # a waiter that died
+        return True
+
+    try:
+        while True:
+            if not first_in_line():
+                if (jd / "STOP").exists():
+                    raise RuntimeError("stopped while waiting for another job")
+                update(jd, state="queued", message_key="job.waiting", message_args={"other": ""})
+                time.sleep(1.0)
                 continue
-            if (jd / "STOP").exists():
-                raise RuntimeError("stopped while waiting for another job")
-            update(jd, state="queued", message_key="job.waiting", message_args={"other": o.get("job", "")})
-            time.sleep(1.0)
+            try:
+                os.mkdir(slot)
+                (slot / "owner.json").write_text(json.dumps({"pid": os.getpid(), "job": jd.name,
+                                                             "ctime": psutil.Process().create_time()}))
+                return slot
+            except FileExistsError:
+                _wait_for_owner(jd, slot, psutil)
+    finally:
+        ticket.unlink(missing_ok=True)
+
+
+def _wait_for_owner(jd: Path, slot: Path, psutil) -> None:
+    """The slot is taken: reclaim it if its owner died, otherwise wait a second."""
+    o = {}
+    try:
+        o = json.loads((slot / "owner.json").read_text())
+        alive = psutil.pid_exists(o["pid"]) and abs(psutil.Process(o["pid"]).create_time() - o["ctime"]) < 1
+    except Exception:
+        try:
+            alive = (time.time() - slot.stat().st_mtime) < 10        # owner file not written yet
+        except OSError:
+            return                                                    # released meanwhile: try again at once
+    if not alive:
+        import shutil
+        shutil.rmtree(slot, ignore_errors=True)
+        return
+    if (jd / "STOP").exists():
+        raise RuntimeError("stopped while waiting for another job")
+    update(jd, state="queued", message_key="job.waiting", message_args={"other": o.get("job", "")})
+    time.sleep(1.0)
 
 
 def _release_solver_slot(slot: Path) -> None:
