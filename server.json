@@ -8,12 +8,12 @@
     "source": "github"
   },
   "websiteUrl": "https://novasolver.jp/en/studio/",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/novasolver/novasolver-studio/releases/download/v0.6.0/novasolver-studio-0.6.0-win64.mcpb",
-      "fileSha256": "26e311dbfd37bf2dcd5dec452c62d6904154953ac77f3a6e83f3b0f51879f583",
+      "identifier": "https://github.com/novasolver/novasolver-studio/releases/download/v0.6.1/novasolver-studio-0.6.1-win64.mcpb",
+      "fileSha256": "f2d0736df31523f42ccf04cc871149a33b3361b262cbdba85cc8ca5dffec7800",
       "transport": {
         "type": "stdio"
       }
