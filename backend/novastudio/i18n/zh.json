@@ -542,5 +542,17 @@
   "verify.history_missing": "求解器未返回载荷历程，无法验证极限载荷。",
   "result.limit_reached": "已达到极限载荷；最后收敛的载荷系数为 {fraction:.6g}。",
   "check.contact_large_deformation": "接触仅支持小滑移和小转动。请关闭大变形，或将所有界面设为粘结。",
-  "err.final_body_temperatures": "CalculiX无法表示按单元指定的实体温度。此热载荷请使用内置求解器。"
+  "err.final_body_temperatures": "CalculiX无法表示按单元指定的实体温度。此热载荷请使用内置求解器。",
+  "err.archive_zip": "无法将此文件作为 .nscase（zip）读取。",
+  "err.archive_path": "归档中包含不允许的路径：{path}。为安全起见未打开。",
+  "err.archive_ratio": "归档条目 {path} 的压缩率异常高，未打开。",
+  "err.archive_size": "归档过大（解压后最多 2 GB）。",
+  "err.archive_too_many": "归档中的文件过多（{count} 个，上限 2000）。",
+  "err.archive_manifest": "归档清单（nscase.json）缺失或与内容不一致。",
+  "err.archive_hash": "归档条目 {path} 已损坏（SHA-256 不一致）。",
+  "err.archive_newer": "此案例由较新的 Studio（{version}）导出。请更新 Studio 后再打开。",
+  "warn.archive_results_dropped": "此版本的 Studio 无法读取其结果，已省略。案例可以打开，请重新计算。",
+  "err.examples_offline": "无法获取已求解示例（离线）。可从 {url} 下载 .nscase，然后用“打开案例文件”打开。",
+  "err.example_unknown": "没有名为“{name}”的已求解示例。请用 list_examples 查看名称。",
+  "err.example_corrupt": "已求解示例“{name}”的下载已损坏并已删除。请重新打开。"
 }

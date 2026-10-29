@@ -3,6 +3,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { api, ApiError, connectEvents, faceRolePath, initApi, isMock, setApiLang, type CaseSummary } from "../api/client";
 import type {
   CasePayload,
+  ExamplesPayload,
   FieldPayload,
   GeometryPayload,
   Job,
@@ -48,6 +49,9 @@ export interface State {
   samples: Sample[];
   recent: CaseSummary[];
   importing: string | null; // file being imported
+  examples: ExamplesPayload | null;
+  examplesState: "idle" | "loading" | "ready" | "error";
+  exampleOpening: { name: string; bytes: number; total: number } | null;
   payload: CasePayload | null;
   geometry: GeometryPayload | null;
   step: StepId;
@@ -109,6 +113,9 @@ let state: State = {
   samples: [],
   recent: [],
   importing: null,
+  examples: null,
+  examplesState: "idle",
+  exampleOpening: null,
   payload: null,
   geometry: null,
   step: "geometry",
@@ -345,6 +352,7 @@ export async function setLang(lang: Lang) {
     /* ignore */
   }
   // backend-localized text (labels, check messages) must be refetched
+  if (state.examplesState === "ready") void loadExamples(true);
   api
     .templates()
     .then(({ templates }) => setState({ templates }))
@@ -458,6 +466,58 @@ export async function createSample(id: string, physics: string) {
   }
 }
 
+/** Solved examples: fetched on demand, since the list comes from GitHub. */
+export async function loadExamples(force = false) {
+  if (isMock() || (!force && (state.examplesState === "loading" || state.examplesState === "ready"))) return;
+  setState({ examplesState: "loading" });
+  try {
+    setState({ examples: await api.examples(), examplesState: "ready" });
+  } catch (e) {
+    setState({ examplesState: "error" });
+    log("error", t("log.error", { message: errMsg(e) }));
+  }
+}
+
+/** Download (if needed) and open a solved example, straight into its results. */
+export async function openExample(name: string) {
+  if (state.creating || state.importing || state.exampleOpening) return;
+  setState({ exampleOpening: { name, bytes: 0, total: 0 } });
+  const timer = setInterval(() => {
+    api.exampleProgress(name).then((p) => {
+      if (p.active && state.exampleOpening?.name === name) setState({ exampleOpening: { name, bytes: p.bytes, total: p.total } });
+    }).catch(() => {});
+  }, 400);
+  try {
+    const p = await api.openExample(name);
+    openPayload(p, "results");
+    log("ok", t("examples.opened", { title: caseTitle(p) }));
+    setState({ examples: state.examples && { ...state.examples, examples: state.examples.examples.map((x) => (x.name === name ? { ...x, cached: true } : x)) } });
+  } catch (e) {
+    log("error", t("log.error", { message: errMsg(e) }));
+    toast(errMsg(e), "error");
+  } finally {
+    clearInterval(timer);
+    setState({ exampleOpening: null });
+  }
+}
+
+/** Open a .nscase case file. */
+export async function importArchiveFile(file: File) {
+  if (state.importing) return;
+  setState({ importing: file.name });
+  try {
+    const p = await api.importArchive(file);
+    openPayload(p, p.latest_run ? "results" : "geometry");
+    log("ok", t("archive.opened", { name: file.name }));
+    for (const w of (p as CasePayload & { import_warnings?: string[] }).import_warnings ?? []) toast(w, "info");
+  } catch (e) {
+    log("error", t("log.error", { message: errMsg(e) }));
+    toast(errMsg(e), "error");
+  } finally {
+    setState({ importing: null });
+  }
+}
+
 export const CAD_EXTENSIONS = [".step", ".stp", ".iges", ".igs", ".brep", ".stl"];
 
 /** Import a CAD file (raw body upload) as a new case. */
@@ -498,13 +558,13 @@ export async function openCase(id: string) {
   }
 }
 
-function openPayload(p: CasePayload) {
+function openPayload(p: CasePayload, step: StepId = "geometry") {
   const running = p.jobs?.find(isActive) ?? null;
   ownRevisions.clear();
   setState({
     payload: p,
     geometry: null,
-    step: "geometry",
+    step,
     selectedFaces: [],
     hiddenFaces: [], seeThrough: false, faceFilter: null, resultsBeforeUndo: false,
     hoverFace: null,

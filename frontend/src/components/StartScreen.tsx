@@ -1,13 +1,15 @@
 import { FileUp, FolderOpen, MessagesSquare, ShieldCheck, TriangleAlert } from "lucide-react";
-import { createCase, createSample, openCase, useStore, useT } from "../state/store";
+import { useEffect, useRef } from "react";
+import { createCase, createSample, loadExamples, openCase, openExample, useStore, useT } from "../state/store";
 import { pick } from "../i18n";
-import type { Lang, Sample, Template } from "../api/types";
+import type { Example, Lang, Sample, Template } from "../api/types";
+import { fmt, fmtSignedPct, unitLabel } from "../lib/units";
 import { Spinner, Kbd, Chip } from "./ui/misc";
 import { Button } from "./ui/Button";
 import { Tooltip } from "./ui/Tooltip";
 import { cn } from "./ui/cn";
 import { MOD, summaryTitle } from "./TopBar";
-import { CAD_PHYSICS, PHYSICS_ICON, pickCadFile } from "./ImportCad";
+import { CAD_PHYSICS, PHYSICS_ICON, pickArchiveFile, pickCadFile } from "./ImportCad";
 
 // Line art: accent strokes + text-3 context lines, on the sunken well.
 const S = "var(--accent-fill)";
@@ -351,7 +353,13 @@ function ImportPanel() {
                 </Tooltip>
               );
             })}
-
+            <span className="mx-1 h-5 w-px bg-line-strong" />
+            <Tooltip content={mock ? t("import.needsBackend") : t("archive.openHint")} side="top">
+              <Button variant="ghost" size="lg" disabled={mock} onClick={() => pickArchiveFile()}>
+                <FolderOpen size={14} strokeWidth={1.5} />
+                {t("archive.open")}
+              </Button>
+            </Tooltip>
           </div>
         )}
       </div>
@@ -362,6 +370,108 @@ function ImportPanel() {
             <SampleButton key={s.id} s={s} />
           ))}
         </div>
+      )}
+    </section>
+  );
+}
+
+function ExampleRow({ e }: { e: Example }) {
+  const t = useT();
+  const opening = useStore((s) => s.exampleOpening);
+  const busy = useStore((s) => !!s.creating || !!s.importing || !!s.exampleOpening);
+  const mine = opening?.name === e.name;
+  const frac = mine && opening.total > 0 ? opening.bytes / opening.total : null;
+  const unit = unitLabel(e.reference.unit);
+  return (
+    <li className="flex min-h-12 items-center gap-3 border-b border-line px-4 py-2 last:border-b-0">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-body font-medium text-fg">{e.title}</span>
+        <span className="block truncate text-label text-fg-3">{e.reference.label}</span>
+      </span>
+      <span className="tnum hidden shrink-0 whitespace-nowrap text-right text-label text-fg-2 md:block">
+        {t("examples.compare", { ref: `${fmt(e.reference.value)} ${unit}`, got: `${fmt(e.result.value)} ${unit}` })}
+      </span>
+      <Chip className="tnum w-[72px] shrink-0 justify-end text-green">
+        <ShieldCheck size={12} />
+        {fmtSignedPct(e.error_pct)}
+      </Chip>
+      <span className="tnum hidden w-14 shrink-0 text-right text-label text-fg-3 sm:block">
+        {e.cached ? t("examples.downloaded") : `${(e.size / 1e6).toFixed(1)} MB`}
+      </span>
+      <span className="flex w-[88px] shrink-0 justify-end">
+        {mine ? (
+          frac == null ? (
+            <Spinner />
+          ) : (
+            <span className="h-1 w-full overflow-hidden rounded-full bg-raised" aria-label={t("examples.downloading")}>
+              <span className="block h-full rounded-full bg-accent-fill transition-[width] duration-300 ease-[var(--ease-out)]" style={{ width: `${frac * 100}%` }} />
+            </span>
+          )
+        ) : (
+          <Button variant="secondary" disabled={busy} onClick={() => void openExample(e.name)}>
+            {t("examples.open")}
+          </Button>
+        )}
+      </span>
+    </li>
+  );
+}
+
+/** Solved verification cases from the GitHub release. Fetched only when the section comes into view. */
+function ExamplesSection() {
+  const t = useT();
+  const mock = useStore((s) => s.mode === "mock");
+  const state = useStore((s) => s.examplesState);
+  const data = useStore((s) => s.examples);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || mock) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((x) => x.isIntersecting)) {
+        void loadExamples();
+        io.disconnect();
+      }
+    }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [mock]);
+  if (mock) return null;
+  return (
+    <section ref={ref} className="mt-10">
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 className="text-label font-medium text-fg-2">{t("examples.title")}</h2>
+        <p className="prose-ui text-label text-fg-3">{t("examples.subtitle")}</p>
+      </div>
+      {state !== "ready" || !data ? (
+        <div className="flex h-11 items-center gap-2 text-body text-fg-3">
+          {state === "error" ? (
+            <>
+              {t("examples.failed")}
+              <Button variant="ghost" onClick={() => void loadExamples(true)}>{t("examples.retry")}</Button>
+            </>
+          ) : (
+            <>
+              <Spinner /> {t("common.loading")}
+            </>
+          )}
+        </div>
+      ) : data.unavailable || data.examples.length === 0 ? (
+        <p className="prose-ui text-body text-fg-2">
+          {data.message ?? t("examples.none")}{" "}
+          <a href={data.release_page} target="_blank" rel="noreferrer" className="text-accent-text hover:underline">
+            {t("examples.releasePage")}
+          </a>
+        </p>
+      ) : (
+        <>
+          <ul className="overflow-hidden rounded-[10px] border border-line bg-surface">
+            {data.examples.map((e) => (
+              <ExampleRow key={e.name} e={e} />
+            ))}
+          </ul>
+          {data.offline && <p className="mt-2 text-label text-fg-3">{t("examples.offlineCached")}</p>}
+        </>
       )}
     </section>
   );
@@ -398,6 +508,7 @@ export function StartScreen() {
                 {templates.filter((tpl) => tpl.physics === "electric").map((tpl) => <TemplateCard key={tpl.id} tpl={tpl} />)}
               </div>
             </section>}
+            <ExamplesSection />
           </>
         )}
 

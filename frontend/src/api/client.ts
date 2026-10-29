@@ -3,6 +3,7 @@
 
 import type {
   CasePayload,
+  ExamplesPayload,
   FieldPayload,
   GeometryPayload,
   Job,
@@ -134,7 +135,32 @@ async function importCad(file: File, physics: "structural" | "thermal" | "flow" 
   return data as CasePayload;
 }
 
+/** Download URL of a case archive (.nscase), with or without its latest result. */
+export function archiveUrl(caseId: string, results: boolean): string {
+  return withLang(`/api/cases/${encodeURIComponent(caseId)}/archive?results=${results}`);
+}
+
+/** Upload a .nscase archive as the raw request body. */
+async function importArchive(file: File): Promise<CasePayload> {
+  if (mock) throw new ApiError(501, null, "Opening a case file needs the Studio backend.");
+  const res = await fetch(withLang("/api/import-case"), { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
+  const text = await res.text();
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+  if (!res.ok) throw new ApiError(res.status, data, errorText(data) ?? `HTTP ${res.status}`);
+  return data as CasePayload;
+}
+
 export const api = {
+  examples: () => request<ExamplesPayload>("GET", "/api/examples"),
+  openExample: (name: string) => request<CasePayload>("POST", `/api/examples/${encodeURIComponent(name)}`),
+  exampleProgress: (name: string) =>
+    request<{ bytes: number; total: number; active: boolean }>("GET", `/api/examples/${encodeURIComponent(name)}/progress`),
+  importArchive,
   undo: (id: string, expected_revision: number, redo = false) =>
     request<CasePayload>('POST', `/api/cases/${encodeURIComponent(id)}/${redo ? 'redo' : 'undo'}`, { expected_revision }),
   guiState: (body: { case_id: string | null; revision: number; step: string; selected: string[]; hidden: string[] }) =>

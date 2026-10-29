@@ -13,6 +13,8 @@ const WIDTH = 200;
 function tickFormat(lo: number, hi: number): (v: number, sig: number) => string {
   const step = (hi - lo) / 4;
   const mag = Math.max(Math.abs(lo), Math.abs(hi));
+  // A uniform field (a bar in pure tension) differs only by rounding noise: fixed decimals would print 283.14000000.
+  if (step > 0 && step / mag < 1e-6) return (v) => fmt(v, 4);   // every tick the same value, not 283 / 280
   if (!(step > 0) || mag >= 1e6 || step / mag > 0.01) return (v, sig) => fmt(v, sig);
   const dec = Math.min(8, Math.max(0, Math.ceil(-Math.log10(step))));
   return (v) => (v === 0 ? "0" : v.toFixed(dec).replace(/^-/, "−"));

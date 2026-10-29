@@ -4,7 +4,9 @@ import {
   Box,
   ChartSpline,
   CornerDownLeft,
+  Download,
   FileUp,
+  FolderOpen,
   Frame,
   Languages,
   Maximize,
@@ -26,6 +28,7 @@ import {
   checkConvergence,
   closeCase,
   generateMesh,
+  getState,
   goStep,
   runCase,
   setLang,
@@ -40,7 +43,8 @@ import {
   redoCase,
 } from "../state/store";
 import type { Lang } from "../api/types";
-import { CAD_PHYSICS, pickCadFile } from "./ImportCad";
+import { CAD_PHYSICS, pickArchiveFile, pickCadFile } from "./ImportCad";
+import { archiveUrl } from "../api/client";
 
 interface Cmd {
   id: string;
@@ -94,11 +98,22 @@ export function CommandPalette() {
         { id: "view-front", group: t("palette.group.view"), label: t("view.front"), icon: <Frame size={15} />, run: () => viewCmd("front") },
         { id: "view-top", group: t("palette.group.view"), label: t("view.top"), icon: <Frame size={15} />, run: () => viewCmd("top") },
         { id: "view-fit", group: t("palette.group.view"), label: t("view.fit"), icon: <Maximize size={15} />, hint: "F", run: () => viewCmd("fit") },
+        ...[true, false].map((withResults) => ({
+          id: withResults ? "archive-export" : "archive-export-case",
+          group: t("palette.group.app"),
+          label: t(withResults ? "archive.export" : "archive.exportCaseOnly"),
+          icon: <Download size={15} />,
+          run: () => {
+            const id = getState().payload?.case.case_id;
+            if (id) window.location.href = archiveUrl(id, withResults);
+          },
+        })),
       );
     }
     list.push(
       // every analysis the start screen can import (electrostatics and current were missing here)
       ...CAD_PHYSICS.map((ph) => ({ id: `import-${ph}`, group: t("palette.group.app"), label: t("cmd.import", { physics: t(`physics.${ph}`) }), icon: <FileUp size={15} />, run: () => pickCadFile(ph) })),
+      { id: "archive-open", group: t("palette.group.app"), label: t("archive.open"), icon: <FolderOpen size={15} />, run: () => pickArchiveFile() },
       { id: "new", group: t("palette.group.app"), label: t("cmd.newCase"), icon: <Plus size={15} />, run: () => closeCase() },
       { id: "theme", group: t("palette.group.app"), label: t("cmd.theme"), icon: <MoonStar size={15} />, run: () => toggleTheme() },
       { id: "brand", group: t("palette.group.app"), label: t("brand.toggle"), icon: <Stamp size={15} />, run: () => toggleBrandMark() },

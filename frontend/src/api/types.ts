@@ -113,6 +113,29 @@ export interface Sample {
   file: string;
 }
 
+/** A solved verification case published on GitHub (strings already in the request language). */
+export interface Example {
+  name: string;
+  template: string;
+  physics: string;
+  title: string;
+  description: string;
+  size: number;
+  error_pct: number;
+  reference: { label: string; value: number; unit: string };
+  result: { value: number; unit: string };
+  cached: boolean;
+}
+
+export interface ExamplesPayload {
+  examples: Example[];
+  offline: boolean;
+  release_page: string;
+  /** neither the network nor a cached list: show `message` and the release page */
+  unavailable?: boolean;
+  message?: string;
+}
+
 export interface MeshStats {
   nodes: number;
   elements: number;

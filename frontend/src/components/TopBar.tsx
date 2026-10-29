@@ -1,8 +1,8 @@
-import { FolderOpen, Languages, Moon, Plus, Search, Sparkles, Sun, Undo2, Redo2 } from "lucide-react";
+import { FolderOpen, Languages, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, Undo2, Redo2 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Select } from "./ui/Select";
 import { Tooltip } from "./ui/Tooltip";
-import { Kbd } from "./ui/misc";
+import { Chip, Kbd } from "./ui/misc";
 import { cn } from "./ui/cn";
 import { caseTitle, closeCase, openCase, setLang, toggleTheme, ui, useStore, useT, undoCase, redoCase } from "../state/store";
 import { pick } from "../i18n";
@@ -67,6 +67,20 @@ function CaseSwitcher() {
   );
 }
 
+/** A solved example keeps this mark until it is edited (its result then goes stale). */
+function ExampleChip() {
+  const t = useT();
+  const example = useStore((s) => (s.payload?.case as { provenance?: { imported_from?: { example?: string | null } } } | undefined)?.provenance?.imported_from?.example);
+  const fresh = useStore((s) => !!s.results && !s.results.stale && !!s.results.verification?.pass);
+  if (!example || !fresh) return null;
+  return (
+    <Chip className="hidden shrink-0 text-green lg:inline-flex">
+      <ShieldCheck size={12} />
+      {t("examples.chip")}
+    </Chip>
+  );
+}
+
 export function TopBar() {
   const t = useT();
   const lang = useStore((s) => s.lang);
@@ -88,6 +102,7 @@ export function TopBar() {
           <>
             <span className="mx-1 h-4 w-px bg-line-strong" />
             <CaseSwitcher />
+            <ExampleChip />
             <Tooltip content={history?.undo[0] ? t('undo.tooltip', { summary: history.undo[0].summary }) : t('undo.label')}>
               <Button variant="ghost" size="icon" disabled={busy || (!saving && !history?.undo.length)} aria-label={t('undo.label')} onClick={() => void undoCase()}><Undo2 size={16} strokeWidth={1.5} /></Button>
             </Tooltip>

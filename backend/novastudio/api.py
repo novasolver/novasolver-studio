@@ -114,6 +114,49 @@ async def open_sample(name: str, physics: str | None = None, lang: str = "ja"):
     return await call(C.open_sample, name, physics, lang)
 
 
+@app.post("/api/import-case")
+async def import_case(request: Request, lang: str = "ja"):
+    """Raw .nscase bytes in the body."""
+    return await call(C.import_case, None, await request.body(), lang)
+
+
+_downloads: dict[str, list[int]] = {}       # example name -> [bytes so far, total], for the GUI's progress bar
+
+
+@app.get("/api/examples")
+async def examples_(lang: str = "ja"):
+    try:
+        return await call(C.list_examples, lang)
+    except StudioError as e:
+        if e.key != "err.examples_offline":
+            raise
+        # Not an error for the Start screen: it shows one line and the download page instead of the list.
+        from .examples import release_page
+        return {"examples": [], "offline": True, "unavailable": True, "release_page": release_page(),
+                "message": C.error_payload(e, lang_of(lang))["message"]}
+
+
+@app.post("/api/examples/{name}")
+async def open_example(name: str, lang: str = "ja"):
+    _downloads[name] = [0, 0]
+    try:
+        return await call(C.open_example, name, lang, lambda got, total: _downloads.__setitem__(name, [got, total]))
+    finally:
+        _downloads.pop(name, None)
+
+
+@app.get("/api/examples/{name}/progress")
+async def example_progress(name: str):
+    got, total = _downloads.get(name, [0, 0])
+    return {"name": name, "bytes": got, "total": total, "active": name in _downloads}
+
+
+@app.get("/api/cases/{case_id}/archive")
+async def archive_case(case_id: str, results: bool = True, lang: str = "ja"):
+    r = await call(C.export_case, case_id, results, lang)
+    return FileResponse(r["path"], media_type="application/zip", filename=Path(r["path"]).name)
+
+
 @app.get("/api/cases/{case_id}")
 async def get_case(case_id: str, lang: str = "ja"):
     return await call(C.case_payload, case_id, lang)

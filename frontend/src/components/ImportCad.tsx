@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, FileUp, Thermometer, Waves, Wind, Zap } from "lucide-react";
-import { CAD_EXTENSIONS, importFile, useStore, useT } from "../state/store";
+import { CAD_EXTENSIONS, importArchiveFile, importFile, useStore, useT } from "../state/store";
 import { cn } from "./ui/cn";
 
 export type CadPhysics = "structural" | "thermal" | "flow" | "external" | "electrostatic" | "current";
@@ -27,6 +27,23 @@ export function pickCadFile(physics: CadPhysics) {
   input.addEventListener("change", () => {
     const f = input.files?.[0];
     if (f) void importFile(f, physics);
+    input.remove();
+  });
+  document.body.appendChild(input);
+  input.click();
+}
+
+const isArchive = (f: File) => /\.(nscase|zip)$/i.test(f.name);
+
+/** Pick a .nscase case file (a case with its result, e.g. from a colleague or a solved example). */
+export function pickArchiveFile() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".nscase,.zip";
+  input.style.display = "none";
+  input.addEventListener("change", () => {
+    const f = input.files?.[0];
+    if (f) void importArchiveFile(f);
     input.remove();
   });
   document.body.appendChild(input);
@@ -63,6 +80,9 @@ export function DropOverlay() {
       e.preventDefault(); // never let the browser navigate to the file
       setShow(false);
       setOver(null);
+      // a case file needs no choice of analysis: open it wherever it lands
+      const f = e.dataTransfer?.files?.[0];
+      if (f && isArchive(f)) void importArchiveFile(f);
     };
     window.addEventListener("dragover", onOver);
     window.addEventListener("drop", onDrop);
@@ -88,7 +108,7 @@ export function DropOverlay() {
           const f = e.dataTransfer.files?.[0];
           setShow(false);
           setOver(null);
-          if (f) void importFile(f, physics);
+          if (f) void (isArchive(f) ? importArchiveFile(f) : importFile(f, physics));
         }}
         className={cn(
           "flex h-40 min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed px-3 text-center transition-colors duration-[var(--dur-2)]",

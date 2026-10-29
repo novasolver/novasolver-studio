@@ -253,7 +253,7 @@ def test_09_mcp_round_trip_undo_validation_and_localization():
     for root in (Path(templates.__file__).parent/'i18n',Path(__file__).resolve().parents[2]/'frontend/src/i18n'):
         sets = [set(json.loads((root/(lang+'.json')).read_text(encoding='utf-8'))) for lang in ('en','ja','zh')]
         assert sets[0] == sets[1] == sets[2]
-    assert len(asyncio.run(mcp_server.mcp.list_tools())) == 24
+    assert len(asyncio.run(mcp_server.mcp.list_tools())) == 28
 
 
 def test_10_follower_pressure_tangent():

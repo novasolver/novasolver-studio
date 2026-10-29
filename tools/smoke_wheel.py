@@ -79,7 +79,7 @@ def check_mcp(command: str, env: dict) -> None:
                                    "clientInfo": {"name": "novastudio-wheel-smoke", "version": "1.0"}})
             send({"method": "notifications/initialized"})
             tools = request("tools/list")["tools"]
-            assert len(tools) == 24, len(tools)
+            assert len(tools) == 28, len(tools)
             cid = tool("create_case", template="cantilever", changes={"mesh.size": "coarse"}, language="en")["case_id"]
             result = tool("run_simulation", case_id=cid, mode="preview", language="en")
             while not result.get("done"):
@@ -104,7 +104,7 @@ def check_mcp(command: str, env: dict) -> None:
                 _stop_server(server)
             reader.join(timeout=2)
             server.stdout.close()
-    print("MCP: 24 tools, installed MCP command, samples and verified cantilever solve passed", flush=True)
+    print("MCP: 28 tools, installed MCP command, samples and verified cantilever solve passed", flush=True)
 
 
 def check_gui(command: str, env: dict, root: Path) -> None:

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download, Play, Pause } from 'lucide-react';
-import { api, exportUrl } from '../api/client';
+import { api, archiveUrl, exportUrl } from '../api/client';
 import type { ProbeLine } from '../api/types';
 import { getState, getViewer, selectMode, selectStep, setSection, setState, toast, useStore, useT } from '../state/store';
 import { Button } from './ui/Button';
@@ -56,7 +56,10 @@ export function ResultsTools() {
     {!offline && <section className="px-4 pt-6"><SectionLabel>{t('export.title')}</SectionLabel>
       <details className="relative"><summary className="flex h-8 cursor-pointer list-none items-center gap-2 rounded-[6px] border border-line-strong px-3 text-body text-fg"><Download size={14} strokeWidth={1.5} />{t('export.menu')}</summary>
         <div className="mt-1 rounded-[6px] border border-line bg-surface py-1">{['vtu','csv','report'].map(format => <a key={format} href={exportUrl(cid,format)}
-          className="flex h-8 items-center px-3 text-body text-fg-2 hover:bg-hover hover:text-fg">{t('export.'+format)}</a>)}</div>
+          className="flex h-8 items-center px-3 text-body text-fg-2 hover:bg-hover hover:text-fg">{t('export.'+format)}</a>)}
+          <div className="my-1 h-px bg-line" />
+          {[true, false].map(withResults => <a key={String(withResults)} href={archiveUrl(cid, withResults)}
+            className="flex h-8 items-center px-3 text-body text-fg-2 hover:bg-hover hover:text-fg">{t(withResults ? 'archive.export' : 'archive.exportCaseOnly')}</a>)}</div>
       </details>
     </section>}
   </>;

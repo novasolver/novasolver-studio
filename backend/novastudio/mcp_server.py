@@ -25,6 +25,7 @@ INSTRUCTIONS = """NovaSolver Studio runs engineering simulations (structural FEM
 electrostatics, DC current and Joule heating) on this computer.
 Workflow: list_templates -> create_case (or import_geometry for the user's CAD file) -> describe_case -> update_case (fill the schema) -> validate_case
 -> run_simulation(mode="preview") -> job_status until done -> get_results / verify_case -> render_view.
+To show a verified result at once, list_examples -> open_example (solved cases, no run needed).
 Read values at a point, along a line or over a face with probe_results. Design variants: clone_case, or run_sweep
 over one parameter, then compare_runs.
 Rules:
@@ -114,6 +115,56 @@ async def list_cases() -> CallToolResult:
     if e:
         return e
     return _ok(f"{len(r['cases'])} case(s)", r)
+
+
+WEB = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True)
+WEB_WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True)
+
+
+@mcp.tool(annotations=WEB)
+async def list_examples(language: Lang = "ja") -> CallToolResult:
+    """List solved examples: verification cases already computed and checked against their closed-form reference,
+    published with this Studio version on GitHub. open_example gives the case with its result in seconds, so you can
+    show or inspect a result (get_results, verify_case, render_view, probe_results) before running anything."""
+    r, e = await _call(C.list_examples, language, language)
+    if e:
+        return e
+    lines = [f"{x['name']}: {x['title']} - {x['reference']['label']} {x['reference']['value']} {x['reference']['unit']}, "
+             f"error {x['error_pct']:+.2f}%" if isinstance(x.get('error_pct'), (int, float)) else f"{x['name']}: {x['title']}"
+             for x in r["examples"]]
+    return _ok(("(offline: cached list)\n" if r["offline"] else "") + "\n".join(lines), r)
+
+
+@mcp.tool(annotations=WEB_WRITE)
+async def open_example(name: str, language: Lang = "ja") -> CallToolResult:
+    """Open a solved example (name from list_examples) as a new case with its verified result already loaded.
+    The download is checked against the published SHA-256. Editing the case marks the result stale; run it again."""
+    r, e = await _call(C.open_example, language, name, language)
+    if e:
+        return e
+    c = r["case"]
+    return _ok(f"Opened example {name} as {c['case_id']} (rev {c['revision']}) with its result. "
+               f"Next: get_results or verify_case.", {"case_id": c["case_id"], "revision": c["revision"],
+                                                       "import_warnings": r.get("import_warnings", [])})
+
+
+@mcp.tool(annotations=WRITE)
+async def export_case(case_id: str, include_results: bool = True, language: Lang = "ja") -> CallToolResult:
+    """Write the case, its mesh and (by default) its latest finished result to a .nscase file that another Studio
+    opens with import_case. Paths of this computer are removed from the file."""
+    r, e = await _call(C.export_case, language, case_id, include_results, language)
+    return e or _ok(f"Wrote {r['path']} ({r['bytes'] / 1e6:.2f} MB).", r)
+
+
+@mcp.tool(annotations=WRITE)
+async def import_case(path: str, language: Lang = "ja") -> CallToolResult:
+    """Open a .nscase file on this computer as a new case; a result inside it opens as the current result."""
+    r, e = await _call(C.import_case, language, path, None, language)
+    if e:
+        return e
+    c = r["case"]
+    return _ok(f"Imported as {c['case_id']} (rev {c['revision']}).", {"case_id": c["case_id"], "revision": c["revision"],
+                                                                      "import_warnings": r.get("import_warnings", [])})
 
 
 # ------------------------------------------------------------------ case editing

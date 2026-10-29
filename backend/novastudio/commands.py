@@ -380,6 +380,50 @@ def open_sample(name: str, physics: str | None = None, lang: str = "ja") -> dict
     return import_geometry(physics or s["physics"], s["file"], path=str(_samples_dir() / s["file"]), lang=lang)
 
 
+MAX_ARCHIVE_BYTES = 2 * 1024 ** 3
+
+
+def export_case(case_id: str, include_results: bool = True, lang: str = "ja") -> dict:
+    """Write the case (and its latest finished result) to a .nscase file in the case's exports folder."""
+    from . import archive
+    verification = None
+    if include_results:
+        try:
+            pl = results.payload(store.load(case_id), lang_of(lang))
+            verification = pl.get("verification")
+        except StudioError:
+            pass
+    path = archive.export_case(case_id, include_results, verification)
+    return {"case_id": case_id, "path": str(path), "bytes": path.stat().st_size, "results": include_results}
+
+
+def import_case(path: str | None = None, data: bytes | None = None, lang: str = "ja", example: str | None = None) -> dict:
+    """Open a .nscase archive as a new case; a result inside it opens as the current result."""
+    from . import archive
+    if path is not None and Path(path).is_file() and Path(path).stat().st_size > MAX_ARCHIVE_BYTES:
+        raise StudioError("err.archive_size", 400)
+    cid, warns = archive.import_case(path, data, example)
+    try:
+        pl = case_payload(cid, lang)
+    except Exception:                       # a case.json this Studio cannot work with: leave nothing behind
+        shutil.rmtree(store.cases_dir() / cid, ignore_errors=True)
+        raise StudioError("err.archive_manifest", 400)
+    pl["import_warnings"] = [t(w, lang_of(lang)) for w in warns]
+    return pl
+
+
+def list_examples(lang: str = "ja") -> dict:
+    from . import examples
+    idx = examples.index()
+    return {"examples": [examples.localized(e, lang_of(lang)) for e in idx["examples"] if isinstance(e, dict) and e.get("name")],
+            "offline": idx["offline"], "release_page": examples.release_page(), "studio_version": idx.get("studio_version")}
+
+
+def open_example(name: str, lang: str = "ja", progress=None) -> dict:
+    from . import examples
+    return import_case(path=str(examples.fetch_archive(name, progress)), lang=lang, example=name)
+
+
 def list_cases() -> dict:
     return {"cases": store.list_all()}
 
