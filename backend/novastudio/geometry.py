@@ -59,6 +59,9 @@ def _canon(o):
 def mesh_key(case: dict) -> str:
     """Hash of everything the mesh depends on; a mismatch means the mesh is stale."""
     extra = {}
+    from .box_mesh import DIVISIONS
+    if case['template'] in DIVISIONS:
+        extra['divisions'] = DIVISIONS[case['template']]
     if case["template"] in ("import-flow", "import-conjugate"):   # mesh size follows the inlet/outlet faces
         from .flow3d import mesh_size
         extra = {"h": round(mesh_size(case), 9)}

@@ -193,10 +193,11 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     U = r["u"]
     umag = np.linalg.norm(U, axis=1)
     np.savez_compressed(jd / "results.npz", u=U, vm=r["vm"], s=r["s"], reaction=r['nodal_reaction'],
-                        **({'T': T} if T is not None else {}))
+                        **({'T': fem_tet10.nodal_temperatures(T,nodes,fem_tet10.canonical_tets(nodes,tets))} if T is not None else {}))
     metrics = {"max_vm_pa": float(r["vm"].max()), "max_disp_m": float(umag.max()),
                "reaction_n": float(np.linalg.norm(r["reaction"])), "applied_n": float(np.linalg.norm(r["applied"])),
-               "imbalance": r["imbalance"], "nodes": int(len(nodes)), "elements": int(len(tets))}
+               "imbalance": r["imbalance"], "nodes": int(len(nodes)), "elements": int(len(tets)),
+               'force_scale_n':float(np.linalg.norm(np.abs(r['forces']).sum(0)))}
     metrics.update(max_strain=r['max_strain'],max_rotation=r['max_rotation'])
     metrics.update(applied_force_n=r['applied'].tolist(), reaction_force_n=r['reaction'].tolist(),
                    applied_moment_nm=r['applied_moment'].tolist(), reaction_moment_nm=r['reaction_moment'].tolist())
@@ -221,6 +222,22 @@ def prescribed_displacements(case,m):
             if b['role'] == 'displacement' for i,k in enumerate(('ux','uy','uz')) if b.get(k) is not None]
 
 
+def modal_rollers(case,m):
+    return symmetry_rollers(case,m)+[(tri,c) for tri,c,value in prescribed_displacements(case,m) if value == 0]
+
+
+def spring_stiffness(case,m):
+    from .structural import surface_rule
+    springs = np.zeros((len(m['nodes']),3))
+    for f,b in case['boundaries'].items():
+        if b['role'] == 'spring':
+            tri = m['face_'+f]; _,w,_ = surface_rule(m['nodes'],tri)
+            for j,weight in enumerate((1/12,1/12,1/12,1/4,1/4,1/4)):
+                for c in b.get('components','xyz'):
+                    np.add.at(springs[:, 'xyz'.index(c)],tri[:,j],units.to_si(b['stiffness'])*w.sum(1)/w.sum()*weight)
+    return springs
+
+
 def run_incremental(case,jd,prog,m):
     from . import fem_nonlinear as nl
     from .templates import element_groups,element_prop
@@ -234,14 +251,7 @@ def run_incremental(case,jd,prog,m):
         tractions = [(tri,t) for tri,t in tractions if not any(tri is p for p in pressure_tri)]
     nodes,tets = m['nodes'],m['tets']
     T = temperatures(case,m,lambda k,f:prog(k,f))
-    springs = np.zeros((len(nodes),3))
-    from .structural import surface_rule
-    for f,b in case['boundaries'].items():
-        if b['role'] == 'spring':
-            tri = m['face_'+f]; _,w,_ = surface_rule(nodes,tri)
-            for j,weight in enumerate((1/12,1/12,1/12,1/4,1/4,1/4)):
-                for c in b.get('components','xyz'):
-                    np.add.at(springs[:, 'xyz'.index(c)],tri[:,j],units.to_si(b['stiffness'])*w.sum(1)/w.sum()*weight)
+    springs = spring_stiffness(case,m)
     face = options.get('face','x1' if 'face_x1' in m else 'top' if 'face_top' in m else next(iter(case['boundaries']),''))
     r = nl.solve(nodes,tets,element_groups(case,m.get('tet_body',np.zeros(len(tets),int))),fixed,tractions,
         symmetry_rollers(case,m),prescribed_displacements(case,m),large=large,
@@ -254,10 +264,12 @@ def run_incremental(case,jd,prog,m):
     if nonlinear:
         fields.update({'step_'+k:np.stack([s[k] for s in r['steps']]) for k in fields})
     if T is not None:
-        fields['T'] = T
+        from .fem_tet10 import nodal_temperatures,canonical_tets
+        fields['T'] = nodal_temperatures(T,nodes,canonical_tets(nodes,tets))
     np.savez_compressed(jd/'results.npz',**fields)
     metrics = {'max_vm_pa':float(r['vm'].max()),'max_disp_m':float(np.linalg.norm(r['u'],axis=1).max()),
         'reaction_n':float(np.linalg.norm(r['reaction'])),'applied_n':float(np.linalg.norm(r['applied'])),
+        'force_scale_n':float(np.linalg.norm(np.abs(r['forces']).sum(0))),
         'imbalance':r['imbalance'],'nodes':len(nodes),'elements':len(tets),'newton_iterations':r['iterations'],
         'complementarity':r['complementarity'],'max_strain':r['max_strain'],
         'applied_force_n':r['applied'].tolist(),'reaction_force_n':r['reaction'].tolist(),
@@ -270,7 +282,7 @@ def run_incremental(case,jd,prog,m):
         'converged_detail':{'imbalance':r['imbalance'],'complementarity':r['complementarity'],
                             'residual_history':r['residual_history'],'error':r['error']},
         'reference':ref,'interfaces':r['interfaces'],'curve':r['curve'] if nonlinear else [],
-        'large_deformation':large,'error':r['error']}
+        'large_deformation':large,'error':r['error'],'limit_reached':r['limit_reached']}
 
 
 def run_modal(case, jd, prog, m):
@@ -278,8 +290,8 @@ def run_modal(case, jd, prog, m):
     from .templates import element_prop
     fixed = [m['face_'+f] for f,b in case['boundaries'].items() if b['role'] == 'fixed']
     r = solve_modal(m['nodes'], m['tets'], element_prop(case,m,'E'), element_prop(case,m,'nu'),
-                    element_prop(case,m,'rho'), fixed, symmetry_rollers(case,m),
-                    int(case['physics'].get('modes',6)), lambda k,f: prog(k,f))
+                    element_prop(case,m,'rho'), fixed, modal_rollers(case,m),
+                    int(case['physics'].get('modes',6)), lambda k,f: prog(k,f),springs=spring_stiffness(case,m))
     np.savez_compressed(jd/'results.npz', phi=r['phi'], mode_shapes=r['mode_shapes'])
     metrics = {'frequency_hz': r['modes'][0]['frequency_hz'], 'nodes': len(m['nodes']), 'elements': len(m['tets'])}
     from .structural import modal_reference

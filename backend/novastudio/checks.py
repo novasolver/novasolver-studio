@@ -76,6 +76,8 @@ def run(case: dict, lang: str) -> list[dict]:
                 add('error','bonded_offset','boundaries',faces=[face])
         if modal and any(c.get('type','bonded') != 'bonded' for c in case.get('contacts',{}).values()):
             add('error','contact_modal','physics')
+        if large and any(c.get('type','bonded') != 'bonded' for c in case.get('contacts',{}).values()):
+            add('error','contact_large_deformation','physics')
         for mat in mats:
             model = mat.get('model','linear')
             if model != 'linear' and not nonlinear:
@@ -93,10 +95,13 @@ def run(case: dict, lang: str) -> list[dict]:
         load = case['physics'].get('thermal_load', {})
         thermal_mode = load if isinstance(load, str) else load.get('mode','none')
         if modal:
-            if not any(v['role'] in ('fixed','beam-clamp','symmetry','constraint') for v in b.values()):
+            if not any(v['role'] in ('fixed','beam-clamp','symmetry','constraint','spring') or (
+                    v['role'] == 'displacement' and any(v.get(k) is not None and units.to_si(v[k]) == 0 for k in ('ux','uy','uz'))) for v in b.values()):
                 add('warn', 'free_free', 'boundaries')
             if any(v['role'] in geometry.LOAD_ROLES for v in b.values()):
                 add('warn', 'modal_loads_ignored', 'boundaries')
+            if any(v['role'] == 'displacement' and any(v.get(k) is not None and units.to_si(v[k]) != 0 for k in ('ux','uy','uz')) for v in b.values()):
+                add('warn','modal_displacement_ignored','boundaries')
         if not modal and not any(v["role"] in ("fixed", 'beam-clamp', "symmetry", "constraint",'displacement','spring') for v in b.values()):
             add("error", "no_fixed", "boundaries", fix='update_case(changes={"boundaries.x0.role": "fixed"})')
         interference = any(c.get('type','bonded') != 'bonded' and units.to_si(c.get('offset',0)) != 0 for c in case.get('contacts',{}).values())

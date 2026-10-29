@@ -533,5 +533,12 @@
   "material.silicone": "硅橡胶",
   "check.large_deformation": "应变超过 1% 或转角超过 5°，建议进行大变形分析。",
   "face.lower_x1": "底座 +X 侧面",
-  "role.beam-clamp": "梁端约束 · 横向应变自由"
+  "role.beam-clamp": "梁端约束 · 横向应变自由",
+  "err.contact_large_deformation": "接触仅支持小滑移和小转动。请关闭大变形，或将所有界面设为粘结。",
+  "err.nonlinear_empty_path": "载荷路径没有有效增量。请指定非零载荷系数。",
+  "check.modal_displacement_ignored": "模态分析忽略非零指定位移。零位移分量仍受约束，并计入弹簧刚度。",
+  "verify.history_missing": "求解器未返回载荷历程，无法验证极限载荷。",
+  "result.limit_reached": "已达到极限载荷；最后收敛的载荷系数为 {fraction:.6g}。",
+  "check.contact_large_deformation": "接触仅支持小滑移和小转动。请关闭大变形，或将所有界面设为粘结。",
+  "err.final_body_temperatures": "CalculiX无法表示按单元指定的实体温度。此热载荷请使用内置求解器。"
 }

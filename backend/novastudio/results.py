@@ -106,8 +106,11 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
         if "kt" in m:
             cards.append(_card("kt", m["kt"], "-", lang))
         cards += [_card("max_vm", m["max_vm_pa"] / 1e6, "MPa", lang), _card("max_disp", m["max_disp_m"] * 1e3, "mm", lang)]
-        if "reaction_n" in m:
+        if "reaction_n" in m and m.get('applied_n',m['reaction_n']) > max(1e-9,1e-9*m.get('force_scale_n',0)):
             cards.append(_card("reaction", m["reaction_n"], "N", lang))
+        elif r.get('interfaces') and 'contact_force_n' not in m:
+            force = max(v['normal_force_n'] for v in r['interfaces'].values())
+            cards.append(_card('contact_force',force,'N',lang))
         for key, prop, scale, unit in [('thermal_stress','thermal_stress_pa',1e-6,'MPa'),
                 ('elongation','elongation_m',1e3,'mm'), ('center_stress','center_stress_pa',1e-6,'MPa'),
                 ('twist','twist_rad',1,'rad'), ('shear','shear_pa',1e-6,'MPa')]:
@@ -168,6 +171,10 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     warnings = []
     if r.get('error'):
         warnings.append({'code':'nonlinear_diverged','message':t(r['error']['key'],lang,fraction=r['error']['fraction'])})
+    if r.get('limit_reached'):
+        warnings.append({'code':'limit_reached','message':t('result.limit_reached',lang,fraction=r['error']['fraction'])})
+    if r['kind'] == 'modal' and any(b['role'] == 'displacement' and any(b.get(k) is not None and units.to_si(b[k]) != 0 for k in ('ux','uy','uz')) for b in case['boundaries'].values()):
+        warnings.append({'code':'modal_displacement_ignored','message':t('check.modal_displacement_ignored',lang)})
     if r['kind'] == 'structural' and not r.get('large_deformation') and (m.get('max_strain',0)>.01 or m.get('max_rotation',0)>.0872665):
         warnings.append({'code':'large_deformation','message':t('result.large_deformation',lang)})
     if r.get('free_free'):

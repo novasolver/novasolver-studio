@@ -267,7 +267,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 valid = (isinstance(v,bool) if k == 'large_deformation' else
                          v == 'auto' or (isinstance(v,int) and not isinstance(v,bool) and 1<=v<=1000) if k == 'steps' else
                          isinstance(v,int) and not isinstance(v,bool) and 2<=v<=100 if k == 'max_iterations' else
-                         isinstance(v,list) and 1<=len(v)<=1000 and all(isinstance(a,(int,float)) and not isinstance(a,bool) and math.isfinite(a) for a in v) if k == 'path' else
+                         isinstance(v,list) and 1<=len(v)<=50 and all(isinstance(a,(int,float)) and not isinstance(a,bool) and math.isfinite(a) and abs(a)<=100 for a in v) if k == 'path' else
                          isinstance(v,str) and v in templates.face_keys(case))
                 if not valid:
                     raise StudioError('err.path',400,path=path+'.'+k)
@@ -379,6 +379,10 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: custom, {', '.join(presets)})")
             nv = value
             if value != "custom":
+                for k in ('model','H','sy'):
+                    parent.pop(k,None)
+                if parts[1] == 'solid':
+                    parent['model'] = presets[value].get('model','linear')
                 for k, q in presets[value].items():
                     parent[k] = copy.deepcopy(q)
         else:

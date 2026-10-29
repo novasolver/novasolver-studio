@@ -179,6 +179,17 @@ def _bmatrix(dNdx):
     return B
 
 
+def gauss_temperatures(temperature,nodes,tets):
+    temp = np.asarray(temperature)
+    if temp.ndim == 2:
+        return np.broadcast_to(temp,(len(tets),4))
+    return np.broadcast_to(temp,len(nodes))[tets]@SHAPE.T
+
+
+def nodal_temperatures(temperature,nodes,tets):
+    return gauss_to_nodes(tets,temperature,len(nodes)) if np.ndim(temperature) == 2 else temperature
+
+
 def structural_system(nodes, tets, E, nu, alpha=0., temperature=None, T_ref=293.15):
     """Shared stiffness and initial-strain load assembly, in bounded element blocks."""
     n, ndof = len(nodes), 3 * len(nodes)
@@ -194,8 +205,7 @@ def structural_system(nodes, tets, E, nu, alpha=0., temperature=None, T_ref=293.
     f = np.zeros(ndof)
     expansion = np.zeros((len(tets), 4))
     if temperature is not None:
-        temp = np.broadcast_to(temperature, n)
-        expansion = np.broadcast_to(alpha, len(tets))[:, None] * (temp[tets] @ SHAPE.T - T_ref)
+        expansion = np.broadcast_to(alpha, len(tets))[:, None] * (gauss_temperatures(temperature,nodes,tets) - T_ref)
     # in chunks: the element matrices of a 300k-element model take 2.3 GB at once
     for s in range(0, len(tets), ASSEMBLY_CHUNK):
         sl = slice(s, s + ASSEMBLY_CHUNK)
@@ -471,16 +481,22 @@ def modal_constraints(nodes, fixed_faces, rollers, tets=None):
     return fixed, rigid, nrigid
 
 
-def solve_modal(nodes, tets, E, nu, rho, fixed_faces=(), rollers=(), modes=6, progress=lambda *_: None):
+def solve_modal(nodes, tets, E, nu, rho, fixed_faces=(), rollers=(), modes=6, progress=lambda *_: None, *, springs=None):
     check_memory(len(nodes), 'modal')
     tets = canonical_tets(nodes, tets)
     progress('job.assembling', .1)
     K = structural_system(nodes, tets, E, nu)[0]
+    spring = np.zeros(3*len(nodes)) if springs is None else np.asarray(springs).ravel()
+    if np.any(spring):
+        K += sp.diags(spring)
     M = mass_matrix(nodes, tets, rho)
     fixed,rigid,nrigid = modal_constraints(nodes,fixed_faces,rollers,tets=tets)
+    if np.any(spring):
+        held = np.r_[fixed,np.flatnonzero(spring>0)]
+        nrigid = rigid.shape[1]-np.linalg.matrix_rank(rigid[held].toarray())
     free = np.setdiff1d(np.arange(3*len(nodes)), fixed)
     A, B = K[free][:, free], M[free][:, free]
-    free_free = not len(fixed)
+    free_free = not len(fixed) and not np.any(spring)
     count = min(int(modes) + nrigid, len(free)-1)
     # A dimensioned negative shift leaves rigid modes factorisable, without moving the elastic roots.
     shift = -max(1., float(np.mean(A.diagonal())/np.mean(B.diagonal()))*1e-9)

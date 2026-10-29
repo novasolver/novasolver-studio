@@ -30,3 +30,4 @@ for (const role of ['load', 'moment', 'bearing', 'remote-force']) {
   assert.equal(picker.props.options.some(d => d.value === 'normal'), role === 'load', role);
 }
 console.log('PASS: The direction picker offers normal only for a load role.');
+require('./v06-fixes.cjs');

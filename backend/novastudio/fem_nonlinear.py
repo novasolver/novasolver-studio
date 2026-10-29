@@ -16,6 +16,14 @@ from .contact import Constraints
 from .store import StudioError
 
 
+SNAPSHOT_CAP = 200
+
+
+def diverging(history):
+    return bool(history and (not np.isfinite(history[-1]) or history[-1]>1e3*max(history[0],1e-20) or (
+        len(history)>=4 and all(b>a for a,b in zip(history[-4:-1],history[-3:])))))
+
+
 def von_mises(s):
     return np.sqrt(.5*((s[...,0]-s[...,1])**2+(s[...,1]-s[...,2])**2+(s[...,2]-s[...,0])**2)
                    +3*np.sum(s[...,3:]**2,axis=-1))
@@ -65,7 +73,7 @@ class Mechanics:
         self.dofs = (3*self.tets[:,:,None]+np.arange(3)).reshape(-1,30)
         self.expansion = np.zeros((len(tets),4))
         if temperature is not None:
-            self.expansion = np.broadcast_to(alpha,len(tets))[:,None]*(np.broadcast_to(temperature,len(nodes))[self.tets]@fem.SHAPE.T-T_ref)
+            self.expansion = np.broadcast_to(alpha,len(tets))[:,None]*(fem.gauss_temperatures(temperature,nodes,self.tets)-T_ref)
         self.ep = np.zeros((len(tets),4,6)); self.peeq = np.zeros((len(tets),4))
         self.grad = np.empty((len(tets),4,3,10)); self.w = np.empty((len(tets),4))
         X = nodes[self.tets]
@@ -235,7 +243,16 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
           contact_pairs=(),rho=0.,acceleration=None,alpha=0.,temperature=None,T_ref=293.15,
           follower=None,progress=lambda *_:None,al_factor=1.,path=None,springs=None,face_nodes=(),nodal_forces=None):
     n = len(nodes); ndof = 3*n
-    fem.check_memory(n,'nonlinear',(10 if steps == 'auto' else int(steps))*max(1,len(path or [])))
+    if large and contact_pairs:
+        raise StudioError('err.contact_large_deformation',400)
+    count = 10 if steps == 'auto' else int(steps)
+    schedule = list(path) if path is not None else [1.]
+    travel = float(np.abs(np.diff([0.,*schedule])).sum())
+    if travel < 1e-12:
+        raise StudioError('err.nonlinear_empty_path',400)
+    # Include the smallest cut-back increment and every path leg, then bound retained fields.
+    estimate = int(np.ceil(travel*count*2**8))+len(schedule)
+    fem.check_memory(n,'nonlinear',min(SNAPSHOT_CAP+1,estimate))
     mech = Mechanics(nodes,tets,groups,large,alpha,temperature,T_ref)
     tets = mech.tets
     fixed,rigid,_ = fem.modal_constraints(nodes,fixed_faces,rollers,tets)
@@ -265,11 +282,15 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
     lam = np.zeros(contact.B.shape[0])
     snapshots,curve,histories = [],[],[]
     current,failed = 0.,False
-    count = 10 if steps == 'auto' else int(steps)
-    minimum_increment = 1/count/2**8
-    schedule = list(path) if path is not None else [1.]
+    limit_control = not prescribed and any(p.get('model') == 'elastoplastic' and p.get('H',p['E']/100) == 0 for _,p in groups)
+    minimum_increment = 1/count/(64 if limit_control else 2**8)
     last = None; attempts = 0; increment = 1/count; target_index = 0
     iterations = 0
+    residual_history = []
+    accepted = 0; stride = 1
+    previous_u = None; previous_fraction = 0.
+    initial_slope = None; previous_response = 0.
+    limit_reached = False
     force_reference = max(np.linalg.norm(dead),np.linalg.norm(initial_internal))
     while target_index < len(schedule):
         target = float(schedule[target_index])
@@ -279,10 +300,10 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
         fraction = current+np.sign(target-current)*min(increment,abs(target-current))
         trial_u,trial_lam = u.copy(),lam.copy()
         trial_u[fixed] = values*fraction
-        if len(snapshots)>=2 and not prescribed and not contact.count:
-            previous = curve[-1]['load_fraction']-curve[-2]['load_fraction']
+        if previous_u is not None and not prescribed and not contact.count:
+            previous = current-previous_fraction
             if previous*(fraction-current)>0:
-                trial_u += (u-snapshots[-2]['u'].ravel())*((fraction-current)/previous)
+                trial_u += (u-previous_u)*((fraction-current)/previous)
                 trial_u[fixed] = values*fraction
         if prescribed and not contact.count:
             # Extend a face displacement into the free mesh before evaluating trial plasticity.
@@ -297,8 +318,8 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
         residual_history = []; converged = False; du_relative = np.inf
         for it in range(max_iterations):
             iterations += 1
-            progress('job.nonlinear',.1+.75*min(1.,(len(curve)+1)/max(count,1)),
-                     {'step':len(curve)+1,'steps':max(count,len(curve)+1),'iteration':it+1,'fraction':fraction,
+            progress('job.nonlinear',min(1.,abs(current)),
+                     {'step':accepted+1,'steps':max(count,accepted+1),'iteration':it+1,'fraction':fraction,'converged_fraction':min(1.,abs(current)),
                       'residual':residual_history[-1] if residual_history else None,
                       'increment':du_relative if np.isfinite(du_relative) else None})
             try:
@@ -319,7 +340,9 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
                 if relative < 1e-6 and contact_relative < 1e-7 and du_relative < 1e-8:
                     converged = True
                     break
-                if not np.isfinite(relative) or relative > 1e10:
+                if not np.isfinite(relative) or relative > 1e10 or (limit_control and diverging(residual_history)):
+                    break
+                if limit_control and len(residual_history)>=4 and relative>1e-5 and min(residual_history[-2:])>.98*min(residual_history[-4:-2]):
                     break
                 if not contact.count and len(residual_history)>=8 and relative>1e-5 and min(residual_history[-4:])>.98*min(residual_history[-8:-4]):
                     break
@@ -344,7 +367,7 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
                         factor *= .5
                 if len(rc) or any(p.get('model') == 'elastoplastic' for _,p in groups):
                     merit = np.linalg.norm(np.r_[residual[free],rc*stiffness])
-                    for _ in range(12):
+                    for _ in range(8 if limit_control else 12):
                         cu = trial_u+factor*du; cl = trial_lam+factor*dl
                         cr = contact.equations(cu,cl,fraction)[0]
                         if mech.linear_system is not None:
@@ -357,6 +380,8 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
                         if new_merit <= merit*(1-1e-4*factor) or new_merit<1e-10*scale:
                             break
                         factor *= .5
+                    if limit_control and new_merit >= merit and relative>1e-5:
+                        break
                 trial_u += factor*du; trial_lam += factor*dl
                 du_relative = float(np.linalg.norm(factor*du)/max(np.linalg.norm(trial_u),np.ptp(nodes,axis=0).max()*1e-12))
                 if np.linalg.norm(trial_u)>1e4*max(np.ptp(nodes,axis=0).max(),1e-12):
@@ -379,10 +404,12 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
             attempts += 1
             if attempts > 8 or increment/2 < minimum_increment:
                 failed = True
+                limit_reached = limit_control and last is not None
                 break
             increment *= .5
             continue
         attempts = 0
+        previous_u,previous_fraction = u,current
         u,lam,current = trial_u,trial_lam,fraction
         mech.ep,mech.peeq = ep,eq
         sn = fem.gauss_to_nodes(tets,sg,n)
@@ -402,18 +429,36 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
         imbalance = max(float(np.linalg.norm(applied+react)/force_scale),float(np.linalg.norm(am+rm)/max(force_scale*np.ptp(nodes,axis=0).max(),1e-20)))
         fields['reaction'] = reaction.reshape(-1,3)
         snapshots.append(fields); histories.append(residual_history)
-        row = {'step':len(snapshots),'load_fraction':current,'max_disp_m':float(np.linalg.norm(fields['u'],axis=1).max()),
+        accepted += 1
+        row = {'step':accepted,'load_fraction':current,'max_disp_m':float(np.linalg.norm(fields['u'],axis=1).max()),
                'face_disp_m':np.mean(fields['u'][face_nodes],axis=0).tolist() if len(face_nodes) else [0.,0.,0.],
                'iterations':len(residual_history),'residual':relative,'increment':du_relative}
         curve.append(row)
+        if len(snapshots)>SNAPSHOT_CAP:
+            stride *= 2
+        keep = [i for i,row in enumerate(curve) if row['step']%stride == 0 or i == len(curve)-1]
+        snapshots = [snapshots[i] for i in keep]; histories = [histories[i] for i in keep]; curve = [curve[i] for i in keep]
         last = {**fields,'applied':applied,'reaction':react,'applied_moment':am,'reaction_moment':rm,
                 'nodal_reaction':reaction.reshape(-1,3),'forces':external.reshape(-1,3),'imbalance':imbalance,
                 'volume':float(mech.w.sum()),'ndof':ndof,'nfree':len(free),'interfaces':interfaces,
                 'complementarity':comp,'max_strain':strain}
+        progress('job.nonlinear',min(1.,abs(current)),
+                 {'step':accepted,'steps':max(count,accepted),'iteration':it+1,'fraction':current,'converged_fraction':min(1.,abs(current))})
+        if limit_control:
+            response = float(dead@u/max(np.linalg.norm(dead),1e-30))
+            delta = response-previous_response
+            slope = abs((current-previous_fraction)/delta) if abs(delta)>1e-30 else np.inf
+            if initial_slope is None and np.isfinite(slope):
+                initial_slope = slope
+            elif initial_slope is not None and slope < .01*initial_slope:
+                failed = limit_reached = True
+                break
+            previous_response = response
         growth = 1.5 if len(residual_history)<=6 else .75 if len(residual_history)>15 else 1.
         increment = max(minimum_increment,min(increment*growth,1/count*(2 if steps == 'auto' else 1)))
     if last is None:
         raise StudioError('err.nonlinear_diverged',400,fraction=0,residual_history=residual_history)
     return {**last,'steps':snapshots,'curve':curve,'residual_history':histories,'iterations':iterations,
             'converged':not failed and last['complementarity']<1e-6 and last['imbalance']<5e-3,
+            'limit_reached':limit_reached,
             'error':{'key':'err.nonlinear_diverged','fraction':current} if failed else None}

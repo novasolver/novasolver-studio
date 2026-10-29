@@ -14,6 +14,11 @@ bulk nodal forces. A corner can have positive pressure despite zero consistent c
 Coulomb bound applies to pressure. Its integral equals the interface force. An unsupported rigid body gives
 `err.contact_unstable`, rather than a nominally converged displacement.
 
+Contact is small-sliding and small-rotation only: the reference normals and coincident node pairs
+remain fixed. Large deformation combined with any non-bonded interface is refused with
+`err.contact_large_deformation`, both at readiness and at solve time. Disable large deformation
+or bond every interface; finite-sliding contact is outside this release.
+
 Select Nonlinear to use incremental total-Lagrangian tet10 mechanics. The default material remains linear
 elastic; large deformation uses Green strain and second Piola stress, transformed to Cauchy stress for results.
 The small-strain elastoplastic model is J2 with isotropic hardening. `H` is the uniaxial post-yield tangent;
@@ -29,6 +34,8 @@ Force, moment, bearing, remote force, gravity and rotation remain dead loads in 
 Thermal expansion combines with either analysis. Uniform temperatures may be overridden per body through
 `physics.thermal_load.body_temperatures` (body key to temperature quantity). Heating a ring expands its bore;
 cooling the ring, or heating the shaft, produces a shrink fit. The sign is never reversed to fit a reference.
+Uniform body temperatures are element/Gauss-point initial strains, so bonded shared nodes cannot
+overwrite the other body's temperature. The displayed nodal temperature averages the adjoining elements.
 
 The `displacement` face role accepts `ux`, `uy`, `uz` as length quantities; null means unconstrained.
 The beam benchmarks use an explicit `beam-clamp` role: axial displacement is held over the end section;
@@ -39,6 +46,13 @@ It also works in a static analysis. `physics.nonlinear.path` is an optional sequ
 displacement reversal. Every accepted step commits its own plastic and friction history. Failed trial steps
 are discarded and the increment is halved, at most eight times. If the target cannot be reached, results
 retain the last converged step, report `err.nonlinear_diverged` and leave the converged gate false.
+Force-controlled perfectly plastic runs report the limit load and stop when a cut-back would fall below
+1/64 of the initial increment, or the load-direction tangent falls below 1% of its initial value.
+An attempt stops early after three consecutive residual increases or a 1000-fold residual increase.
+Nonlinear progress is the converged load fraction (0–100%); no remaining-time estimate is shown.
+Load paths allow up to 50 finite fractions with absolute value at most 100. An all-zero path is refused.
+History storage retains at most 200 uniformly thinned snapshots plus the current state within that cap;
+the curve and exported step fields use the same retained steps and always include the final state.
 The plastic-bar template includes the zero-force unloading point before returning to zero displacement;
 returning an already yielded bar to zero total strain causes reverse yielding, not stress-free unloading.
 
@@ -52,6 +66,10 @@ with an explicitly stated normal stiffness and clearance. Unsupported combinatio
 In particular, CalculiX's compressible neo-Hookean energy differs from the built-in logarithmic law, so this
 release refuses that final run; it also refuses no-separation contact, spring supports, reversal paths and
 combined nonlinear/contact step output.
+It also refuses per-element body temperatures, which cannot be represented by its nodal temperature deck.
+
+Modal analysis constrains zero components of prescribed displacement and includes spring stiffness.
+Non-zero prescribed displacement components are ignored with a visible warning, like applied loads.
 
 Constitutive and deck references:
 

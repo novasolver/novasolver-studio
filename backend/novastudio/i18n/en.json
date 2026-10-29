@@ -533,5 +533,12 @@
   "material.silicone": "Silicone",
   "check.large_deformation": "Consider large deformation: strain exceeds 1% or rotation exceeds 5°.",
   "face.lower_x1": "Base side +X",
-  "role.beam-clamp": "Beam clamp · lateral strain free"
+  "role.beam-clamp": "Beam clamp · lateral strain free",
+  "err.contact_large_deformation": "Contact supports small sliding and small rotation only. Turn off large deformation or bond every interface.",
+  "err.nonlinear_empty_path": "The load path has no effective increment. Include a non-zero load fraction.",
+  "check.modal_displacement_ignored": "Non-zero prescribed displacements are ignored in modal analysis. Zero components remain constrained; springs contribute stiffness.",
+  "verify.history_missing": "The solver returned no load history; the limit load cannot be verified.",
+  "result.limit_reached": "Limit load reached; the last converged load fraction is {fraction:.6g}.",
+  "check.contact_large_deformation": "Contact supports small sliding and small rotation only. Turn off large deformation or bond every interface.",
+  "err.final_body_temperatures": "CalculiX cannot represent per-element body temperatures. Use the built-in solver for this thermal load."
 }

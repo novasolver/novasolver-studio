@@ -17,6 +17,8 @@ const FACTORS: Record<string, [dim: string, toSI: number]> = {
   kN: ["F", 1e3],
   mN: ["F", 1e-3],
   lbf: ["F", 4.4482216],
+  "N/m": ["STIFFNESS", 1],
+  "N/mm": ["STIFFNESS", 1000],
   // pressure / stress / modulus
   Pa: ["P", 1],
   kPa: ["P", 1e3],

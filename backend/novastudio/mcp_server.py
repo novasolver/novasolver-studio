@@ -382,13 +382,12 @@ async def verify_case(case_id: str, language: Lang = "ja") -> CallToolResult:
 @mcp.tool(annotations=RO)
 async def render_view(case_id: str, quantity: str = "", language: Lang = "ja", view: Literal['iso', 'iso_back', 'top', 'bottom', 'front', 'back', 'left', 'right'] = 'iso',
                       highlight: list[str] | None = None, mode: int = 1,step: int | None = None) -> CallToolResult:
-    """PNG of a result field with colour bar and units. quantity: disp | vm | uz (structural), speed | ux | psi (CFD),
-    v | emag (electrostatic), temp | v | jmag | q (DC current / Joule heating).
-    Empty = default. Read numbers from get_results rather than from the picture.
-    quantity="faces" confirms the setup with the person: numbered faces by role, or highlight face keys in accent.
-    quantity="mode", mode=n renders modal shape n (one-based, max displacement normalised to 1).
-    Nonlinear: step=n selects a converged step (one-based, omitted = last). Contact: p_contact, contact_status,
-    contact_gap, contact_slip. Plasticity: peeq. Large deformation is shown at true scale."""
+    """PNG with colour bar/units. quantity: disp|vm|uz (structural), speed|ux|psi (CFD), v|emag (electrostatic),
+    temp|v|jmag|q (current/Joule heating). Empty = default. Read numbers from get_results, not pictures.
+    quantity="faces" confirms setup with the person: numbered faces by role; highlight=face keys in accent.
+    quantity="mode", mode=n: modal shape (one-based, max displacement 1). Nonlinear step=n: converged step
+    (one-based, omitted=last). Contact: p_contact, contact_status, contact_gap, contact_slip; plasticity: peeq.
+    Large deformation uses true scale."""
     # Nonlinear steps are one-based; omitted means the last converged step.
     try:
         png, meta = await anyio.to_thread.run_sync(lambda: C.render_view(case_id, quantity, language, view, highlight, mode,step))

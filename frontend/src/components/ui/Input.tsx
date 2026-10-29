@@ -63,6 +63,10 @@ export function NumberInput({ value, unit, units, min, max, onCommit, ariaLabel,
       setInvalid(s.trim() !== "");
       return;
     }
+    if (p.unit && p.unit !== unit && (!unit || convert(p.value, p.unit, unit) == null)) {
+      setInvalid(true);
+      return;
+    }
     setInvalid(false);
     if (p.unit && p.unit !== unit) {
       setText(canonical(p.value));
@@ -127,7 +131,11 @@ export function NumberInput({ value, unit, units, min, max, onCommit, ariaLabel,
           options={unitList.map((u) => ({ value: u, label: unitLabel(u) }))}
           onChange={(u) => {
             const conv = unit ? convert(value, unit, u) : null;
-            const v = conv != null ? Number(conv.toPrecision(10)) : value;
+            if (conv == null || !Number.isFinite(conv)) {
+              setInvalid(true);
+              return;
+            }
+            const v = Number(conv.toPrecision(10));
             setText(canonical(v));
             onCommit(v, u);
           }}

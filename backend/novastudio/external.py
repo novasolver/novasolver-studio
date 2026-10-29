@@ -187,6 +187,8 @@ def compile_calculix(case: dict, mesh: dict, temperature=...) -> str:
     groups = element_groups(case,mesh.get('tet_body',np.zeros(len(mesh['tets']),int)))
     nonlinear = case.get('physics',{}).get('analysis') == 'nonlinear'
     large = nonlinear and case['physics'].get('nonlinear',{}).get('large_deformation',True)
+    if large and any(c.get('type','bonded') != 'bonded' for c in case.get('contacts',{}).values()):
+        raise StudioError('err.contact_large_deformation',400)
     if any(p.get('model') == 'neo-hookean' for _,p in groups):
         # CCX's isochoric (J-1)^2 law differs from the built-in log-J compressible law.
         raise StudioError('err.final_unsupported',400,feature='neo-Hookean strain energy (CalculiX uses a different compressible law)')
@@ -255,12 +257,18 @@ def compile_calculix(case: dict, mesh: dict, temperature=...) -> str:
                 f"*CLEARANCE, MASTER=C{i}_master, SLAVE=C{i}_slave, VALUE={-units.to_si(cfg['offset']):.12e}"]
     if modal:
         from .fem_tet10 import modal_constraints
-        nrigid = modal_constraints(nodes,fixed_faces,symmetry_rollers(case,mesh),tets=tets)[2]
+        from .run_worker import modal_rollers,prescribed_displacements
+        for tri,c,value in prescribed_displacements(case,mesh):
+            if value == 0:
+                bc += [f'{n+1}, {c+1}, {c+1}, {value:.12e}' for n in np.unique(tri)]
+        nrigid = modal_constraints(nodes,fixed_faces,modal_rollers(case,mesh),tets=tets)[2]
         count = int(case['physics'].get('modes',6))+nrigid
         out += ['*BOUNDARY',*bc] if bc else []
         out += ['*STEP','*FREQUENCY',str(count),'*NODE FILE','U','*END STEP','']
         return '\n'.join(out)
     if T is not None:
+        if np.ndim(T) == 2:
+            raise StudioError('err.final_body_temperatures',400)
         out += ['*INITIAL CONDITIONS, TYPE=TEMPERATURE', f'NALL, {tref:.12g}']
     from .run_worker import prescribed_displacements
     for tri,c,value in prescribed_displacements(case,mesh):
@@ -407,12 +415,12 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
     response = {'u':U,'vm':vm,'s':S}
     if mesh.get('_contact_pairs'):
         from .contact import Constraints
-        from .fem_tet10 import structural_system,surface_forces,body_forces
+        from .fem_tet10 import structural_system,surface_forces,body_forces,canonical_tets
         from .run_worker import structural_loads
         from .structural import acceleration
         from .templates import element_prop
         nodes = mesh['nodes']
-        K,thermal_force,*_ = structural_system(nodes,mesh['tets'],element_prop(case,mesh,'E'),element_prop(case,mesh,'nu'),
+        K,thermal_force,*_ = structural_system(nodes,canonical_tets(nodes,mesh['tets']),element_prop(case,mesh,'E'),element_prop(case,mesh,'nu'),
             element_prop(case,mesh,'alpha'),T,units.to_si(case['physics'].get('T_ref',{'value':20,'unit':'degC'})))
         fixed,tractions = structural_loads(case,mesh)
         force = surface_forces(nodes,tractions).ravel()+thermal_force
@@ -472,6 +480,8 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
         ref = reference_plate_hole(case, mesh["nodes"], vm, metrics)
     else:
         from .structural import reference
+        response.update(curve=curve,steps=[{'u':f['DISP'],'s':f['STRESS'],
+            'peeq':f['PE'][:,0] if 'PE' in f else np.zeros(len(U))} for f in frames] if curve else [])
         ref = reference(case,mesh,response,metrics)
     return {"kind": "structural", "metrics": metrics, "converged": bool(np.isfinite(umag).all() and metrics.get('imbalance',0)<5e-3),
             "converged_detail": {"note": "CalculiX static solve completed"}, "reference": ref,
@@ -503,11 +513,11 @@ def calculix_modes(case,mesh,jd,wd):
             values[int(line[3:13])-1] = [float(line[13+12*i:25+12*i]) for i in range(3)]
         elif values is not None and line.startswith(' -3'):
             shapes.append(values); values = None
-    free_free = not any(b['role'] in ('fixed','beam-clamp','constraint','symmetry') for b in case['boundaries'].values())
     from .fem_tet10 import modal_constraints
-    from .run_worker import symmetry_rollers
+    from .run_worker import modal_rollers
     fixed = [mesh['face_'+f] for f,b in case['boundaries'].items() if b['role'] == 'fixed']
-    nrigid = modal_constraints(mesh['nodes'],fixed,symmetry_rollers(case,mesh),tets=mesh['tets'])[2]
+    free_free = not fixed and not modal_rollers(case,mesh)
+    nrigid = modal_constraints(mesh['nodes'],fixed,modal_rollers(case,mesh),tets=mesh['tets'])[2]
     if not frequencies or len(shapes) != len(frequencies):
         raise RuntimeError('CalculiX did not return a complete frequency/mode table')
     keep = np.arange(nrigid, len(frequencies))

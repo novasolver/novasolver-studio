@@ -533,5 +533,12 @@
   "material.silicone": "シリコーン",
   "check.large_deformation": "ひずみが 1% または回転が 5° を超えています。大変形解析を検討してください。",
   "face.lower_x1": "基台の +X 側面",
-  "role.beam-clamp": "はり端拘束 · 横ひずみ自由"
+  "role.beam-clamp": "はり端拘束 · 横ひずみ自由",
+  "err.contact_large_deformation": "接触は微小すべり・微小回転にのみ対応しています。大変形をオフにするか、すべての接合面を接着にしてください。",
+  "err.nonlinear_empty_path": "荷重経路に有効な増分がありません。ゼロ以外の荷重係数を指定してください。",
+  "check.modal_displacement_ignored": "固有値解析ではゼロ以外の強制変位は無視されます。ゼロの成分は拘束され、ばね剛性は考慮されます。",
+  "verify.history_missing": "ソルバーの荷重履歴がないため、限界荷重を検証できません。",
+  "result.limit_reached": "限界荷重に達しました。最後に収束した荷重係数は {fraction:.6g} です。",
+  "check.contact_large_deformation": "接触は微小すべり・微小回転にのみ対応しています。大変形をオフにするか、すべての接合面を接着にしてください。",
+  "err.final_body_temperatures": "CalculiXは要素ごとの物体温度に対応していません。この熱荷重には内蔵ソルバーを使用してください。"
 }

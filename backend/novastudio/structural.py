@@ -102,9 +102,10 @@ def temperatures(case, mesh, progress):
         load = {'mode': load}
     mode = load.get('mode', 'none')
     if mode == 'uniform':
-        T = np.full(len(mesh['nodes']), units.to_si(load.get('temperature', {'value': 120, 'unit': 'degC'})))
+        by_body = load.get('body_temperatures',{})
+        T = np.full((len(mesh['tets']),4) if by_body else len(mesh['nodes']), units.to_si(load.get('temperature', {'value': 120, 'unit': 'degC'})))
         for body,q in load.get('body_temperatures',{}).items():
-            idx = np.unique(mesh['tets'][mesh['tet_body'] == int(body[1:])])
+            idx = mesh['tet_body'] == int(body[1:])
             T[idx] = units.to_si(q)
         return T
     if mode == 'solve':
@@ -369,5 +370,7 @@ def nonlinear_reference(case,mesh,r,metrics):
     if props.get('model') != 'elastoplastic' or props.get('H') != 0:
         return na
     expected = props['sy']*w*h*h/(4*L)
+    if not r.get('curve'):
+        return {'applicable':False,'why_key':'verify.history_missing'}
     metrics['limit_load_n'] = r['curve'][-1]['load_fraction']*units.to_si(case['boundaries']['x1']['force'])
     return comparison(case,'limit_load',metrics['limit_load_n'],expected,'N','Perfectly plastic rectangular section, shear neglected: P = sy b h²/(4 L); last converged increment')
