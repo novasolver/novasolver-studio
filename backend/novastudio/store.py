@@ -146,9 +146,15 @@ def editable_paths(case: dict) -> list[str]:
     paths += ["mesh.size", "run.mode"]
     if tp['physics'] == 'structural':
         paths += ['physics.analysis', 'physics.modes', 'physics.T_ref', 'physics.thermal_load',
+                  'physics.nonlinear', 'physics.nonlinear.large_deformation', 'physics.nonlinear.steps',
+                  'physics.nonlinear.max_iterations', 'physics.nonlinear.path', 'physics.nonlinear.face',
                   'physics.thermal_load.mode', 'physics.thermal_load.temperature', 'physics.gravity.enabled',
+                  'physics.thermal_load.body_temperatures',
                   'physics.gravity.g', 'physics.gravity.direction', 'physics.rotation.enabled', 'physics.rotation.rpm',
                   'physics.rotation.axis', 'physics.rotation.axis_point']
+        for f in case['geometry'].get('faces',[]):
+            if f.get('interface'):
+                paths += [f"contacts.{f['key']}" ]+[f"contacts.{f['key']}.{k}" for k in ('type','mu','offset')]
     if case["physics"]["kind"] == "dc-current":
         paths.append("physics.joule_heating")
     if "flow" in case:
@@ -156,11 +162,12 @@ def editable_paths(case: dict) -> list[str]:
     for b in case.get("bodies", {}):
         paths += [f"bodies.{b}.role", f"bodies.{b}.material"]
     for b in case.get("body_materials", {}):           # multi-material assembly (structural / thermal)
-        paths += [f"body_materials.{b}"] + [f"body_props.{b}.{p}" for p in templates.BODY_PROPS]
+        paths += [f"body_materials.{b}",f"body_props.{b}.model"] + [f"body_props.{b}.{p}" for p in templates.BODY_PROPS]
     mats = case["materials"]
     if "solid" in mats:
         paths += ["materials.solid.preset", "materials.solid.E", "materials.solid.nu", "materials.solid.sy",
-                  "materials.solid.k", "materials.solid.eps_r", "materials.solid.sigma", 'materials.solid.rho', 'materials.solid.alpha']
+                  "materials.solid.k", "materials.solid.eps_r", "materials.solid.sigma", 'materials.solid.rho', 'materials.solid.alpha',
+                  'materials.solid.model', 'materials.solid.H']
     if "fluid" in mats:
         paths += ["materials.fluid.preset", "materials.fluid.nu"]
     for face in templates.face_keys(case):
@@ -177,7 +184,7 @@ def editable_paths(case: dict) -> list[str]:
 
 
 ENUMS = {
-    'physics.analysis': ['static', 'linear-static', 'modal'],
+    'physics.analysis': ['static', 'linear-static', 'modal', 'nonlinear'],
     'physics.thermal_load.mode': ['none', 'uniform', 'solve'],
     'physics.rotation.axis': ['x', 'y', 'z'],
     "mesh.size": ["coarse", "normal", "fine"],
@@ -234,7 +241,53 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             parent = parent.setdefault(p, {})
         key = parts[-1]
         old = parent.get(key)
-        if path == 'physics.thermal_load':
+        if path.startswith('contacts.'):
+            from .contact import TYPES
+            cfg = value if len(parts) == 2 else {key:value}
+            if not isinstance(cfg,dict) or set(cfg)-{'type','mu','offset'}:
+                raise StudioError('err.path',400,path=path)
+            cfg = copy.deepcopy(cfg)
+            if 'type' in cfg and cfg['type'] not in TYPES:
+                raise StudioError('err.path',400,path=path)
+            if 'mu' in cfg and (isinstance(cfg['mu'],bool) or not isinstance(cfg['mu'],(int,float)) or not math.isfinite(cfg['mu']) or cfg['mu']<0):
+                raise StudioError('err.path',400,path=path)
+            if 'offset' in cfg:
+                try:
+                    cfg['offset'] = units.normalize(cfg['offset'],{'value':0,'unit':'mm'})
+                    if not math.isfinite(units.to_si(cfg['offset'])):
+                        raise ValueError()
+                except (units.UnitError,ValueError,TypeError):
+                    raise StudioError('err.path',400,path=path)
+            nv = cfg if len(parts) == 2 else cfg[key]
+        elif path == 'physics.nonlinear' or path.startswith('physics.nonlinear.'):
+            cfg = value if path == 'physics.nonlinear' else {key:value}
+            if not isinstance(cfg,dict) or set(cfg)-{'large_deformation','steps','max_iterations','path','face'}:
+                raise StudioError('err.path',400,path=path)
+            for k,v in cfg.items():
+                valid = (isinstance(v,bool) if k == 'large_deformation' else
+                         v == 'auto' or (isinstance(v,int) and not isinstance(v,bool) and 1<=v<=1000) if k == 'steps' else
+                         isinstance(v,int) and not isinstance(v,bool) and 2<=v<=100 if k == 'max_iterations' else
+                         isinstance(v,list) and 1<=len(v)<=1000 and all(isinstance(a,(int,float)) and not isinstance(a,bool) and math.isfinite(a) for a in v) if k == 'path' else
+                         isinstance(v,str) and v in templates.face_keys(case))
+                if not valid:
+                    raise StudioError('err.path',400,path=path+'.'+k)
+            nv = copy.deepcopy(cfg if path == 'physics.nonlinear' else cfg[key])
+        elif key == 'model':
+            if value not in ('linear','elastoplastic','neo-hookean'):
+                raise StudioError('err.path',400,path=path)
+            nv = value
+        elif key in ('ux','uy','uz') and value is None:
+            nv = None
+        elif path == 'physics.thermal_load.body_temperatures':
+            if not isinstance(value,dict) or set(value)-set(case.get('body_materials',{})):
+                raise StudioError('err.path',400,path=path)
+            try:
+                nv = {b:units.normalize(v,{'value':20,'unit':'degC'}) for b,v in value.items()}
+                if not all(math.isfinite(units.to_si(v)) for v in nv.values()):
+                    raise ValueError()
+            except (units.UnitError,ValueError,TypeError):
+                raise StudioError('err.path',400,path=path)
+        elif path == 'physics.thermal_load':
             if isinstance(value, str):
                 value = {'mode': value}
             if not isinstance(value, dict) or value.get('mode') not in ('none', 'uniform', 'solve') or set(value)-{'mode', 'temperature'}:
@@ -295,7 +348,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 si = units.to_si(nv)
             except (units.UnitError, TypeError, ValueError) as e:
                 raise StudioError("err.unit", 400, msg=str(e))
-            if not (not isinstance(si, list) and math.isfinite(si) and (si >= 0 if key == 'alpha' else si > 0) and
+            if not (not isinstance(si, list) and math.isfinite(si) and (si >= 0 if key in ('alpha','H','nu') else si > 0) and
                     (key != "nu" or si < 0.5) and (key != "eps_r" or si >= 1)):
                 raise StudioError("err.range", 400, path=path, lo="1" if key == "eps_r" else "0", hi="0.5" if key == "nu" else "-")
         elif parts[:2] == ["mesh", "refine"]:
@@ -311,7 +364,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             if not si > 0:
                 raise StudioError("err.range", 400, path=path, lo="0 mm", hi="-")
         elif key == "components":                      # constraint role: which displacement components are held
-            if new["boundaries"].get(parts[1], {}).get("role") != "constraint":
+            if new["boundaries"].get(parts[1], {}).get("role") not in ("constraint",'spring'):
                 raise StudioError("err.path", 400, path=f"{path} (only the 'constraint' role has components)")
             if not (isinstance(value, str) and value and set(value) <= set("xyz") and len(set(value)) == len(value)):
                 raise StudioError("err.path", 400, path=f"{path}={value} (one or more of x, y, z, e.g. \"xy\")")
@@ -362,7 +415,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             if path.startswith("materials.") and not isinstance(si, list):
                 # physical range for every template (a negative modulus solves "fine" and mirrors the answer)
                 poisson = parts[1] == "solid" and key == "nu"
-                ok = math.isfinite(si) and ((0 <= si < 0.5) if poisson else si >= 1 if key == "eps_r" else si >= 0 if key == 'alpha' else si > 0)
+                ok = math.isfinite(si) and ((0 <= si < 0.5) if poisson else si >= 1 if key == "eps_r" else si >= 0 if key in ('alpha','H') else si > 0)
                 if not ok:
                     raise StudioError("err.range", 400, path=path, lo="1" if key == "eps_r" else "0", hi="0.5" if poisson else "-")
             if path.startswith("materials.") and parts[1] in new["materials"]:
@@ -433,6 +486,8 @@ def valid_direction(value, role, normal=True):
 
 
 def valid_boundary_value(key, value, default, role):
+    if key in ('ux','uy','uz') and value is None:
+        return True
     if key == 'direction':
         return valid_direction(value, role)
     if key == 'components':
@@ -464,6 +519,10 @@ def normalize_boundaries(case: dict) -> None:
 
 
 def _default_quantity(path: str) -> dict:
+    if path.endswith(('.ux','.uy','.uz')):
+        return {'value':0,'unit':'mm'}
+    if path.endswith('.H'):
+        return {'value':2.05e9,'unit':'Pa'}
     if path == 'physics.T_ref' or path == 'physics.thermal_load.temperature':
         return {'value': 20, 'unit': 'degC'}
     if path == 'physics.gravity.g':

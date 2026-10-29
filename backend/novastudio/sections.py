@@ -4,7 +4,7 @@ import numpy as np
 from .store import StudioError
 
 
-def section_field(jd, kind, quantity, mode, P, triangles, scalars, displacement, section):
+def section_field(jd, kind, quantity, mode, P, triangles, scalars, displacement, section,step=None):
     try:
         normal = np.asarray(section['normal'],float)
         position = float(section.get('position',.5))
@@ -14,6 +14,11 @@ def section_field(jd, kind, quantity, mode, P, triangles, scalars, displacement,
     except (ValueError,TypeError,KeyError):
         raise StudioError('err.path',400,path='section')
     mesh,data = np.load(jd/'mesh.npz'),np.load(jd/'results.npz')
+    if step is not None:
+        class Fields(dict):
+            @property
+            def files(self): return list(self)
+        data = Fields({k[5:] if k.startswith('step_') else k:data[k][step-1].copy() if k.startswith('step_') else data[k] for k in data.files})
     nodes = mesh['nodes']
     projected = nodes@normal
     offset = projected.min()+position*np.ptp(projected)

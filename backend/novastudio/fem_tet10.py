@@ -45,10 +45,10 @@ def committable_bytes() -> int | None:
 
 # measured peak of the whole run worker (thick-sphere octant, 2026-10-28): 1.58 GB at 117k nodes, 3.84 GB at 454k
 MEM_BASE = 600e6
-MEM_PER_NODE = {"structural": 7.5e3, "scalar": 2.5e3, "modal": 22e3}
+MEM_PER_NODE = {"structural": 7.5e3, "scalar": 2.5e3, "modal": 22e3, 'nonlinear': 24e3}
 
 
-def check_memory(n_nodes: int, kind: str) -> None:
+def check_memory(n_nodes: int, kind: str, steps: int = 1) -> None:
     """Stop with a clear message before assembling a model that cannot fit, instead of a MemoryError deep in the AMG
     set-up after minutes of work."""
     # the calibration is the whole worker's peak, and the commit limit is what can still be added: subtract what this
@@ -59,7 +59,8 @@ def check_memory(n_nodes: int, kind: str) -> None:
         held = getattr(mi, "private", None) or mi.rss       # "private" exists on Windows only; rss elsewhere
     except Exception:
         held = 0
-    need = max(0.0, MEM_BASE + MEM_PER_NODE[kind] * n_nodes - held)
+    history = 300*n_nodes*steps if kind == 'nonlinear' else 0
+    need = max(0.0, MEM_BASE + MEM_PER_NODE[kind] * n_nodes + history - held)
     have = committable_bytes()
     if have is not None and need > have:
         from .store import StudioError
@@ -225,7 +226,7 @@ def structural_system(nodes, tets, E, nu, alpha=0., temperature=None, T_ref=293.
 def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tuple[np.ndarray, np.ndarray]],
           progress: Callable[[str, float], None] = lambda *_: None,
           rollers: list[tuple[np.ndarray, int]] = (), *, rho=0., acceleration=None,
-          alpha=0., temperature=None, T_ref=293.15, nodal_forces=None) -> dict:
+          alpha=0., temperature=None, T_ref=293.15, nodal_forces=None, prescribed=()) -> dict:
     """fixed_faces: list of tri6 arrays whose nodes get u=0.
     tractions: list of (tri6 array, traction vector [Pa]) applied uniformly on that face.
     rollers: list of (tri6 array, component) whose nodes get u[component]=0 (symmetry planes normal to an axis).
@@ -248,6 +249,15 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     if len(rollers):
         fixed = np.unique(np.concatenate([fixed] + [3 * np.unique(tri) + c for tri, c in rollers]))
     free = np.setdiff1d(np.arange(ndof), fixed)
+
+    if prescribed:
+        # General nonzero Dirichlet data share the incremental assembler, with linear kinematics.
+        from .fem_nonlinear import solve as incremental
+        pairs, inverse = np.unique(np.column_stack([np.broadcast_to(E,len(tets)),np.broadcast_to(nu,len(tets))]),axis=0,return_inverse=True)
+        groups = [(np.where(inverse == i)[0],{'E':e,'nu':v}) for i,(e,v) in enumerate(pairs)]
+        return incremental(nodes,tets,groups,fixed_faces,tractions,rollers,prescribed,steps=1,
+                           rho=rho,acceleration=acceleration,alpha=alpha,temperature=temperature,T_ref=T_ref,
+                           nodal_forces=nodal_forces,progress=lambda key,frac,args=None:progress(key,frac))
 
     progress("job.solving", 0.45)
     u = np.zeros(ndof)
@@ -297,11 +307,15 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     # stress at the 4 Gauss points, extrapolated linearly to the corner nodes (as CalculiX does), then
     # nodal averaging of the stress components; midside nodes take the mean of their edge ends
     sg = np.zeros((len(tets), 4, 6))
+    max_strain,max_rotation = 0.,0.
     for g in range(4):
         J = np.einsum("ik,ekj->eij", DSHAPE[g], X)
         dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(tets), 3, 10)))
         strain = np.einsum("eij,ej->ei", _bmatrix(dNdx), u[dofs])
         strain[:, :3] -= expansion[:, g, None]
+        max_strain = max(max_strain,float(np.abs(strain).max()))
+        gradient = np.einsum('eai,eJa->eiJ',U[tets],dNdx)
+        max_rotation = max(max_rotation,float(np.linalg.norm(np.stack([gradient[:,2,1]-gradient[:,1,2],gradient[:,0,2]-gradient[:,2,0],gradient[:,1,0]-gradient[:,0,1]],1),axis=1).max()/2))
         sg[:, g] = np.einsum("ekl,el->ek", Ds[mat], strain)
     Lg = np.column_stack([1 - GAUSS.sum(axis=1), GAUSS])           # barycentric coords of Gauss points (4x4)
     sc = np.einsum("cg,egk->eck", np.linalg.inv(Lg), sg)            # (E, 4 corners, 6)
@@ -329,7 +343,8 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     return {"u": U, "vm": vm, "s": sn, "vm_elem_max": float(vm_e.max()), "applied": applied, "reaction": react,
             "applied_moment": applied_moment, "reaction_moment": reaction_moment,
             "nodal_reaction": reaction.reshape(-1, 3), "forces": f.reshape(-1, 3),
-            "imbalance": imbalance, "volume": float(vol.sum()), "ndof": ndof, "nfree": int(len(free))}
+            "imbalance": imbalance, "volume": float(vol.sum()), "ndof": ndof, "nfree": int(len(free)),
+            'max_strain':max_strain,'max_rotation':max_rotation}
 
 
 # ---------------------------------------------------------------- shared helpers for arbitrary shapes

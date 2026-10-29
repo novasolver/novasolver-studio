@@ -102,7 +102,11 @@ def temperatures(case, mesh, progress):
         load = {'mode': load}
     mode = load.get('mode', 'none')
     if mode == 'uniform':
-        return np.full(len(mesh['nodes']), units.to_si(load.get('temperature', {'value': 120, 'unit': 'degC'})))
+        T = np.full(len(mesh['nodes']), units.to_si(load.get('temperature', {'value': 120, 'unit': 'degC'})))
+        for body,q in load.get('body_temperatures',{}).items():
+            idx = np.unique(mesh['tets'][mesh['tet_body'] == int(body[1:])])
+            T[idx] = units.to_si(q)
+        return T
     if mode == 'solve':
         from .fem_tet10 import solve_thermal
         from .run_worker import thermal_groups
@@ -121,6 +125,57 @@ def comparison(case, quantity, computed, expected, unit, formula, **extra):
     return {'applicable': True, 'quantity': quantity, 'computed': float(computed), 'reference': float(expected),
             'unit': unit, 'formula': formula, 'error_pct': float(error), 'tolerance_pct': tol,
             'pass': bool(abs(error) <= tol), **extra}
+
+
+def rubber_uniaxial(E,nu,stretch):
+    """Exact homogeneous, zero lateral Cauchy stress for the log-J compressible neo-Hookean law."""
+    from scipy.optimize import brentq
+    mu,lam = E/(2*(1+nu)),E*nu/((1+nu)*(1-2*nu))
+    lateral = brentq(lambda a: mu*(a*a-1)+lam*np.log(stretch*a*a),.001,10.)
+    J = stretch*lateral*lateral
+    return {'lateral_stretch':lateral,'cauchy_pa':mu*(stretch*stretch-lateral*lateral)/J,
+            'nominal_pa':mu*(stretch*stretch-lateral*lateral)/stretch}
+
+
+def follower_pressure(case,mesh):
+    """Dead direction for all other loads; pressure follows the current tri6 area vector.
+    Differentiate that area vector, including its area change, for the Newton tangent.
+    """
+    import scipy.sparse as sp
+    from .fem_tet10 import outward_normals,canonical_tets
+    faces = [(mesh['face_'+f],units.to_si(b['pressure'])) for f,b in case['boundaries'].items() if b['role'] == 'pressure']
+    if not faces:
+        return None
+    nodes = mesh['nodes']; ndof = 3*len(nodes)
+    tets = canonical_tets(nodes,mesh['tets'])
+    rules = []
+    q,w = np.polynomial.legendre.leggauss(3); q,w = (q+1)/2,w/2
+    for tri,p in faces:
+        norm = outward_normals(nodes,tets,tri)
+        cross = np.cross(nodes[tri[:,1]]-nodes[tri[:,0]],nodes[tri[:,2]]-nodes[tri[:,0]])
+        sign = np.sign(np.einsum('ei,ei->e',cross,norm))
+        dofs = (3*tri[:,:,None]+np.arange(3)).reshape(-1,18)
+        for i,a in enumerate(q):
+            for j,b in enumerate(q):
+                L = np.array([(1-a)*(1-b),a,(1-a)*b]); dL = np.array([[-1,1,0],[-1,0,1]])
+                N = np.r_[L*(2*L-1),4*L[0]*L[1],4*L[1]*L[2],4*L[2]*L[0]]
+                dN = np.column_stack([dL*(4*L-1),*[4*(dL[:,k]*L[l]+L[k]*dL[:,l]) for k,l in ((0,1),(1,2),(2,0))]])
+                rules.append((tri,dofs,N,dN,-p*sign*w[i]*w[j]*(1-a)))
+    def evaluate(U):
+        force = np.zeros(ndof); K = sp.csr_matrix((ndof,ndof)); x = nodes+U
+        for tri,dofs,N,dN,weight in rules:
+            jac = np.einsum('ka,eai->eki',dN,x[tri])
+            load = weight[:,None,None]*N[None,:,None]*np.cross(jac[:,0],jac[:,1])[:,None,:]
+            np.add.at(force,dofs.ravel(),load.ravel())
+            deriv = np.empty((len(tri),6,3,6,3))
+            for c in range(3):
+                v = np.eye(3)[c]
+                da = (dN[0][None,:,None]*np.cross(v,jac[:,1])[:,None,:]+
+                      dN[1][None,:,None]*np.cross(jac[:,0],v)[:,None,:])
+                deriv[:,:,:,:,c] = weight[:,None,None,None]*N[None,:,None,None]*da.transpose(0,2,1)[:,None,:,:]
+            K += sp.csr_matrix((deriv.reshape(-1,18,18).ravel(),(np.repeat(dofs,18,axis=1).ravel(),np.tile(dofs,(1,18)).ravel())),shape=(ndof,ndof))
+        return force,K
+    return evaluate
 
 
 def modal_reference(case, table):
@@ -151,6 +206,8 @@ def reference(case, mesh, r, metrics):
     from .templates import solid_props
     from .reference_loads import unsupported_loads
     tid = case['template']
+    if tid in ('press-fit','stacked-blocks','friction-block','large-cantilever','plastic-bar','plastic-beam-collapse','rubber-tension'):
+        return nonlinear_reference(case,mesh,r,metrics)
     expected = {'thermal-bar-fixed': {'thermal'}, 'thermal-bar-free': {'thermal'}, 'hanging-bar': {'gravity'},
                 'rotating-disk': {'rotation'}}
     excluded = unsupported_loads(case, expected.get(tid, ()))
@@ -222,3 +279,95 @@ def reference(case, mesh, r, metrics):
         ref['pass'] &= ref['shear']['pass']
         return ref
     return na
+
+
+def nonlinear_reference(case,mesh,r,metrics):
+    from .templates import solid_props
+    from .reference_loads import unsupported_loads
+    excluded = unsupported_loads(case)
+    if excluded:
+        return excluded
+    tid = case['template']; p = case['geometry']['params']; props = solid_props(case)
+    E,nu = props['E'],props['nu']
+    na = {'applicable':False,'why_key':'verify.structural_pattern_reason'}
+    if tid in ('press-fit','stacked-blocks','friction-block'):
+        contact = r.get('interfaces',{}).get('interface')
+        if not contact:
+            return na
+        if tid == 'press-fit':
+            from .contact import settings
+            if settings(case,'interface')['type'] != 'frictionless' or any(
+                    abs(solid_props(case,b)[k]/props[k]-1)>1e-10 for b in case.get('body_materials',{}) for k in ('E','nu')):
+                return na
+            b,c = (units.to_si(p[k]) for k in ('radius','outer_radius'))
+            offset = units.to_si(case.get('contacts',{}).get('interface',{}).get('offset',0))
+            if offset <= 0:
+                return na
+            pressure = E*offset/b*(c*c-b*b)/(2*c*c)
+            metrics['contact_pressure_pa'] = contact['pressure_pa']
+            x = mesh['nodes']; radius = np.hypot(x[:,0],x[:,1]); ring = np.unique(mesh['tets'][mesh['tet_body'] == 2])
+            nds = ring[np.abs(radius[ring]-b)<b*.01]
+            theta = np.arctan2(x[nds,1],x[nds,0]); stress = r['s'][nds]
+            hoop = stress[:,0]*np.sin(theta)**2+stress[:,1]*np.cos(theta)**2-2*stress[:,3]*np.sin(theta)*np.cos(theta)
+            metrics['hoop_stress_pa'] = float(hoop.mean())
+            ref = comparison(case,'contact_pressure',contact['pressure_pa'],pressure,'Pa','Lamé thick cylinders, plane stress: p = E delta/b (c²-b²)/(2c²)')
+            ref['hoop'] = comparison(case,'hoop_stress',metrics['hoop_stress_pa'],pressure*(c*c+b*b)/(c*c-b*b),'Pa','Lamé ring bore: sigma_theta = p (c²+b²)/(c²-b²)')
+            ref['pass'] &= ref['hoop']['pass']
+            return ref
+        pressure = units.to_si(case['boundaries']['top'].get('pressure',0))
+        area = units.to_si(p['length'])*units.to_si(p['width'])
+        if pressure<=0:
+            return na
+        if tid == 'stacked-blocks':
+            metrics['contact_force_n'] = contact['normal_force_n']
+            ref = comparison(case,'contact_force',contact['normal_force_n'],pressure*area,'N','Uniform compression, sigma_z = -p; F = p A')
+            ref['stress'] = comparison(case,'axial_stress',float(-r['s'][:,2].mean()),pressure,'Pa','Uniform compression: sigma_z = -p')
+            ref['pass'] &= ref['stress']['pass']
+            return ref
+        shear = units.to_si(case['boundaries']['x1']['force'])
+        mu = case['contacts']['interface'].get('mu',.2)
+        metrics['contact_shear_n'] = abs(contact['force_n'][0])
+        return comparison(case,'contact_shear',metrics['contact_shear_n'],min(shear,mu*pressure*area),'N','Coulomb block on a soft spring: T = min(tau A, mu p A)')
+    x,u,s = mesh['nodes'],r['u'],r['s']
+    if tid == 'large-cantilever':
+        if case['boundaries']['x0']['role'] != 'beam-clamp' or case['boundaries']['x1']['role'] != 'load' or case['boundaries']['x1'].get('direction') != '-z':
+            return na
+        L,w,h = (units.to_si(p[k]) for k in ('length','width','height'))
+        force = units.to_si(case['boundaries']['x1']['force'])
+        if abs(force*L*L/(E*w*h**3/12)-1)>.0001:
+            return na
+        end = np.unique(mesh['face_x1'])
+        metrics['tip_disp_m'] = float(-u[end,2].mean())
+        metrics['horizontal_disp_m'] = float(-u[end,0].mean())
+        ref = comparison(case,'tip_disp',metrics['tip_disp_m'],.3017*L,'m','Euler elastica, inextensible, PL²/EI = 1; vertical delta/L = 0.3017 (linear: 1/3)')
+        ref['horizontal'] = comparison(case,'horizontal_disp',metrics['horizontal_disp_m'],.0566*L,'m','Elastica: horizontal shortening/L = 0.0566')
+        ref['pass'] &= ref['horizontal']['pass']
+        return ref
+    if tid == 'rubber-tension':
+        L = units.to_si(p['height']); stretch = 1+units.to_si(case['boundaries']['z1']['uz'])/L
+        if props.get('model') != 'neo-hookean':
+            return na
+        expected = rubber_uniaxial(E,nu,stretch)
+        metrics['axial_stress_pa'] = float(s[:,2].mean())
+        return comparison(case,'axial_stress',metrics['axial_stress_pa'],expected['cauchy_pa'],'Pa','Homogeneous compressible neo-Hookean tension, lateral stress = 0; W = mu/2 (I1-3) - mu ln J + lambda/2 (ln J)²')
+    if tid == 'plastic-bar':
+        # The loading maximum and the subsequent zero-displacement state are both retained, not inferred from a formula.
+        if not r.get('steps') or props.get('model') != 'elastoplastic':
+            return na
+        peak = max(zip(r['curve'],r['steps']),key=lambda x:x[0]['load_fraction'])[1]
+        strain = units.to_si(case['boundaries']['x1']['ux'])/units.to_si(p['length'])
+        expected = props['sy']+props['H']*(strain-props['sy']/E)
+        if strain <= props['sy']/E:
+            return na
+        metrics['axial_stress_pa'] = float(peak['s'][:,0].mean())
+        metrics['plastic_strain'] = float(peak['peeq'].mean())
+        ref = comparison(case,'axial_stress',metrics['axial_stress_pa'],expected,'Pa','Bilinear hardening, uniaxial: sigma = sy + H (epsilon - sy/E)')
+        ref['plastic_strain'] = comparison(case,'plastic_strain',metrics['plastic_strain'],strain-expected/E,'-','Uniaxial plastic strain: epsilon_p = epsilon - sigma/E')
+        ref['pass'] &= ref['plastic_strain']['pass']
+        return ref
+    L,w,h = (units.to_si(p[k]) for k in ('length','width','height'))
+    if props.get('model') != 'elastoplastic' or props.get('H') != 0:
+        return na
+    expected = props['sy']*w*h*h/(4*L)
+    metrics['limit_load_n'] = r['curve'][-1]['load_fraction']*units.to_si(case['boundaries']['x1']['force'])
+    return comparison(case,'limit_load',metrics['limit_load_n'],expected,'N','Perfectly plastic rectangular section, shear neglected: P = sy b h²/(4 L); last converged increment')

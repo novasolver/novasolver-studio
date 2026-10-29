@@ -166,12 +166,12 @@ export const api = {
   job: (jobId: string) => request<Job>("GET", `/api/jobs/${encodeURIComponent(jobId)}`),
   stopJob: (jobId: string) => request<Job>("POST", `/api/jobs/${encodeURIComponent(jobId)}/stop`),
   results: (id: string) => request<ResultsPayload>("GET", `/api/cases/${encodeURIComponent(id)}/results`),
-  field: (id: string, quantity: string, mode = 1, section: SectionPlane | null = null) =>
-    request<FieldPayload>("GET", `/api/cases/${encodeURIComponent(id)}/field?quantity=${encodeURIComponent(quantity)}&mode=${mode}${section ? '&section='+encodeURIComponent(JSON.stringify(section)) : ''}`),
-  probe: (id: string, line: { from: number[]; to: number[]; n: number }, mode = 1, run_id?: string) =>
-    request<ProbeLine>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { line, mode, run_id }),
-  probePoint: (id: string, at: number[], mode = 1, run_id?: string) =>
-    request<ProbePoint>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { points: [at], mode, run_id }),
+  field: (id: string, quantity: string, mode = 1, section: SectionPlane | null = null,step: number | null = null) =>
+    request<FieldPayload>("GET", `/api/cases/${encodeURIComponent(id)}/field?quantity=${encodeURIComponent(quantity)}&mode=${mode}${step == null ? '':'&step='+step}${section ? '&section='+encodeURIComponent(JSON.stringify(section)) : ''}`),
+  probe: (id: string, line: { from: number[]; to: number[]; n: number }, mode = 1, run_id?: string,step?: number | null) =>
+    request<ProbeLine>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { line, mode, run_id,step }),
+  probePoint: (id: string, at: number[], mode = 1, run_id?: string,step?: number | null) =>
+    request<ProbePoint>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { points: [at], mode, run_id,step }),
 };
 
 /** Subscribe to server push (WS /ws). Reconnects with backoff. Returns an unsubscribe. */

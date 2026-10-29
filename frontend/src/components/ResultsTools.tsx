@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Download, Play, Pause } from 'lucide-react';
 import { api, exportUrl } from '../api/client';
 import type { ProbeLine } from '../api/types';
-import { getState, getViewer, selectMode, setSection, setState, toast, useStore, useT } from '../state/store';
+import { getState, getViewer, selectMode, selectStep, setSection, setState, toast, useStore, useT } from '../state/store';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 import { Slider } from './ui/Slider';
@@ -28,6 +28,7 @@ export function ResultsTools() {
   const supportsSection = ['structural','modal','thermal','electrostatic','current','conjugate'].includes(r.kind ?? '');
   const plane = (a: string, p: number) => ({ normal:a === 'camera' ? getViewer()?.cameraDirection() ?? [1,0,0] : ['x','y','z'].map(v => v === a ? 1:0), position:p });
   return <>
+    {!!r.curve?.length && <NonlinearResults />}
     {r.modes && <section className="px-4 pt-6"><SectionLabel>{t('modal.modes')}</SectionLabel>
       <div className="tnum overflow-x-auto rounded-[8px] bg-raised px-2 py-1 text-label">
         <table className="w-full text-right"><thead className="text-fg-2"><tr><th className="h-8 text-left font-medium">{t('modal.mode')}</th><th className="font-medium">Hz</th><th className="font-medium">Mx %</th><th className="font-medium">My %</th><th className="font-medium">Mz %</th></tr></thead>
@@ -61,11 +62,52 @@ export function ResultsTools() {
   </>;
 }
 
+function NonlinearResults() {
+  const t = useT(); const r = useStore(s => s.results)!;
+  const selected = useStore(s => s.selectedStep); const cid = useStore(s => s.payload?.case.case_id);
+  const [playing,setPlaying] = useState(false);
+  const [response,setResponse] = useState('max');
+  const curve = r.curve ?? []; const step = selected ?? curve.length;
+  useEffect(() => {setPlaying(false);},[cid,r.run_id]);
+  useEffect(() => {
+    if (!playing) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      await selectStep(step >= curve.length ? 1:step+1);
+      if (!cancelled && step+1 >= curve.length) setPlaying(false);
+    },350);
+    return () => {cancelled=true;window.clearTimeout(timer);};
+  },[playing,step,curve.length]);
+  const displacement = (v: typeof curve[number]) => response === 'max' ? v.max_disp_m*1000:v.face_disp_m[Number(response)]*1000;
+  const xs = curve.map(displacement), ys = curve.map(v => v.load_fraction);
+  const x0 = Math.min(0,...xs),x1 = Math.max(...xs),y0 = Math.min(0,...ys),y1 = Math.max(...ys);
+  const points = curve.map(v => `${30+(displacement(v)-x0)/(x1-x0 || 1)*220},${108-(v.load_fraction-y0)/(y1-y0 || 1)*88}`);
+  return <section className="px-4 pt-6"><SectionLabel>{t('nonlinear.steps')}</SectionLabel>
+    <div className="tnum mb-2 text-body text-fg-2">{t('nonlinear.step',{step,n:curve.length})} · {t('nonlinear.load')} {fmt(curve[step-1]?.load_fraction ?? 0,4)}</div>
+    <Slider ariaLabel={t('nonlinear.steps')} min={1} max={curve.length} step={1} value={step} onChange={v => {setPlaying(false);void selectStep(v);}} />
+    <Button variant="secondary" className="mt-3" onClick={() => {if (step >= curve.length) void selectStep(1);setPlaying(v => !v);}}>
+      {playing ? <Pause size={14} strokeWidth={1.5} />:<Play size={14} strokeWidth={1.5} />}{t(playing ? 'modal.pause':'nonlinear.play')}</Button>
+    <div className="mt-6"><SectionLabel>{t('nonlinear.curve')}</SectionLabel>
+      <Select ariaLabel={t('nonlinear.response')} value={response} options={['max','0','1','2'].map(v => ({value:v,label:t(v === 'max' ? 'nonlinear.max':'nonlinear.face'+v)}))} onChange={setResponse} />
+      <svg viewBox="0 0 264 142" role="img" aria-label={t('nonlinear.curve')} className="mt-3 block w-full">
+        <path d="M30 14 V108 H250" fill="none" stroke="var(--line-strong)" />
+        <polyline points={points.join(' ')} fill="none" stroke="var(--text-2)" strokeWidth="1.5" />
+        {points[step-1] && <circle cx={Number(points[step-1].split(',')[0])} cy={Number(points[step-1].split(',')[1])} r="3" fill="var(--text)" />}
+        <text x="3" y="20" fontSize="11" fill="var(--text-3)">{fmt(y1,3)}</text><text x="3" y="108" fontSize="11" fill="var(--text-3)">{fmt(y0,3)}</text>
+        <text x="30" y="130" fontSize="11" fill="var(--text-3)">{fmt(x0,3)}</text><text x="250" y="130" textAnchor="end" fontSize="11" fill="var(--text-3)">{fmt(x1,3)} mm</text>
+      </svg>
+      <Button variant="ghost" onClick={() => downloadCSV(['step,load_fraction,max_disp_m,face_ux_m,face_uy_m,face_uz_m',...curve.map(v => [v.step,v.load_fraction,v.max_disp_m,...v.face_disp_m].join(','))].join('\n'),'load-displacement.csv')}>
+        <Download size={14} strokeWidth={1.5} />{t('line.csv')}</Button>
+    </div>
+  </section>;
+}
+
 function LinePlot() {
   const t = useT();
   const cid = useStore(s => s.payload!.case.case_id);
   const bbox = useStore(s => s.geometry?.bbox);
   const mode = useStore(s => s.selectedMode);
+  const selectedStep = useStore(s => s.selectedStep);
   const runId = useStore(s => s.results?.run_id);
   const [from,setFrom] = useState([0,0,0]), [to,setTo] = useState([100,0,0]);
   const [data,setData] = useState<ProbeLine | null>(null);
@@ -75,7 +117,7 @@ function LinePlot() {
   useEffect(() => {
     setData(null); setBusy(false);
     return () => { generation.current++; };
-  }, [cid,mode,runId]);
+  }, [cid,mode,selectedStep,runId]);
   useEffect(() => {
     if (!bbox) return;
     const ext = bbox[0].map((v,i) => bbox[1][i]-v);
@@ -89,11 +131,11 @@ function LinePlot() {
     const current = () => {
       const state = getState();
       return generation.current === token && state.payload?.case.case_id === cid &&
-        state.results?.run_id === runId && state.selectedMode === mode;
+        state.results?.run_id === runId && state.selectedMode === mode && state.selectedStep === selectedStep;
     };
     setBusy(true);
     try {
-      const r = await api.probe(cid,{from,to,n:80},mode,runId);
+      const r = await api.probe(cid,{from,to,n:80},mode,runId,selectedStep);
       if (current()) { setData(r); setQuantity(Object.keys(r.quantities)[0]); }
     }
     catch(e) { if (current()) toast(e instanceof Error ? e.message:String(e),'error'); }

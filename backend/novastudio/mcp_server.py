@@ -198,10 +198,16 @@ async def update_case(case_id: str, expected_revision: int, changes: dict[str, A
     Assemblies (STEP with several bodies, structural/thermal/electric): body_materials.<body> = a preset (steel, aluminium,
     concrete, insulation, glass, wood, fr4, silicon, ptfe, alumina, ...), body_props.<body>.k|E|nu|eps_r|sigma overrides one value.
     Set the role first (same call is fine); value fields must match the role.
-    Structural: physics.analysis=modal|static, physics.modes=1..30; materials.solid.alpha (1/K), rho;
+    Structural: physics.analysis=modal|static|nonlinear, physics.modes=1..30; materials.solid.alpha (1/K), rho;
+    physics.nonlinear={large_deformation:true,steps:"auto" or n,max_iterations:25,path:[load fractions],face:key}.
+    materials.solid.model and body_props.<b>.model=linear|elastoplastic|neo-hookean; sy and H (post-yield tangent, Pa).
+    Elastoplastic supports small strain only; neo-hookean requires large deformation. Pressure follows deformation.
+    contacts.<interface>.type=bonded|frictionless|frictional|no-separation, .mu, .offset (positive interference, negative gap).
+    Touching shared faces only. Missing contacts are bonded. displacement role: ux/uy/uz with length units, null = free.
     physics.T_ref (degC), physics.thermal_load.mode=none|uniform|solve and .temperature; solve uses thermal face fields.
     physics.gravity.enabled, .g (m/s2), .direction; physics.rotation.enabled, .rpm, .axis=x|y|z, .axis_point=[mm].
     Roles moment (torque in N-m + direction), bearing (force + direction perpendicular to cylinder axis),
+    beam-clamp (axis-aligned planar beam section: rigid motion held, lateral contraction free),
     remote-force (force + direction + point={value:[x,y,z],unit:mm}); body_props.<body>.alpha|rho.
     Values with units: "5 mm", "2 kN", "70 GPa" or {"value": 5, "unit": "mm"}. Returns the diff and new readiness."""
     r, e = await _call(C.update_case, language, case_id, expected_revision, changes, language, source='ai')
@@ -375,14 +381,17 @@ async def verify_case(case_id: str, language: Lang = "ja") -> CallToolResult:
 
 @mcp.tool(annotations=RO)
 async def render_view(case_id: str, quantity: str = "", language: Lang = "ja", view: Literal['iso', 'iso_back', 'top', 'bottom', 'front', 'back', 'left', 'right'] = 'iso',
-                      highlight: list[str] | None = None, mode: int = 1) -> CallToolResult:
+                      highlight: list[str] | None = None, mode: int = 1,step: int | None = None) -> CallToolResult:
     """PNG of a result field with colour bar and units. quantity: disp | vm | uz (structural), speed | ux | psi (CFD),
     v | emag (electrostatic), temp | v | jmag | q (DC current / Joule heating).
     Empty = default. Read numbers from get_results rather than from the picture.
     quantity="faces" confirms the setup with the person: numbered faces by role, or highlight face keys in accent.
-    quantity="mode", mode=n renders modal shape n (one-based, max displacement normalised to 1)."""
+    quantity="mode", mode=n renders modal shape n (one-based, max displacement normalised to 1).
+    Nonlinear: step=n selects a converged step (one-based, omitted = last). Contact: p_contact, contact_status,
+    contact_gap, contact_slip. Plasticity: peeq. Large deformation is shown at true scale."""
+    # Nonlinear steps are one-based; omitted means the last converged step.
     try:
-        png, meta = await anyio.to_thread.run_sync(lambda: C.render_view(case_id, quantity, language, view, highlight, mode))
+        png, meta = await anyio.to_thread.run_sync(lambda: C.render_view(case_id, quantity, language, view, highlight, mode,step))
     except StudioError as e:
         return _err(e, language)
     return _ok(t('render.faces', language) if quantity == 'faces' else
@@ -400,7 +409,7 @@ async def export_results(case_id: str, format: Literal['vtu','csv','report'], la
 
 @mcp.tool(annotations=RO)
 async def probe_results(case_id: str, points: list[list[float]] | None = None, line: dict[str, Any] | None = None,
-                        faces: list[str] | None = None, run_id: str | None = None, language: Lang = "ja") -> CallToolResult:
+                        faces: list[str] | None = None, run_id: str | None = None, language: Lang = "ja",mode: int = 1,step: int | None = None) -> CallToolResult:
     """Read result values where you ask, in mm: `points` = [[x, y, z], ...]; `line` = {"from": [x,y,z], "to": [x,y,z],
     "n": 50} (values along it, with min/max); `faces` = face keys (e.g. ["f3", "f7"]): area-weighted mean, min, max per
     quantity and, for flow, the volume flow out through the face (negative = into the fluid; exact solver fluxes on
@@ -408,9 +417,10 @@ async def probe_results(case_id: str, points: list[list[float]] | None = None, l
     Quantities: structural disp ux uy uz (mm), vm, sxx syy szz sxy syz szx, s1 s3 (max/min principal) (MPa); thermal temp (°C); flow speed ux uy uz (m/s), p (Pa); conjugate temp, speed.
     Electric: v (V), ex/ey/ez/emag (V/m), jmag (A/m2), q (W/m3), temp (°C, when present).
     Electrode face statistics include charge_c or current_a from the solver (positive into the body).
+    step selects a converged nonlinear frame (one-based, omitted = last); mode selects a modal shape.
     Values inside elements are interpolated (quadratic on tet10). A point outside the part gets inside=false and the
     nearest node's value. Up to 500 points in one call. Not available for 2D template grids or snappyHexMesh runs."""
-    r, e = await _call(C.probe_results, language, case_id, points, line, faces, run_id, language)
+    r, e = await _call(C.probe_results, language, case_id, points, line, faces, run_id, language,mode,step)
     if e:
         return e
     u = r["quantities"]

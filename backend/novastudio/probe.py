@@ -18,6 +18,9 @@ def _fields(kind: str, data, mode: int = 1) -> dict[str, tuple[np.ndarray, str]]
         u = data["u"] * 1e3
         out = {"disp": (np.linalg.norm(u, axis=1), "mm"), "ux": (u[:, 0], "mm"), "uy": (u[:, 1], "mm"),
                "uz": (u[:, 2], "mm"), "vm": (data["vm"] / 1e6, "MPa")}
+        for key,scale,unit in [('p_contact',1e-6,'MPa'),('peeq',1,'-'),('contact_status',1,'-'),('contact_gap',1e3,'mm'),('contact_slip',1e3,'mm')]:
+            if key in data.files:
+                out[key] = (data[key]*scale,unit)
         if "s" in data.files:                     # stress tensor (xx, yy, zz, xy, yz, zx); runs before 0.2.2 lack it
             s = data["s"] / 1e6
             for i, c in enumerate(("sxx", "syy", "szz", "sxy", "syz", "szx")):
@@ -203,12 +206,19 @@ def _tri_owner_side(tri: np.ndarray, tets: np.ndarray, nodes: np.ndarray) -> np.
 
 
 def probe(case: dict, points: list | None = None, line: dict | None = None, faces: list[str] | None = None,
-          run_id: str | None = None, mode: int = 1) -> dict:
+          run_id: str | None = None, mode: int = 1,step: int | None = None) -> dict:
     jd, r = load(case["case_id"], run_id)
     kind = r["kind"]
     if not (jd / "mesh.npz").is_file():
         raise StudioError("err.probe_unsupported", 400, kind=kind)
     data = np.load(jd / "results.npz")
+    if step is not None:
+        if not isinstance(step,int) or not 1<=step<=len(r.get('curve',[])):
+            raise StudioError('err.path',400,path=f'step={step}')
+        class Fields(dict):
+            @property
+            def files(self): return list(self)
+        data = Fields({k[5:] if k.startswith('step_') else k:data[k][step-1].copy() if k.startswith('step_') else data[k] for k in data.files})
     if "snappy" in data.files:
         raise StudioError("err.probe_unsupported", 400, kind="external (snappyHexMesh)")
     mesh = np.load(jd / "mesh.npz")
@@ -218,6 +228,8 @@ def probe(case: dict, points: list | None = None, line: dict | None = None, face
         raise StudioError("err.probe_unsupported", 400, kind=kind)
     out = {"case_id": case["case_id"], "run_id": jd.name, "kind": kind, "stale": r.get("revision") != case["revision"],
            "quantities": {q: u for q, (_, u) in F.items()}}
+    if step is not None:
+        out['step'] = step
 
     pts = []
     if points:

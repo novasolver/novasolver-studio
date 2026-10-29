@@ -245,6 +245,7 @@ export function ViewerPane() {
   const caseId = useStore((s) => s.payload?.case.case_id);
   const geometry = useStore((s) => s.geometry);
   const faces = useStore((s) => s.payload?.ui.faces);
+  const interfaces = useStore(s => s.payload?.ui.interfaces);
   const roles = useStore((s) => s.payload?.ui.roles);
   const step = useStore((s) => s.step);
   const selected = useStore((s) => s.selectedFaces);
@@ -389,13 +390,13 @@ export function ViewerPane() {
     const bc = step === "boundaries";
     for (const g of ["fixed", "loaded", "exchange", "unassigned"] as const) {
       viewer.highlightFaces(
-        bc ? faces.filter((f) => !f.locked && roleGroup(f.role) === g).map((f) => f.key) : [],
+        bc ? [...faces.filter((f) => !f.locked && roleGroup(f.role) === g).map((f) => f.key),...(g === 'exchange' ? (interfaces ?? []).map(f => f.key):[])] : [],
         groupColor(theme, g),
         g,
       );
     }
     viewer.highlightFaces(flash, pal.roles.flash, "flash");
-  }, [viewer, faces, step, flash, viewerGeometry, theme]);
+  }, [viewer, faces, interfaces, step, flash, viewerGeometry, theme]);
 
   useEffect(() => {
     viewer?.setSelection(step === "boundaries" ? selected : []);

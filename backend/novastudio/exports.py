@@ -43,6 +43,18 @@ def export(case, format, lang):
         target = folder/(jd.name + ('.html' if format == 'report' else '.'+format))
         path = target.with_suffix(target.suffix+'.'+secrets.token_hex(4)+'.tmp')
         if format == 'vtu':
+            if raw.get('curve'):
+                root = ET.Element('VTKFile',type='Collection',version='0.1',byte_order='LittleEndian')
+                collection = ET.SubElement(root,'Collection')
+                for i,row in enumerate(raw['curve']):
+                    filename = f'{jd.name}_step_{i+1:04d}.vtu'
+                    step_fields = {k[5:]:data[k][i] for k in data.files if k.startswith('step_')}
+                    write_vtu(folder/filename,nodes,tets,step_fields)
+                    ET.SubElement(collection,'DataSet',timestep=str(i+1),group='',part='0',file=filename)
+                target = target.with_suffix('.pvd')
+                ET.ElementTree(root).write(path,encoding='utf-8',xml_declaration=True)
+                os.replace(path,target)
+                return target
             from .fem_tet10 import canonical_tets
             tets = canonical_tets(nodes,tets) if tets.shape[1] == 10 else tets
             root = ET.Element('VTKFile',type='UnstructuredGrid',version='0.1',byte_order='LittleEndian')
@@ -70,7 +82,10 @@ def export(case, format, lang):
         elif format == 'csv':
             with path.open('w',encoding='utf-8',newline='') as fh:
                 writer = csv.writer(fh)
-                if raw['kind'] == 'modal':
+                if raw.get('curve'):
+                    writer.writerow(['step','load_fraction','max_disp_m','face_ux_m','face_uy_m','face_uz_m'])
+                    writer.writerows([r['step'],r['load_fraction'],r['max_disp_m'],*r['face_disp_m']] for r in raw['curve'])
+                elif raw['kind'] == 'modal':
                     writer.writerow(['mode','frequency_hz','effective_mass_x','effective_mass_y','effective_mass_z'])
                     for m in raw['modes']:
                         writer.writerow([m['mode'],m['frequency_hz'],*m['effective_mass']])
@@ -88,6 +103,31 @@ def export(case, format, lang):
             path.write_text(report(case,jd,raw,lang),encoding='utf-8')
         os.replace(path,target)
     return target
+
+
+def write_vtu(path,nodes,tets,fields):
+    from .fem_tet10 import canonical_tets
+    tets = canonical_tets(nodes,tets)
+    root = ET.Element('VTKFile',type='UnstructuredGrid',version='0.1',byte_order='LittleEndian')
+    piece = ET.SubElement(ET.SubElement(root,'UnstructuredGrid'),'Piece',NumberOfPoints=str(len(nodes)),NumberOfCells=str(len(tets)))
+    def array(parent,name,data,dtype='Float64'):
+        data = np.asarray(data)
+        attrs = {'type':dtype,'format':'ascii'}
+        if name: attrs['Name'] = name
+        if data.ndim>1: attrs['NumberOfComponents'] = str(data.shape[1])
+        ET.SubElement(parent,'DataArray',attrs).text = ' '.join(str(v) for v in data.ravel())
+    array(ET.SubElement(piece,'Points'),None,nodes)
+    cells = ET.SubElement(piece,'Cells')
+    array(cells,'connectivity',tets.ravel(),'Int64')
+    array(cells,'offsets',np.arange(1,len(tets)+1)*10,'Int64')
+    array(cells,'types',np.full(len(tets),24),'UInt8')
+    point = ET.SubElement(piece,'PointData')
+    for name,values in fields.items():
+        array(point,name,values)
+    ET.SubElement(piece,'CellData')
+    temporary = path.with_suffix('.tmp')
+    ET.ElementTree(root).write(temporary,encoding='utf-8',xml_declaration=True)
+    os.replace(temporary,path)
 
 
 UNIT_LABEL = {'degC': '°C', 'W/m2': 'W/m²', 'W/m2K': 'W/(m²·K)', 'W/mK': 'W/(m·K)', 'kg/m3': 'kg/m³', 'm2/s': 'm²/s',
@@ -184,7 +224,7 @@ def report(case,jd,raw,lang):
     # "analysis" (e.g. modal) overrides the physics kind (linear-static) of a structural case: name only one
     kind = phys.get('analysis') or phys.get('kind')
     rows = [(t('export.analysis', lang), _label('physics', tp['physics'], lang)+(' / '+_label('analysis', kind, lang) if kind else ''))]
-    for k in ('modes', 'thermal_load', 'gravity', 'rotation', 'joule_heating'):
+    for k in ('modes', 'nonlinear', 'thermal_load', 'gravity', 'rotation', 'joule_heating'):
         if k in phys and phys[k] not in (None, False, {}):
             v = phys[k]
             if isinstance(v, dict):
@@ -202,10 +242,15 @@ def report(case,jd,raw,lang):
              + image(results.render_faces(case,lang,view='iso_back')[0], t('export.boundaries', lang)) + '</div>')
     html += heading('boundaries')+table((t('export.face', lang), t('export.role', lang), t('export.values', lang)),
         [(face_label(tp,f,lang,case), _label('role', b['role'], lang), values(b)) for f,b in case['boundaries'].items()])
+    if raw.get('interfaces'):
+        from .contact import settings
+        html += heading('contacts')+table((t('export.face',lang),t('export.role',lang),'μ',t('field.offset',lang),t('export.force',lang)),
+            [(face_label(tp,f,lang,case),t('contact.'+settings(case,f)['type'],lang),settings(case,f)['mu'],
+              _quantity(settings(case,f)['offset']),_si(v['normal_force_n'],'N')) for f,v in raw['interfaces'].items()])
     html += heading('materials')
     # only the properties this analysis uses (a structural case does not need permittivity); "nu" is Poisson's
     # ratio for a solid and kinematic viscosity for a fluid
-    used = {'structural': ('E', 'nu', 'rho', 'sy', 'alpha', 'k'), 'thermal': ('k',), 'electric': ('eps_r', 'sigma', 'k'),
+    used = {'structural': ('E', 'nu', 'rho', 'sy', 'H', 'model', 'alpha', 'k'), 'thermal': ('k',), 'electric': ('eps_r', 'sigma', 'k'),
             'flow': ('nu', 'rho'), 'cfd': ('nu', 'rho'), 'external': ('nu', 'rho')}.get(tp['physics'])
     solid_label = {'nu': 'param.poisson', 'sy': 'param.sy'}
     for name, mat in case['materials'].items():
@@ -224,6 +269,14 @@ def report(case,jd,raw,lang):
     html += heading('results')+table((t('export.item', lang), t('export.value', lang)),
         [(c['label'], _num(c['value'])+(' '+UNIT_LABEL.get(c['unit'], c['unit']) if UNIT_LABEL.get(c['unit'], c['unit']) else '')) for c in pl['cards']], (1,))
     html += image(results.render_png(case,'',lang,jd.name)[0], t('export.results', lang))
+    if raw.get('curve'):
+        import io
+        import matplotlib.pyplot as plt
+        fig,ax = plt.subplots(figsize=(7,3.5))
+        ax.plot([v['max_disp_m']*1000 for v in raw['curve']],[v['load_fraction'] for v in raw['curve']])
+        ax.set_xlabel(t('qty.disp',lang)+' [mm]'); ax.set_ylabel(t('field.load_fraction',lang)); ax.grid(alpha=.2)
+        buf = io.BytesIO(); fig.tight_layout(); fig.savefig(buf,format='png'); plt.close(fig)
+        html += heading('curve')+image(buf.getvalue(),t('export.curve',lang))
     if raw['kind'] == 'modal':
         html += table((t('export.mode', lang), 'f [Hz]', 'Mx %', 'My %', 'Mz %'),
                       [(x['mode'], _num(x['frequency_hz'], 5), *[('0' if e*100 < .05 else f'{e*100:.1f}') for e in x['effective_mass']])

@@ -65,16 +65,43 @@ def run(case: dict, lang: str) -> list[dict]:
             add("warn", "mesh_stale", "mesh", fix="generate_mesh(case_id)")
     elif tp["physics"] == "structural":
         modal = case['physics'].get('analysis') == 'modal'
+        nonlinear = case['physics'].get('analysis') == 'nonlinear'
+        large = case['physics'].get('nonlinear',{}).get('large_deformation',True) if nonlinear else False
+        mats = [templates.solid_props(case,k) for k in case.get('body_materials',{})] or [templates.solid_props(case)]
+        desc = {f['key']:f for f in case['geometry'].get('faces',[])}
+        for face,c in case.get('contacts',{}).items():
+            if not desc.get(face,{}).get('interface'):
+                add('error','contact_interface','boundaries',faces=[face])
+            if c.get('type','bonded') == 'bonded' and units.to_si(c.get('offset',0)) != 0:
+                add('error','bonded_offset','boundaries',faces=[face])
+        if modal and any(c.get('type','bonded') != 'bonded' for c in case.get('contacts',{}).values()):
+            add('error','contact_modal','physics')
+        for mat in mats:
+            model = mat.get('model','linear')
+            if model != 'linear' and not nonlinear:
+                add('error','material_nonlinear','physics')
+            if model == 'neo-hookean' and not large:
+                add('error','neo_large','physics')
+            if model == 'elastoplastic' and large:
+                add('error','plastic_large','physics')
+            if model == 'elastoplastic' and not mat.get('sy'):
+                add('error','plastic_sy','physics')
+            if model == 'elastoplastic' and mat.get('H',mat['E']/100)>=mat['E']:
+                add('error','hardening_range','physics')
+            if model == 'neo-hookean' and mat['nu']>.495:
+                add('warn','near_incompressible','physics')
         load = case['physics'].get('thermal_load', {})
         thermal_mode = load if isinstance(load, str) else load.get('mode','none')
         if modal:
-            if not any(v['role'] in ('fixed','symmetry','constraint') for v in b.values()):
+            if not any(v['role'] in ('fixed','beam-clamp','symmetry','constraint') for v in b.values()):
                 add('warn', 'free_free', 'boundaries')
             if any(v['role'] in geometry.LOAD_ROLES for v in b.values()):
                 add('warn', 'modal_loads_ignored', 'boundaries')
-        if not modal and not any(v["role"] in ("fixed", "symmetry", "constraint") for v in b.values()):
+        if not modal and not any(v["role"] in ("fixed", 'beam-clamp', "symmetry", "constraint",'displacement','spring') for v in b.values()):
             add("error", "no_fixed", "boundaries", fix='update_case(changes={"boundaries.x0.role": "fixed"})')
-        if not modal and not any(v["role"] in geometry.LOAD_ROLES for v in b.values()) and thermal_mode == 'none' and not any(
+        interference = any(c.get('type','bonded') != 'bonded' and units.to_si(c.get('offset',0)) != 0 for c in case.get('contacts',{}).values())
+        imposed = any(v['role'] == 'displacement' and any(v.get(k) is not None and units.to_si(v[k]) != 0 for k in ('ux','uy','uz')) for v in b.values())
+        if not modal and not interference and not imposed and not any(v["role"] in geometry.LOAD_ROLES for v in b.values()) and thermal_mode == 'none' and not any(
                 case['physics'].get(k, {}).get('enabled') for k in ('gravity','rotation')):
             add("error", "no_load", "boundaries", fix='update_case(changes={"boundaries.x1.role": "load"})')
         if not modal and thermal_mode != 'none':
@@ -88,6 +115,16 @@ def run(case: dict, lang: str) -> list[dict]:
             for f,v in b.items():
                 if v['role'] == 'bearing' and not all(k in desc.get(f,{}) for k in ('axis','axis_point','radius')):
                     add('error','bearing_axis','boundaries',faces=[f])
+        if not modal and not nonlinear:
+            from .results import load
+            from .store import StudioError
+            try:
+                _,previous = load(case['case_id'])
+                m = previous.get('metrics',{})
+                if previous.get('revision') == case['revision'] and (m.get('max_strain',0)>.01 or m.get('max_rotation',0)>.0872665):
+                    add('info','large_deformation','physics')
+            except StudioError:
+                pass
         if case["template"] == "cantilever":
             p = case["geometry"]["params"]
             L, h = units.to_si(p["length"]), units.to_si(p["height"])
@@ -158,6 +195,8 @@ def engine_for(case: dict) -> str:
 def steps(case: dict, items: list[dict], latest: dict | None) -> dict:
     by_step = {}
     for it in items:
+        if it['level'] == 'info':
+            continue
         lvl = by_step.get(it["step"])
         by_step[it["step"]] = "error" if it["level"] == "error" or lvl == "error" else "warn"
     ms = geometry.mesh_state(case)

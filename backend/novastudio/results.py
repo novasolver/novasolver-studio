@@ -57,6 +57,8 @@ def _card(key, value, unit, lang, digits=4):
 
 
 def display_scale(unit, value):
+    if unit == 'Pa':
+        return (1e-6,'MPa') if abs(value)>=1e6 else (1e-3,'kPa') if abs(value)>=1e3 else (1,'Pa')
     if unit == "F":
         return (1e12, "pF") if abs(value) < 1e-9 else (1e9, "nF") if abs(value) < 1e-6 else (1e6, "uF")
     if unit == "ohm":
@@ -68,6 +70,10 @@ def quantities_for(r):
     choices = QUANTITIES[r['kind']]
     if r['kind'] == 'structural' and 't_max_k' in r['metrics']:
         choices = choices + [('temp', '°C', 'sequential')]
+    if r.get('interfaces'):
+        choices = choices + [('p_contact','MPa','sequential'),('contact_gap','mm','sequential'),('contact_slip','mm','sequential'),('contact_status','-','sequential')]
+    if r.get('curve'):
+        choices = choices + [('peeq','-','sequential')]
     return [(q, u, k) for q, u, k in choices
             if not (r["kind"] == "current" and q == "temp" and "t_max_k" not in r["metrics"])]
 
@@ -107,6 +113,10 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
                 ('twist','twist_rad',1,'rad'), ('shear','shear_pa',1e-6,'MPa')]:
             if prop in m:
                 cards.insert(0, _card(key,m[prop]*scale,unit,lang))
+        for key,prop,scale,unit in [('contact_pressure','contact_pressure_pa',1e-6,'MPa'),('contact_force','contact_force_n',1,'N'),
+                ('contact_shear','contact_shear_n',1,'N'),('axial_stress','axial_stress_pa',1e-6,'MPa'),('limit_load','limit_load_n',1,'N')]:
+            if prop in m:
+                cards.insert(0,_card(key,m[prop]*scale,unit,lang))
     elif r["kind"] in ("cavity", "cavity_of"):
         cards = [_card("re", m["re"], "-", lang), _card("umin_center", m["umin_center"], "m/s", lang),
                  _card("max_speed", m["max_speed"], "m/s", lang)]
@@ -156,12 +166,16 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
                     "verified_detail": None if verification else t(ref["why_key"], lang, **ref.get('why_args', {})) if ref.get("why_key") else ref.get("why")}
     quantities = [{"id": q, "label": t(f"qty.{q}", lang), "unit": u, "kind": k} for q, u, k in quantities_for(r)]
     warnings = []
+    if r.get('error'):
+        warnings.append({'code':'nonlinear_diverged','message':t(r['error']['key'],lang,fraction=r['error']['fraction'])})
+    if r['kind'] == 'structural' and not r.get('large_deformation') and (m.get('max_strain',0)>.01 or m.get('max_rotation',0)>.0872665):
+        warnings.append({'code':'large_deformation','message':t('result.large_deformation',lang)})
     if r.get('free_free'):
         warnings.append({'code':'free_free', 'message':t('result.free_free',lang)})
     if m.get("air_e_max_v_m", 0) > 3e6:
         warnings.append({"code": "air_breakdown", "message": t("result.air_breakdown", lang, e=m["air_e_max_v_m"] / 1e6)})
     sy = (case["materials"].get("solid") or {}).get("sy")
-    if r["kind"] == "structural" and sy and m.get("max_vm_pa") and not case.get("body_materials"):
+    if r["kind"] == "structural" and sy and m.get("max_vm_pa") and not case.get("body_materials") and case['materials']['solid'].get('model','linear') != 'elastoplastic':
         sy_pa = units.to_si(sy)
         if m["max_vm_pa"] > sy_pa:
             warnings.append({"code": "yield", "message": t("result.yield", lang, vm=m["max_vm_pa"] / 1e6, sy=sy_pa / 1e6)})
@@ -182,6 +196,8 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
             "stale": r.get("revision") != case["revision"], "wall_s": r.get("wall_s"),
             "gates": gates, "gates_detail": gates_detail, "cards": cards, "verification": verification,
             "quantities": quantities, "nova_tool": _nova_tool(case), "convergence": _conv_view(r.get("convergence"), lang),
+            'curve':r.get('curve',[]),'interfaces':r.get('interfaces',{}),'large_deformation':r.get('large_deformation',False),
+            'error':r.get('error'),
             **({'modes':r['modes'], 'free_free':r.get('free_free',False)} if r['kind'] == 'modal' else {})}
 
 
@@ -225,9 +241,19 @@ def _grid_surface(nx, ny, X, Y, z):
     return P, np.concatenate([np.stack([a, b, c], 1), np.stack([a, c, d], 1)])
 
 
-def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode: int = 1, section: dict | None = None) -> dict:
+def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode: int = 1, section: dict | None = None, step: int | None = None) -> dict:
     jd, r = load(case["case_id"], run_id)
     data = np.load(jd / "results.npz")
+    if step is not None:
+        if not isinstance(step,int) or not 1<=step<=len(r.get('curve',[])):
+            raise StudioError('err.path',400,path=f'step={step}')
+        data = {k[5:] if k.startswith('step_') else k:(data[k][step-1].copy() if k.startswith('step_') else data[k]) for k in data.files}
+        # Keep the same interface as np.load below.
+        class Fields(dict):
+            @property
+            def files(self):
+                return list(self)
+        data = Fields(data)
     kind = r["kind"]
     if not quantity:
         quantity = quantities_for(r)[0][0]
@@ -312,7 +338,14 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
         idx = inv.reshape(-1, 3)
     elif kind in ('structural', 'modal'):
         mesh = np.load(jd / "mesh.npz")
-        tri = _surface_from_mesh(mesh)
+        if quantity in ('p_contact','contact_gap','contact_slip','contact_status'):
+            contacts = [mesh[k] for k in mesh.files if k.startswith('contact_master_') or k.startswith('contact_slave_')]
+            class Surface(dict):
+                @property
+                def files(self): return list(self)
+            tri = _surface_from_mesh(Surface({'face_'+str(i):v for i,v in enumerate(contacts)}))
+        else:
+            tri = _surface_from_mesh(mesh)
         used, inv = np.unique(tri, return_inverse=True)
         P = mesh["nodes"][used]
         if kind == 'modal':
@@ -323,6 +356,9 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
         else:
             U = data["u"][used]
             vals = {"disp": np.linalg.norm(U, axis=1) * 1e3, "vm": data["vm"][used] / 1e6, "uz": U[:, 2] * 1e3}
+            for q,scale in [('p_contact',1e-6),('contact_gap',1e3),('contact_slip',1e3),('contact_status',1),('peeq',1)]:
+                if q in data.files:
+                    vals[q] = data[q][used]*scale
             if 'T' in data.files:
                 vals['temp'] = data['T'][used]-273.15
         disp = U
@@ -350,7 +386,7 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
     unit = dict((q, u) for q, u, _ in quantities_for(r))[quantity]
     if section is not None:
         from .sections import section_field
-        P, idx, s, disp = section_field(jd, kind, quantity, mode, P, idx, s, disp, section)
+        P, idx, s, disp = section_field(jd, kind, quantity, mode, P, idx, s, disp, section,step)
     out = {"quantity": quantity, "label": t(f"qty.{quantity}", lang), "unit": unit,
            "positions": P.ravel().round(9).tolist(), "indices": idx.ravel().astype(int).tolist(),
            "scalars": np.asarray(s, float).round(9).tolist(), "range": [float(np.min(s)), float(np.max(s))]}
@@ -358,7 +394,9 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
         out["displacement"] = disp.ravel().round(12).tolist()
         bbox = float(np.ptp(P, axis=0).max())
         dmax = float(np.linalg.norm(disp, axis=1).max())
-        out["auto_deform_scale"] = float(0.08 * bbox / dmax) if dmax > 0 else 1.0
+        out["auto_deform_scale"] = 1. if r.get('large_deformation') else float(0.08 * bbox / dmax) if dmax > 0 else 1.0
+    if step is not None:
+        out['step'] = step
     if kind == 'modal':
         out['mode'] = mode
     if section is not None:
@@ -368,7 +406,7 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
 
 # ---------------------------------------------------------------- PNG for the AI (and reports)
 
-def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None, mode: int = 1) -> tuple[bytes, dict]:
+def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None, mode: int = 1,step: int | None = None) -> tuple[bytes, dict]:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -382,7 +420,7 @@ def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None, 
             break
     from matplotlib import cm, colors
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-    f = field(case, quantity, lang, run_id, mode)
+    f = field(case, quantity, lang, run_id, mode,step=step)
     P = np.array(f["positions"]).reshape(-1, 3)
     tri = np.array(f["indices"]).reshape(-1, 3)
     s = np.array(f["scalars"])
@@ -495,7 +533,9 @@ def render_faces(case: dict, lang: str, view: str = 'iso', highlight: list[str] 
                    'pressure': '#dc2626', 'temperature': '#9333ea', 'heat-flux': '#ea580c', 'convection': '#38bdf8',
                    'voltage': '#9333ea', 'surface-charge': '#ea580c', 'current': '#ea580c', 'inlet': '#16a34a',
                    'outlet': '#d97706', 'moving-wall': '#ea580c', 'water-inlet': '#16a34a', 'water-outlet': '#d97706'}
-    roles = [case['boundaries'].get(f['key'], {}).get('role') for f in faces]
+    interfaces = {f['key'] for f in case['geometry'].get('faces',[]) if f.get('interface')}
+    role_colour['contact'] = role_colour['inlet']
+    roles = ['contact' if f['key'] in interfaces else case['boundaries'].get(f['key'], {}).get('role') for f in faces]
     palette = {r: role_colour.get(r, passive) for r in roles if r}
     palette[None] = '#f59e0b'                                 # no role at all: should not happen, make it stand out
     groups = roles

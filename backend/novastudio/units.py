@@ -7,6 +7,7 @@ import re
 UNITS: dict[str, tuple[float, str]] = {
     "m": (1.0, "length"), "cm": (1e-2, "length"), "mm": (1e-3, "length"), "um": (1e-6, "length"),
     "N": (1.0, "force"), "kN": (1e3, "force"),
+    'N/m': (1., 'stiffness'), 'N/mm': (1e3, 'stiffness'),
     'N-m': (1., 'torque'), 'N-mm': (1e-3, 'torque'), '1/K': (1., 'expansion'), 'm/s2': (1., 'acceleration'),
     "Pa": (1.0, "pressure"), "kPa": (1e3, "pressure"), "MPa": (1e6, "pressure"), "GPa": (1e9, "pressure"),
     "kg/m3": (1.0, "density"), "g/cm3": (1e3, "density"),

@@ -30,6 +30,9 @@ export interface Quantity {
 }
 
 export interface CaseSchema {
+  contacts?: Record<string, ContactSettings>;
+  body_props?: Record<string, Record<string, unknown>>;
+  body_materials?: Record<string, string>;
   face_groups?: Record<string, string[]>;
   schema_version: string;
   case_id: string;
@@ -39,6 +42,7 @@ export interface CaseSchema {
   engine?: { kind: string; version?: string };
   geometry?: { kind: string; params?: Record<string, Quantity> };
   physics?: { kind: string; joule_heating?: boolean; analysis?: string; modes?: number;
+    nonlinear?: { large_deformation?: boolean; steps?: 'auto' | number; max_iterations?: number; path?: number[]; face?: string };
     T_ref?: Quantity; thermal_load?: { mode: string; temperature?: Quantity };
     gravity?: { enabled?: boolean; g?: Quantity; direction?: string };
     rotation?: { enabled?: boolean; rpm?: number; axis?: string; axis_point?: number[] } };
@@ -51,7 +55,7 @@ export interface CaseSchema {
 }
 
 export interface Check {
-  level: "error" | "warn";
+  level: "error" | "warn" | 'info';
   code: string;
   message: string;
   step: StepId;
@@ -118,6 +122,8 @@ export interface MeshStats {
 }
 
 export interface CaseUi {
+  material_models?: Record<string, { model?: string; sy?: Quantity; H?: Quantity }>;
+  interfaces?: { key: string; label: string; bodies: string[]; area_m2?: number; contact: ContactSettings }[];
   params: UiParam[];
   materials: { id: string; label: string }[];
   material_kind?: "solid" | "fluid";
@@ -169,6 +175,8 @@ export interface CasePayload {
 }
 
 export interface GeometryFace {
+  interface?: boolean;
+  contact?: ContactSettings;
   id: number | string;
   key?: string;
   region?: string;
@@ -232,6 +240,9 @@ export interface ResultQuantity {
 }
 
 export interface ResultsPayload {
+  curve?: { step: number; load_fraction: number; max_disp_m: number; face_disp_m: number[]; iterations: number }[];
+  interfaces?: Record<string, { force_n: number[]; normal_force_n: number; pressure_pa: number; status_counts: Record<string,number> }>;
+  large_deformation?: boolean;
   modes?: { mode: number; frequency_hz: number; effective_mass: number[] }[];
   free_free?: boolean;
   kind?: string;
@@ -254,6 +265,7 @@ export interface ResultsPayload {
 }
 
 export interface FieldPayload {
+  step?: number;
   mode?: number;
   section?: SectionPlane;
   quantity?: string;
@@ -268,6 +280,7 @@ export interface FieldPayload {
 }
 
 export interface SectionPlane { normal: number[]; position: number }
+export interface ContactSettings { type: string; mu: number; offset: Quantity }
 export interface ProbeLine { quantities: Record<string,string>; line: { samples: { at_mm: number[]; distance_mm?: number; inside: boolean; values: Record<string,number> }[]; from_mm: number[]; to_mm: number[] } }
 export interface ProbePoint { quantities: Record<string,string>; points: { inside: boolean; values: Record<string,number> }[] }
 

@@ -97,7 +97,7 @@ def face_label(tp: dict, key: str, lang: str, case: dict | None = None) -> str:
         return (base + (f" · {typ}" if typ and not typ.startswith('surf.') else '') +
                 (f' {direction}' if direction else '') +
                 (f" · {info['area']*1e6:,.4g} mm²" if info and info.get('area') is not None else ''))
-    base = tp["face_labels"][key]
+    base = tp["face_labels"].get(key,'face.'+key)
     if sum(1 for v in tp["face_labels"].values() if v == base) > 1:
         return f"{t(base, lang)} ({t(POSITION[key], lang)})"
     return t(base, lang)
@@ -115,6 +115,9 @@ def face_descriptor(case: dict, f: dict, lang: str) -> dict:
     out = {k: f[k] for k in ('key', 'n', 'type', 'name', 'color', 'normal', 'axis', 'neighbors', 'smooth_neighbors') if k in f}
     out['label'] = face_label(templates.get(case['template']), f['key'], lang, case)
     out['role'] = case['boundaries'].get(f['key'], {}).get('role')
+    if f.get('interface'):
+        from .contact import settings
+        out.update(interface=True,bodies=f.get('bodies',[]),contact=settings(case,f['key']))
     for k, scale, suffix in (('area', 1e6, '_mm2'), ('radius', 1e3, '_mm'), ('centroid', 1e3, '_mm'),
                               ('axis_point', 1e3, '_mm'), ('bbox', 1e3, '_mm')):
         if k in f:
@@ -205,6 +208,10 @@ def case_payload(case_id: str, lang: str = "ja") -> dict:
         "ready": not any(i["level"] == "error" for i in items),
         "engine": checks.engine_for(case),
         "ui": {"params": params, "roles": roles, "faces": faces,
+               'material_models': {b or 'solid':{k:({'value':v,'unit':'Pa'} if k in ('sy','H') else v)
+                    for k,v in templates.solid_props(case,b).items() if k in ('model','sy','H')}
+                    for b in (list(case.get('body_materials',{})) or [None])} if tp['physics'] == 'structural' else {},
+               'interfaces': [dict(face_descriptor(case,f,lang),area_m2=f.get('area')) for f in info.values() if f.get('interface')],
                "thermal_roles": [{"id": r, "label": t(f"role.{r}", lang)} for r in templates.THERMAL_ROLES],
                "role_fields": {r: list(templates.ROLE_FIELDS.get(r, {})) for r in set(tp["roles"] + templates.THERMAL_ROLES)},
                "field_labels": {k: t(f"field.{k}", lang) for k in templates.VALUE_FIELDS},
@@ -388,6 +395,10 @@ def describe_case(case_id: str, detail: str = "concise", lang: str = "ja") -> di
     out['history'] = dict(pl['history'], undo=pl['history']['undo'][:5])
     out['faces'] = [face_descriptor(c, f, lang) for f in c['geometry'].get('faces', []) if not f.get('interface')]
     out['face_groups'] = c.get('face_groups', {})
+    out['interfaces'] = pl['ui']['interfaces']
+    if tp := c.get('physics',{}):
+        out['analysis'] = tp.get('analysis','static')
+        out['nonlinear'] = tp.get('nonlinear',{})
     if c.get("body_materials"):
         geo = {b["key"]: b for b in c["geometry"].get("bodies", [])}
         out["body_materials"] = {b: {"material": m, "overrides": c.get("body_props", {}).get(b, {}),
@@ -449,7 +460,7 @@ def put_gui_state(state: dict) -> dict:
     cid = state.get('case_id')
     if cid is not None:
         case = store.load(cid)
-        valid = set(templates.face_keys(case))
+        valid = set(templates.face_keys(case)) | {f['key'] for f in case['geometry'].get('faces',[]) if f.get('interface')}
     else:
         valid = set()
     if (state.get('step') not in ('geometry', 'mesh', 'physics', 'boundaries', 'run', 'results') or
@@ -481,7 +492,7 @@ def get_gui_selection(lang: str = 'ja') -> dict:
     return {**state, 'age_s': age, 'current_revision': case['revision'],
             'message': t('gui.selected' if state['selected'] else 'gui.empty', lang, n=len(state['selected'])),
             'selected': [face_descriptor(case, info.get(k, {'key': k}), lang) for k in state['selected']
-                         if k in templates.face_keys(case)]}
+                         if k in info or k in templates.face_keys(case)]}
 
 
 def validate_case(case_id: str, lang: str = "ja") -> dict:
@@ -508,7 +519,11 @@ def geometry_payload(case_id: str, lang: str = "ja") -> dict:
     faces = []
     for f in disp["faces"]:
         b = case["boundaries"].get(f["key"], {})
+        desc = next((v for v in case['geometry'].get('faces',[]) if v['key'] == f['key']),{})
+        from .contact import settings
         faces.append({"id": f["id"], "key": f["key"], "region": f["key"], "label": face_label(tp, f["key"], lang, case),
+                      'interface':bool(desc.get('interface')), 'bodies':desc.get('bodies',[]),
+                      'contact':settings(case,f['key']) if desc.get('interface') else None,
                       "role": b.get("role"), "positions": f["positions"], "indices": f["indices"]})
     return {"faces": faces, "bbox": disp.get("bbox") or [[0, 0, 0], disp["dims"]]}
 
@@ -583,15 +598,15 @@ def verify_case(case_id: str, lang: str = "ja") -> dict:
             "stale": pl["stale"]}
 
 
-def field(case_id: str, quantity: str, lang: str = "ja", mode: int = 1, section: dict | None = None) -> dict:
-    return results.field(store.load(case_id), quantity, lang_of(lang), mode=mode, section=section)
+def field(case_id: str, quantity: str, lang: str = "ja", mode: int = 1, section: dict | None = None, step: int | None = None) -> dict:
+    return results.field(store.load(case_id), quantity, lang_of(lang), mode=mode, section=section,step=step)
 
 
 def render_view(case_id: str, quantity: str = "", lang: str = "ja", view: str = 'iso',
-                highlight: list[str] | None = None, mode: int = 1) -> tuple[bytes, dict]:
+                highlight: list[str] | None = None, mode: int = 1,step: int | None = None) -> tuple[bytes, dict]:
     if quantity == 'faces':
         return results.render_faces(store.load(case_id), lang_of(lang), view, highlight)
-    return results.render_png(store.load(case_id), quantity, lang_of(lang), mode=mode)
+    return results.render_png(store.load(case_id), quantity, lang_of(lang), mode=mode,step=step)
 
 
 def export_results(case_id: str, format: str, lang: str = 'ja') -> dict:
@@ -601,9 +616,9 @@ def export_results(case_id: str, format: str, lang: str = 'ja') -> dict:
 
 
 def probe_results(case_id: str, points: list | None = None, line: dict | None = None, faces: list[str] | None = None,
-                  run_id: str | None = None, lang: str = "ja", mode: int = 1) -> dict:
+                  run_id: str | None = None, lang: str = "ja", mode: int = 1,step: int | None = None) -> dict:
     from .probe import probe
-    return probe(store.load(case_id), points, line, faces, run_id, mode)
+    return probe(store.load(case_id), points, line, faces, run_id, mode,step)
 
 
 def clone_case(case_id: str, changes: dict | None = None, title: str | None = None, lang: str = "ja", source: str = 'gui') -> dict:

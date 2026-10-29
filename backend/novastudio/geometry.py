@@ -19,6 +19,10 @@ def dims(case: dict) -> list[float]:
     kind = case["geometry"]["kind"]
     if kind == "box":
         return [units.to_si(p["length"]), units.to_si(p["width"]), units.to_si(p["height"])]
+    if kind == 'stacked':
+        return [units.to_si(p['length']),units.to_si(p['width']),2*units.to_si(p['height'])]
+    if kind == 'press_fit':
+        return [units.to_si(p['outer_radius'])]*2+[units.to_si(p['height'])]
     if kind == "plate_hole":
         return [units.to_si(p["length"]), units.to_si(p["width"]), units.to_si(p["thickness"])]
     if kind == "tube":
@@ -86,6 +90,8 @@ def worker_job(case: dict, **kw) -> dict:
         job["a"] = units.to_si(case["geometry"]["params"]["a"])
         job["b"] = units.to_si(case["geometry"]["params"]["b"])
     if case['geometry']['kind'] in ('shaft', 'quarter_disk'):
+        job['radius'] = units.to_si(case['geometry']['params']['radius'])
+    if case['geometry']['kind'] == 'press_fit':
         job['radius'] = units.to_si(case['geometry']['params']['radius'])
     job.update(kw)
     return job
@@ -177,6 +183,12 @@ def generate_mesh(case: dict) -> dict:
     if case["mesh"]["method"] == "structured":
         return mesh_state(case)["stats"]
     meshdir = mesh_dir(case)
+    from .box_mesh import DIVISIONS,write
+    if case['template'] in DIVISIONS:
+        meshdir.mkdir(parents=True,exist_ok=True)
+        stats = write(case,meshdir)
+        (meshdir/'key.txt').write_text(mesh_key(case))
+        return stats
     kw = {}
     if case["template"] == "import-flow":
         from .flow3d import mesh_size

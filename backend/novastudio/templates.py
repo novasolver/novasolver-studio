@@ -64,7 +64,7 @@ for _name, _mat in MATERIALS_SOLID.items():
                                       "insulation": 1.05, "wood": 2, "glass": 5, "fr4": 4.4, "silicon": 11.7}.get(_name, 1), "unit": "-"})
     _mat.setdefault("sigma", {"value": {"copper": 5.96e7, "aluminium": 3.77e7, "steel": 6.99e6,
                                       "alloy_steel": 4e6, "titanium": 2.38e6, "silicon": 4.3e-4}.get(_name, 1e-12), "unit": "S/m"})
-BODY_PROPS = {"k": "W/mK", "E": "GPa", "nu": "-", "eps_r": "-", "sigma": "S/m", "rho": "kg/m3", "alpha": "1/K"}
+BODY_PROPS = {"k": "W/mK", "E": "GPa", "nu": "-", "eps_r": "-", "sigma": "S/m", "rho": "kg/m3", "alpha": "1/K", 'sy':'MPa', 'H':'Pa'}
 
 
 def solid_props(case: dict, body: str | None = None) -> dict:
@@ -75,7 +75,10 @@ def solid_props(case: dict, body: str | None = None) -> dict:
     mat = {**MATERIALS_SOLID.get(mat.get('preset'), MATERIALS_SOLID['steel']), **mat}
     if body is not None and body in case.get("body_materials", {}):
         mat = {**MATERIALS_SOLID[case["body_materials"][body]], **case.get("body_props", {}).get(body, {})}
-    return {p: units.to_si(mat[p]) for p in BODY_PROPS if p in mat}
+    out = {p: units.to_si(mat[p]) for p in BODY_PROPS if p in mat}
+    out['model'] = mat.get('model','linear')
+    out.setdefault('H',out['E']/100)
+    return out
 
 
 def element_groups(case: dict, tet_body) -> list[tuple]:
@@ -113,7 +116,7 @@ MATERIALS_FLUID = {
     "air": {"nu": {"value": 1.5e-5, "unit": "m2/s"}, "rho": {"value": 1.2, "unit": "kg/m3"}},
 }
 
-STRUCT_ROLES = ["free", "fixed", "symmetry", "constraint", "load", "pressure", "moment", "bearing", "remote-force"]
+STRUCT_ROLES = ["free", "fixed", 'beam-clamp', "symmetry", "constraint", "displacement", "load", "pressure", "moment", "bearing", "remote-force", 'spring']
 FLOW_ROLES = ["wall", "moving-wall", "inlet", "outlet", "plane2d"]
 THERMAL_ROLES = ["insulated", "temperature", "heat-flux", "convection"]
 ELECTROSTATIC_ROLES = ["open", "voltage", "surface-charge"]
@@ -122,6 +125,8 @@ DIRECTIONS = ["-z", "+z", "-y", "+y", "-x", "+x", "normal"]   # load direction; 
 
 # value fields each role carries (path suffix -> default quantity)
 ROLE_FIELDS = {
+    'displacement': {'ux': {'value':0,'unit':'mm'}, 'uy':None, 'uz':None},
+    'spring': {'stiffness': {'value':1e5,'unit':'N/m'}, 'components':'xyz'},
     'moment': {'torque': {'value': 100, 'unit': 'N-m'}, 'direction': '+z', 'point': {'value': [0, 0, 0], 'unit': 'mm'}},
     'bearing': {'force': {'value': 100, 'unit': 'N'}, 'direction': '+x'},
     'remote-force': {'force': {'value': 100, 'unit': 'N'}, 'direction': '-z', 'point': {'value': [0, 0, 0], 'unit': 'mm'}},
@@ -529,6 +534,55 @@ DEFAULT_ROLE = {"structural": "free", "thermal": "insulated", "cfd": "wall", "fl
                 "conjugate": "insulated", "electric": "open", "electrostatic": "open", "current": "insulated"}
 
 
+for _name,_E,_nu in [('rubber',5,.49),('tpu',26,.45),('silicone',1.5,.49)]:
+    MATERIALS_SOLID[_name] = {**copy.deepcopy(MATERIALS_SOLID['ptfe']), 'model':'neo-hookean',
+                            'E':{'value':_E,'unit':'MPa'},'nu':{'value':_nu,'unit':'-'}}
+
+_nonlinear = {'analysis':'nonlinear','nonlinear':{'large_deformation':True,'steps':'auto','max_iterations':25}}
+TEMPLATES['large-cantilever'] = _structural_template('large-cantilever',_box(200,20,2),copy.deepcopy(_nonlinear),
+    {**copy.deepcopy(_free),'x0':{'role':'fixed'},'x1':{'role':'load','force':{'value':205e9*(.02*.002**3/12)/.2**2,'unit':'N'},'direction':'-z'}},
+    'tip_disp',_box_fields)
+TEMPLATES['plastic-bar'] = _structural_template('plastic-bar',_box(100,10,10),
+    {'analysis':'nonlinear','nonlinear':{'large_deformation':False,'steps':10,'max_iterations':25,'face':'x1',
+                                      'path':[1.,1-(250e6+2.05e9*(.01-250e6/205e9))/(205e9*.01),0.]}},
+    {**copy.deepcopy(_free),'x0':{'role':'constraint','components':'x'},'y0':{'role':'symmetry'},'z0':{'role':'symmetry'},
+     'x1':{'role':'displacement','ux':{'value':1,'unit':'mm'},'uy':None,'uz':None}},'axial_stress',_box_fields)
+TEMPLATES['plastic-beam-collapse'] = _structural_template('plastic-beam-collapse',_box(200,10,20),
+    {'analysis':'nonlinear','nonlinear':{'large_deformation':False,'steps':20,'max_iterations':25}},
+    {**copy.deepcopy(_free),'x0':{'role':'fixed'},'x1':{'role':'load','force':{'value':1.1*250e6*.01*.02**2/(4*.2),'unit':'N'},'direction':'-z'}},
+    'limit_load',_box_fields)
+for _tid in ('plastic-bar','plastic-beam-collapse'):
+    _mat = TEMPLATES[_tid]['case']['materials']['solid']
+    _mat.update(model='elastoplastic',sy={'value':250,'unit':'MPa'},H={'value':0 if _tid.endswith('collapse') else 2.05e9,'unit':'Pa'})
+for _tid in ('large-cantilever','plastic-beam-collapse'):
+    TEMPLATES[_tid]['case']['boundaries']['x0'] = {'role':'beam-clamp'}
+TEMPLATES['rubber-tension'] = _structural_template('rubber-tension',_box(10,10,50),copy.deepcopy(_nonlinear),
+    {**copy.deepcopy(_free),'x0':{'role':'symmetry'},'y0':{'role':'symmetry'},'z0':{'role':'constraint','components':'z'},
+     'z1':{'role':'displacement','ux':None,'uy':None,'uz':{'value':50,'unit':'mm'}}},'axial_stress',_box_fields)
+TEMPLATES['rubber-tension']['case']['materials']['solid'] = {'preset':'tpu',**copy.deepcopy(MATERIALS_SOLID['tpu'])}
+TEMPLATES['rubber-tension']['case']['physics']['nonlinear']['face'] = 'z1'
+
+TEMPLATES['press-fit'] = _structural_template('press-fit',
+    {'kind':'press_fit','params':{'radius':{'value':20,'unit':'mm'},'outer_radius':{'value':40,'unit':'mm'},'height':{'value':20,'unit':'mm'}}},
+    {},{'x0':{'role':'symmetry'},'y0':{'role':'symmetry'},'z0':{'role':'symmetry'},'z1':{'role':'free'},'outer':{'role':'free'}},
+    'contact_pressure',[(f'geometry.params.{k}','param.'+k,'length',1,500) for k in ('radius','outer_radius','height')])
+TEMPLATES['press-fit']['case']['contacts'] = {'interface':{'type':'frictionless','mu':.2,'offset':{'value':.02,'unit':'mm'}}}
+for _tid in ('stacked-blocks','friction-block'):
+    _b = {'bottom':{'role':'fixed'},'top':{'role':'pressure','pressure':{'value':10,'unit':'MPa'}},
+          'x0':{'role':'symmetry'},'y0':{'role':'symmetry'},'x1':{'role':'free'},'lower_x1':{'role':'free'},'y1':{'role':'free'}}
+    if _tid == 'friction-block':
+        _b['x0'] = {'role':'spring','stiffness':{'value':1e3,'unit':'N/m'},'components':'x'}
+        _b['x1'] = {'role':'load','force':{'value':400,'unit':'N'},'direction':'+x'}
+    TEMPLATES[_tid] = _structural_template(_tid,{'kind':'stacked','params':{'length':{'value':20,'unit':'mm'},'width':{'value':20,'unit':'mm'},'height':{'value':20,'unit':'mm'}}},
+        {},_b,'contact_force',_box_fields)
+    TEMPLATES[_tid]['case']['contacts'] = {'interface':{'type':'frictional' if _tid == 'friction-block' else 'frictionless','mu':.2,'offset':{'value':0,'unit':'mm'}}}
+TEMPLATES['friction-block']['case']['body_props'] = {'b1':{'nu':{'value':0,'unit':'-'}},'b2':{'nu':{'value':0,'unit':'-'}}}
+TEMPLATES['stacked-blocks']['case']['reference']['tolerance_pct'] = .5
+TEMPLATES['friction-block']['case']['reference']['tolerance_pct'] = 1.
+TEMPLATES['plastic-bar']['case']['reference']['tolerance_pct'] = 1.
+TEMPLATES['plastic-beam-collapse']['case']['reference']['tolerance_pct'] = 3.
+
+
 def face_keys(case: dict) -> list[str]:
     g = case["geometry"]
     if g["kind"] == "import":
@@ -596,12 +650,28 @@ def new_case(template_id: str, case_id: str) -> dict:
         "checks": {},
         "provenance": {},
     }
+    for key in ('contacts','body_materials','body_props'):
+        if key in c:
+            case[key] = c[key]
     face_descriptors(case)
     return case
 
 
 def face_descriptors(case: dict) -> None:
     """Cheap primitive descriptors; imported faces retain the CAD kernel's descriptors."""
+    if case['geometry']['kind'] in ('press_fit','stacked'):
+        from .geometry import dims
+        size = dims(case)
+        keys = face_keys(case)
+        case['geometry']['faces'] = [{'key':k,'n':i+1,'type':'Plane','bodies':['b1','b2'],
+            'interface':False,'neighbors':[],'smooth_neighbors':[]} for i,k in enumerate(keys)]
+        from .units import to_si
+        import math
+        radius = to_si(case['geometry']['params'].get('radius',0))
+        case['geometry']['faces'].append({'key':'interface','n':len(keys)+1,'type':'Cylinder' if radius else 'Plane',
+            'bodies':['b1','b2'],'interface':True,'area':math.pi/2*radius*size[2] if radius else size[0]*size[1]})
+        case['body_materials'] = case.get('body_materials',{'b1':'steel','b2':'steel'})
+        return
     if case['geometry']['kind'] == 'import':
         return
     if case['geometry']['kind'] in ('shaft', 'quarter_disk'):

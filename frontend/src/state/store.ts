@@ -68,6 +68,7 @@ export interface State {
   range: [number, number] | null; // user override; null = auto
   deformScale: number | null; // null = auto
   selectedMode: number;
+  selectedStep: number | null;
   modeAnimation: boolean;
   section: SectionPlane | null;
   probeValue: { at: number[]; value: number; unit: string } | null;
@@ -127,7 +128,7 @@ let state: State = {
   colormap: "viridis",
   range: null,
   deformScale: null,
-  selectedMode: 1, modeAnimation: false, section: null, probeValue: null,
+  selectedMode: 1, selectedStep: null, modeAnimation: false, section: null, probeValue: null,
   job: null,
   stopping: false,
   saving: false,
@@ -168,6 +169,7 @@ export function getState() {
 export function setState(p: Partial<State> | ((s: State) => Partial<State>)) {
   const patch = typeof p === "function" ? p(state) : p;
   if (('selectedMode' in patch && patch.selectedMode !== state.selectedMode) ||
+      ('selectedStep' in patch && patch.selectedStep !== state.selectedStep) ||
       ('payload' in patch && patch.payload?.case.case_id !== state.payload?.case.case_id) ||
       ('results' in patch && patch.results?.run_id !== state.results?.run_id) ||
       ('field' in patch && patch.field !== state.field) || ('section' in patch && patch.section !== state.section)) fieldProbeGeneration++;
@@ -511,7 +513,7 @@ function openPayload(p: CasePayload) {
     results: null,
     field: null,
     quantity: null,
-    selectedMode: 1, modeAnimation: false, section: null, probeValue: null,
+    selectedMode: 1, selectedStep: null, modeAnimation: false, section: null, probeValue: null,
     range: null,
     deformScale: null,
     job: running,
@@ -1012,6 +1014,7 @@ export async function loadResults(resetView: boolean, relabel = false) {
     if (state.payload?.case.case_id !== p.case.case_id) return;
     const q = r.quantities.find((x) => x.id === state.quantity) ?? r.quantities[0];
     const sameRun = state.results?.run_id && state.results.run_id === r.run_id;
+    if (!sameRun) setState({selectedStep:null,deformScale:null});
     if (r.modes && state.selectedMode > r.modes.length) setState({selectedMode:1});
     setState({ results: r, ...(r.stale ? {} : { resultsBeforeUndo: false }) });
     if (q && r.gates.ran && (!sameRun || !state.field || resetView || relabel))
@@ -1032,7 +1035,7 @@ export async function loadField(quantity: string, reset = true) {
   const gen = ++fieldGen;
   const stale = () => gen !== fieldGen || state.payload?.case.case_id !== p.case.case_id;
   try {
-    const f = await api.field(p.case.case_id, quantity, state.selectedMode, state.section);
+    const f = await api.field(p.case.case_id, quantity, state.selectedMode, state.section,state.selectedStep);
     if (stale()) return;
     const kind = state.results?.quantities.find((x) => x.id === quantity)?.kind;
     setState({
@@ -1053,9 +1056,14 @@ export async function selectMode(mode: number) {
   await loadField('mode', false);
 }
 
+export async function selectStep(step: number) {
+  setState({selectedStep:step,probeValue:null});
+  if (state.quantity) await loadField(state.quantity,false);
+}
+
 export async function probeFieldPoint(at: number[], value: number, unit: string) {
   const token = ++fieldProbeGeneration;
-  const {field, payload, results, selectedMode} = state;
+  const {field, payload, results, selectedMode,selectedStep} = state;
   const cid = payload?.case.case_id, quantity = field?.quantity;
   if (!field?.section || state.mode === 'mock') {
     setState({probeValue: {at, value, unit}});
@@ -1065,7 +1073,7 @@ export async function probeFieldPoint(at: number[], value: number, unit: string)
   setState({probeValue: null});
   try {
     // The picked triangle supplies the original position; the element supplies the numerical value.
-    const reply = await api.probePoint(cid, at.map(v => v*1000), selectedMode, results?.run_id);
+    const reply = await api.probePoint(cid, at.map(v => v*1000), selectedMode, results?.run_id,selectedStep);
     if (token !== fieldProbeGeneration) return;
     const sample = reply.points[0];
     if (sample?.inside && Number.isFinite(sample.values[quantity])) {

@@ -61,7 +61,7 @@ import { fmt, fmtDuration, fmtGci, fmtInt, fmtSignedPct, unitLabel } from "../li
 import { STEP_ICONS } from "./stepIcons";
 import { cadPhysicsOf, pickCadFile } from "./ImportCad";
 import { SelectionActions } from './SelectionActions';
-import { StructuralSettings, VectorInput } from './StructuralSettings';
+import { ContactsSettings, StructuralSettings, VectorInput } from './StructuralSettings';
 import { ResultsTools } from './ResultsTools';
 
 // ------------------------------------------------------------------ shared bits
@@ -289,7 +289,7 @@ function PhysicsStep() {
   const preset = String(p.case.materials?.[kind]?.preset ?? "");
   const mats = p.ui.params.filter((q) => q.path.startsWith("materials."));
   const physicsKind = p.case.physics?.kind ?? "";
-  const kindLabel = t(`physics.kind.${physicsKind}`);
+  const kindLabel = p.ui.physics === 'structural' ? t('physics.structural'):t(`physics.kind.${physicsKind}`);
   return (
     <>
       <Section title={t("physics.kind")}>
@@ -687,6 +687,7 @@ function SelectionEditor() {
         )}
         <div className="flex flex-col gap-4">
           {p.case.physics?.analysis === 'modal' && commonRole && ['load','pressure','moment','bearing','remote-force'].includes(commonRole) && <p className="prose-ui text-label text-fg-2">{t('struct.loadsIgnored')}</p>}
+          {commonRole === 'beam-clamp' && <p className="prose-ui text-label text-fg-2">{t('struct.beamClampHelp')}</p>}
           <Field label={t("bc.role")} hint={ui.fixed_roles ? t("bc.fixedRoles") : undefined}>
             <Select
               disabled={!!ui.fixed_roles}
@@ -760,6 +761,15 @@ function SelectionEditor() {
               const unit = typeof q === 'object' ? q.unit : 'mm';
               return <Field key={field} label={label}><VectorInput label={label} value={v} unit={unit}
                 onCommit={v => { for (const k of keys) change(`boundaries.${k}.point`,{value:v,unit}); }} />{err && <FieldError text={err} />}</Field>;
+            }
+            if (['ux','uy','uz'].includes(field)) {
+              const q = vals[0]; const on = q != null;
+              const value = typeof q === 'object' && q ? Number(q.value):0;
+              const unit = typeof q === 'object' && q ? q.unit:'mm';
+              return <Field key={field} label={label}><label className="flex h-8 items-center gap-2 text-body text-fg">
+                <input type="checkbox" checked={on} onChange={e => {for (const k of keys) change(`boundaries.${k}.${field}`,e.target.checked ? {value,unit}:null);}} />{t('struct.prescribed')}</label>
+                {on && <NumberInput ariaLabel={label} value={value} unit={unit} units={['mm','m']} onCommit={(v,u) => {for (const k of keys) change(`boundaries.${k}.${field}`,{value:v,unit:u ?? unit});}} />}
+                {err && <FieldError text={err} />}</Field>;
             }
             const v0 = vals.find((v) => v && typeof v !== "string") as { value: number; unit: string } | undefined;
             const units = ui.field_units?.[field] ?? (v0 ? [v0.unit] : []);
@@ -901,6 +911,7 @@ function BoundariesStep() {
   return (
     <>
       <FaceGroups />
+        <ContactsSettings />
       <Section
         title={t("bc.faces")}
         right={

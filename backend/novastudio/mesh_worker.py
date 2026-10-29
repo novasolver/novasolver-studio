@@ -758,6 +758,46 @@ def mesh_job(job: dict) -> None:
                 # sizing from the curvature of a discrete surface follows its facets, not the shape: very slow, no gain
                 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
             bbox = [[xmin, ymin, zmin], [xmax, ymax, zmax]]
+        elif job['kind'] in ('press_fit','stacked'):
+            occ = gmsh.model.occ
+            lx,ly,lz = job['dims']; bbox = [[0,0,0],[lx,ly,lz]]
+            if job['kind'] == 'press_fit':
+                r = job['radius']
+                shaft = occ.addCylinder(0,0,0,0,0,lz,r,tag=1,angle=math.pi/2)
+                outer = occ.addCylinder(0,0,0,0,0,lz,lx,tag=2,angle=math.pi/2)
+                tool = occ.addCylinder(0,0,0,0,0,lz,r,angle=math.pi/2)
+                occ.cut([(3,outer)],[(3,tool)])
+                h = r/{'coarse':3,'normal':4,'fine':6}[job.get('size','normal')]
+                gmsh.option.setNumber('Mesh.MeshSizeFromCurvature',32)
+                gmsh.option.setNumber('Mesh.SecondOrderLinear',0)
+                gmsh.option.setNumber('Mesh.HighOrderOptimize',2)
+            else:
+                occ.addBox(0,0,0,lx,ly,lz/2,tag=1)
+                occ.addBox(0,0,lz/2,lx,ly,lz/2,tag=2)
+                h = min(lx,ly,lz/2)/DIVS[job.get('size','normal')]
+            occ.fragment([(3,1)],[(3,2)])
+            occ.synchronize()
+            grouped = {}
+            for _,tag in gmsh.model.getEntities(2):
+                bb = gmsh.model.getBoundingBox(2,tag); up,_ = gmsh.model.getAdjacencies(2,tag)
+                if len(up)>1:
+                    key = 'interface'
+                elif job['kind'] == 'press_fit':
+                    key = 'outer' if gmsh.model.getType(2,tag) == 'Cylinder' else face_key(bb,(lx,ly,lz),1e-6)
+                elif abs(bb[5]-bb[2])<1e-6:
+                    key = 'bottom' if bb[2]<lz/4 else 'top'
+                else:
+                    key = face_key(bb,(lx,ly,lz),1e-6)
+                    if key == 'x1' and occ.getCenterOfMass(2,tag)[2]<lz/2:
+                        key = 'lower_x1'
+                keys[tag] = key; grouped.setdefault(key,[]).append(tag)
+            for key,tags_ in grouped.items():
+                gmsh.model.addPhysicalGroup(2,tags_,name=key)
+                area = sum(occ.getMass(2,t) for t in tags_)
+                cen = sum(occ.getMass(2,t)*np.array(occ.getCenterOfMass(2,t)) for t in tags_)/area
+                bodies_ = sorted({int(v) for t in tags_ for v in gmsh.model.getAdjacencies(2,t)[0]})
+                face_info.append({'key':key,'n':len(face_info)+1,'area':area,'centroid':cen.tolist(),
+                    'type':gmsh.model.getType(2,tags_[0]),'interface':key == 'interface','bodies':['b'+str(v) for v in bodies_]})
         elif job['kind'] in ('shaft', 'quarter_disk'):
             r, lz = job['radius'], job['dims'][2]
             quarter = job['kind'] == 'quarter_disk'
@@ -874,11 +914,11 @@ def mesh_job(job: dict) -> None:
                 gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
                 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
                 job["_hmin"] = min(sp["h"] for sp in spots)
-        if job["kind"] == "import" and not job.get("domain"):
+        if job["kind"] in ('import','press_fit','stacked') and not job.get("domain"):
             # one physical volume per body: gmshToFoam turns them into cellZones (b<tag>) for multi-region solvers
             for _, vt in gmsh.model.getEntities(3):
                 gmsh.model.addPhysicalGroup(3, [vt], tag=100000 + vt, name=f"b{vt}")
-            body_info = [{"key": f"b{vt}", **dict(zip(("volume", "centroid"), body_volume_centroid(gmsh, vt, stl)))}
+            body_info = [{"key": f"b{vt}", **dict(zip(("volume", "centroid"), body_volume_centroid(gmsh, vt, stl if job['kind'] == 'import' else False)))}
                          for _, vt in gmsh.model.getEntities(3)]
         else:
             gmsh.model.addPhysicalGroup(3, [t for _, t in gmsh.model.getEntities(3)], tag=100000, name="solid")

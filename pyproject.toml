@@ -37,6 +37,9 @@ Repository = "https://github.com/novasolver/novasolver-studio"
 where = ["backend"]
 include = ["novastudio", "novastudio.i18n"]
 
+[tool.pytest.ini_options]
+markers = ["slow: full finite-element benchmark or nonlinear limit analysis"]
+
 [tool.setuptools.dynamic]
 version = {attr = "novastudio.__version__"}
 

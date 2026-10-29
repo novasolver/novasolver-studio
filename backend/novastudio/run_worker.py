@@ -43,6 +43,25 @@ def _mesh_for_run(case: dict, jd: Path, prog):
     shutil.copyfile(geometry.mesh_dir(case) / "mesh.npz", jd / "mesh.npz")   # results stay tied to their mesh
     m = dict(np.load(jd / "mesh.npz"))
     check_condition_faces(case, m)
+    if any(c.get('type','bonded') != 'bonded' for c in case.get('contacts',{}).values()):
+        from .contact import split_mesh
+        import hashlib
+        key = hashlib.sha256(('contact-v3'+geometry.mesh_key(case)+json.dumps(case.get('contacts',{}),sort_keys=True)).encode()).hexdigest()[:16]
+        cache = geometry.mesh_dir(case)/('contact_'+key+'.npz')
+        record = cache.with_suffix('.json')
+        if cache.is_file() and record.is_file():
+            m = dict(np.load(cache))
+            pairs = json.loads(record.read_text(encoding='utf-8'))
+            for r in pairs:
+                for k in ('master','slave','normal','area','pressure_tri','pressure_mass'):
+                    if k in r:
+                        r[k] = np.asarray(r[k],int if k in ('master','slave','pressure_tri') else float)
+        else:
+            m,pairs = split_mesh(case,m)
+            np.savez_compressed(cache,**m)
+            _write_json(record,[{k:v.tolist() if isinstance(v,np.ndarray) else v for k,v in r.items()} for r in pairs])
+        np.savez_compressed(jd/'mesh.npz',**m)
+        m['_contact_pairs'] = pairs
     return m
 
 
@@ -103,6 +122,19 @@ def symmetry_rollers(case: dict, m: dict) -> list[tuple[np.ndarray, int]]:
         tri = m.get(f"face_{face}")
         if tri is None:
             continue
+        if b['role'] == 'beam-clamp':
+            nds = np.unique(tri); xyz = m['nodes'][nds]
+            span = np.ptp(xyz,axis=0); axis = int(np.argmin(span))
+            if span[axis]>max(span.max(),1e-30)*1e-8:
+                raise StudioError('err.symmetry_plane',400,face=face)
+            a,c = [i for i in range(3) if i != axis]
+            center = (xyz.min(0)+xyz.max(0))/2
+            middle = nds[np.argmin(np.linalg.norm(xyz-center,axis=1))]
+            edge = center.copy(); edge[c] = xyz[:,c].max()
+            tip = nds[np.argmin(np.linalg.norm(xyz-edge,axis=1))]
+            # Fix section translation/rotation while permitting Poisson contraction and warping.
+            out += [(tri,axis),(np.array([[middle]]),a),(np.array([[middle]]),c),(np.array([[tip]]),a)]
+            continue
         if b["role"] == "constraint":           # chosen components held on any face (a guide, a slider)
             out += [(tri, "xyz".index(c)) for c in b.get("components", "")]
             continue
@@ -115,7 +147,7 @@ def symmetry_rollers(case: dict, m: dict) -> list[tuple[np.ndarray, int]]:
         if np.abs(n[:, axis]).min() < 0.9999:
             raise StudioError("err.symmetry_plane", 400, face=face)
         out.append((tri, axis))
-    if out and case.get('physics', {}).get('analysis') != 'modal' and not any(b["role"] == "fixed" for b in case["boundaries"].values()) and len({a for _, a in out}) < 3:
+    if out and case.get('physics', {}).get('analysis') != 'modal' and not any(b["role"] in ('fixed','beam-clamp','displacement','spring') for b in case["boundaries"].values()) and len({a for _, a in out}) < 3:
         raise StudioError("err.symmetry_rbm", 400)
     return out
 
@@ -148,6 +180,9 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     E, nu = element_prop(case, m, "E"), element_prop(case, m, "nu")     # per element for multi-material assemblies
     if case.get('physics', {}).get('analysis') == 'modal':
         return run_modal(case, jd, prog, m)
+    if case.get('physics',{}).get('analysis') == 'nonlinear' or m.get('_contact_pairs') or any(
+            b['role'] in ('displacement','spring') for b in case['boundaries'].values()):
+        return run_incremental(case,jd,prog,m)
     fixed, tractions = structural_loads(case, m)
     from .structural import acceleration, temperatures
     T = temperatures(case, m, lambda k, f: prog(k, f))
@@ -162,6 +197,7 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     metrics = {"max_vm_pa": float(r["vm"].max()), "max_disp_m": float(umag.max()),
                "reaction_n": float(np.linalg.norm(r["reaction"])), "applied_n": float(np.linalg.norm(r["applied"])),
                "imbalance": r["imbalance"], "nodes": int(len(nodes)), "elements": int(len(tets))}
+    metrics.update(max_strain=r['max_strain'],max_rotation=r['max_rotation'])
     metrics.update(applied_force_n=r['applied'].tolist(), reaction_force_n=r['reaction'].tolist(),
                    applied_moment_nm=r['applied_moment'].tolist(), reaction_moment_nm=r['reaction_moment'].tolist())
     if T is not None:
@@ -178,6 +214,63 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     converged = bool(r["imbalance"] < 5e-3 and np.isfinite(umag).all())
     return {"kind": "structural", "metrics": metrics, "converged": converged,
             "converged_detail": {"imbalance": r["imbalance"], "limit": 5e-3}, "reference": ref}
+
+
+def prescribed_displacements(case,m):
+    return [(m['face_'+face],i,units.to_si(b[k])) for face,b in case['boundaries'].items()
+            if b['role'] == 'displacement' for i,k in enumerate(('ux','uy','uz')) if b.get(k) is not None]
+
+
+def run_incremental(case,jd,prog,m):
+    from . import fem_nonlinear as nl
+    from .templates import element_groups,element_prop
+    from .structural import acceleration,temperatures,reference,follower_pressure
+    fixed,tractions = structural_loads(case,m)
+    physics = case['physics']; nonlinear = physics.get('analysis') == 'nonlinear'
+    options = physics.get('nonlinear',{}) if nonlinear else {}
+    large = bool(options.get('large_deformation',True)) if nonlinear else False
+    if large:
+        pressure_tri = [m['face_'+f] for f,b in case['boundaries'].items() if b['role'] == 'pressure']
+        tractions = [(tri,t) for tri,t in tractions if not any(tri is p for p in pressure_tri)]
+    nodes,tets = m['nodes'],m['tets']
+    T = temperatures(case,m,lambda k,f:prog(k,f))
+    springs = np.zeros((len(nodes),3))
+    from .structural import surface_rule
+    for f,b in case['boundaries'].items():
+        if b['role'] == 'spring':
+            tri = m['face_'+f]; _,w,_ = surface_rule(nodes,tri)
+            for j,weight in enumerate((1/12,1/12,1/12,1/4,1/4,1/4)):
+                for c in b.get('components','xyz'):
+                    np.add.at(springs[:, 'xyz'.index(c)],tri[:,j],units.to_si(b['stiffness'])*w.sum(1)/w.sum()*weight)
+    face = options.get('face','x1' if 'face_x1' in m else 'top' if 'face_top' in m else next(iter(case['boundaries']),''))
+    r = nl.solve(nodes,tets,element_groups(case,m.get('tet_body',np.zeros(len(tets),int))),fixed,tractions,
+        symmetry_rollers(case,m),prescribed_displacements(case,m),large=large,
+        steps=options.get('steps','auto') if nonlinear else 1,max_iterations=options.get('max_iterations',25),
+        contact_pairs=m.get('_contact_pairs',()),rho=element_prop(case,m,'rho'),acceleration=acceleration(case),
+        alpha=element_prop(case,m,'alpha'),temperature=T,T_ref=units.to_si(physics.get('T_ref',{'value':20,'unit':'degC'})),
+        follower=follower_pressure(case,m) if large else None,progress=prog,path=options.get('path'),springs=springs,
+        face_nodes=np.unique(m.get('face_'+face,np.empty(0,int))))
+    fields = {k:v for k,v in r['steps'][-1].items()}
+    if nonlinear:
+        fields.update({'step_'+k:np.stack([s[k] for s in r['steps']]) for k in fields})
+    if T is not None:
+        fields['T'] = T
+    np.savez_compressed(jd/'results.npz',**fields)
+    metrics = {'max_vm_pa':float(r['vm'].max()),'max_disp_m':float(np.linalg.norm(r['u'],axis=1).max()),
+        'reaction_n':float(np.linalg.norm(r['reaction'])),'applied_n':float(np.linalg.norm(r['applied'])),
+        'imbalance':r['imbalance'],'nodes':len(nodes),'elements':len(tets),'newton_iterations':r['iterations'],
+        'complementarity':r['complementarity'],'max_strain':r['max_strain'],
+        'applied_force_n':r['applied'].tolist(),'reaction_force_n':r['reaction'].tolist(),
+        'applied_moment_nm':r['applied_moment'].tolist(),'reaction_moment_nm':r['reaction_moment'].tolist()}
+    metrics.update(support_peak(nodes,fixed,r['vm']))
+    if T is not None:
+        metrics.update(t_min_k=float(T.min()),t_max_k=float(T.max()))
+    ref = reference(case,m,r,metrics)
+    return {'kind':'structural','metrics':metrics,'converged':r['converged'],
+        'converged_detail':{'imbalance':r['imbalance'],'complementarity':r['complementarity'],
+                            'residual_history':r['residual_history'],'error':r['error']},
+        'reference':ref,'interfaces':r['interfaces'],'curve':r['curve'] if nonlinear else [],
+        'large_deformation':large,'error':r['error']}
 
 
 def run_modal(case, jd, prog, m):
@@ -535,6 +628,13 @@ def primary_quantity(case: dict, res: dict) -> tuple[str, float, str]:
             return ("resistance", m["resistance_ohm"], "ohm")
         return ("power", m["power_w"], "W")
     if k == "structural":
+        response = {'press-fit':('contact_pressure','contact_pressure_pa','Pa'),
+                    'large-cantilever':('tip_disp','tip_disp_m','m'),
+                    'plastic-bar':('axial_stress','axial_stress_pa','Pa'),
+                    'plastic-beam-collapse':('limit_load','limit_load_n','N'),
+                    'rubber-tension':('axial_stress','axial_stress_pa','Pa')}.get(case['template'])
+        if response and response[1] in m:
+            return response[0],m[response[1]],response[2]
         return ("max_disp", m["max_disp_m"], "m")
     if k == 'modal':
         return ('frequency', m['frequency_hz'], 'Hz')

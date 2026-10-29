@@ -181,6 +181,26 @@ def compile_calculix(case: dict, mesh: dict, temperature=...) -> str:
     """Linear static analysis. Loads are the same per-triangle tractions the built-in solver uses."""
     from .fem_tet10 import canonical_tets, tri_areas
     from .run_worker import structural_loads, symmetry_rollers
+    from .store import StudioError
+    from .contact import split_mesh,settings
+    from .templates import element_groups
+    groups = element_groups(case,mesh.get('tet_body',np.zeros(len(mesh['tets']),int)))
+    nonlinear = case.get('physics',{}).get('analysis') == 'nonlinear'
+    large = nonlinear and case['physics'].get('nonlinear',{}).get('large_deformation',True)
+    if any(p.get('model') == 'neo-hookean' for _,p in groups):
+        # CCX's isochoric (J-1)^2 law differs from the built-in log-J compressible law.
+        raise StudioError('err.final_unsupported',400,feature='neo-Hookean strain energy (CalculiX uses a different compressible law)')
+    if large and any(p.get('model') == 'elastoplastic' for _,p in groups):
+        raise StudioError('err.plastic_large',400)
+    if any(b['role'] == 'spring' for b in case['boundaries'].values()):
+        raise StudioError('err.final_unsupported',400,feature='distributed spring supports')
+    contact_faces = [f for f in case['geometry'].get('faces',[]) if f.get('interface') and settings(case,f['key'])['type'] != 'bonded']
+    if contact_faces and nonlinear:
+        raise StudioError('err.final_unsupported',400,feature='combined nonlinear contact step output')
+    if any(settings(case,f['key'])['type'] == 'no-separation' for f in contact_faces):
+        raise StudioError('err.final_unsupported',400,feature='no-separation contact')
+    if contact_faces and not any(k.startswith('contact_master_') for k in mesh):
+        mesh,_ = split_mesh(case,mesh)
     nodes, tets = mesh["nodes"], canonical_tets(mesh["nodes"], mesh["tets"])
     mat = case["materials"]["solid"]
     E, nu = units.to_si(mat["E"]), units.to_si(mat["nu"])
@@ -190,6 +210,9 @@ def compile_calculix(case: dict, mesh: dict, temperature=...) -> str:
     tractions = []
     if not modal:
         fixed_faces, tractions = structural_loads(case, mesh)
+        if large:
+            pressure_tri = [mesh['face_'+f] for f,b in case['boundaries'].items() if b['role'] == 'pressure']
+            tractions = [(tri,v) for tri,v in tractions if not any(tri is p for p in pressure_tri)]
     fixed = np.unique(np.concatenate([fa.ravel() for fa in fixed_faces])) if fixed_faces else np.array([], int)
     from .fem_tet10 import surface_forces, body_forces
     from .structural import acceleration, temperatures
@@ -209,8 +232,27 @@ def compile_calculix(case: dict, mesh: dict, temperature=...) -> str:
             out += _nset(f"SYM{'XYZ'[axis]}", np.unique(np.concatenate(sym)))
             bc.append(f"SYM{'XYZ'[axis]}, {axis + 1}, {axis + 1}, 0.")
     tref = units.to_si(case['physics'].get('T_ref',{'value':20,'unit':'degC'}))
-    out += _ccx_sections(case, mesh, lambda p: ["*ELASTIC", f"{p['E']:.12e}, {p['nu']:.12g}",
-        '*DENSITY',f"{p['rho']:.12e}", '*EXPANSION, ZERO='+str(tref), f"{p['alpha']:.12e}"])
+    def material_lines(p):
+        lines = ["*ELASTIC",f"{p['E']:.12e}, {p['nu']:.12g}",'*DENSITY',f"{p['rho']:.12e}",
+                 '*EXPANSION, ZERO='+str(tref),f"{p['alpha']:.12e}"]
+        if p.get('model') == 'elastoplastic':
+            H = p.get('H',p['E']/100); hard = p['E']*H/(p['E']-H)
+            lines += ['*PLASTIC',f"{p['sy']:.12e}, 0",f"{p['sy']+hard:.12e}, 1"]
+        return lines
+    out += _ccx_sections(case,mesh,material_lines)
+    for i,f in enumerate(contact_faces):
+        cfg = settings(case,f['key']); key = f['key']
+        for side in ('master','slave'):
+            out += [f'*SURFACE, NAME=C{i}_{side}, TYPE=ELEMENT']
+            out += [f'{e}, S{no}' for e,no in _element_faces(tets,mesh['contact_'+side+'_'+key])]
+        h = np.cbrt(max(np.prod(np.ptp(nodes,axis=0))/len(tets),1e-30))
+        stiffness = max(p['E'] for _,p in groups)*1e4/h
+        out += [f'** Contact stiffness {stiffness:.12e} Pa/m; penetration is reported, not hidden.',
+                f'*SURFACE INTERACTION, NAME=I{i}','*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=LINEAR',f'{stiffness:.12e}']
+        if cfg['type'] == 'frictional':
+            out += ['*FRICTION',f"{cfg['mu']:.12g}, {stiffness:.12e}"]
+        out += [f'*CONTACT PAIR, INTERACTION=I{i}, TYPE=SURFACE TO SURFACE',f'C{i}_slave, C{i}_master',
+                f"*CLEARANCE, MASTER=C{i}_master, SLAVE=C{i}_slave, VALUE={-units.to_si(cfg['offset']):.12e}"]
     if modal:
         from .fem_tet10 import modal_constraints
         nrigid = modal_constraints(nodes,fixed_faces,symmetry_rollers(case,mesh),tets=tets)[2]
@@ -220,14 +262,30 @@ def compile_calculix(case: dict, mesh: dict, temperature=...) -> str:
         return '\n'.join(out)
     if T is not None:
         out += ['*INITIAL CONDITIONS, TYPE=TEMPERATURE', f'NALL, {tref:.12g}']
-    out += ["*STEP", "*STATIC", "*BOUNDARY", *bc, "*CLOAD"]
+    from .run_worker import prescribed_displacements
+    for tri,c,value in prescribed_displacements(case,mesh):
+        bc += [f'{n+1}, {c+1}, {c+1}, {value:.12e}' for n in np.unique(tri)]
+    options = case['physics'].get('nonlinear',{})
+    if nonlinear and options.get('path') not in (None,[1.],[1]):
+        raise StudioError('err.final_unsupported',400,feature='displacement reversal path; use the built-in solver')
+    out += [('*STEP'+(', NLGEOM' if large else '')+', INC=1000') if nonlinear or contact_faces else '*STEP', "*STATIC"]
+    if nonlinear or contact_faces:
+        count = options.get('steps',10); count = 10 if count == 'auto' else count
+        out += [f'{1/count:.12g}, 1., 1.e-8, {1/count:.12g}']
+    out += ['*BOUNDARY', *bc, '*CLOAD']
     for n in np.nonzero(np.abs(loads).sum(axis=1))[0]:
         for d in range(3):
             if abs(loads[n, d]) > 0:
                 out.append(f"{n + 1}, {d + 1}, {loads[n, d]:.9e}")
+    if large:
+        pressure = [(f,b) for f,b in case['boundaries'].items() if b['role'] == 'pressure']
+        if pressure:
+            out += ['*DLOAD']
+            for f,b in pressure:
+                out += [f'{e}, P{no}, {units.to_si(b["pressure"]):.12e}' for e,no in _element_faces(tets,mesh['face_'+f])]
     if T is not None:
         out += ['*TEMPERATURE']+[f'{n+1}, {v:.12e}' for n,v in enumerate(T)]
-    out += ["*NODE FILE", "U, RF", "*EL FILE", "S", "*END STEP", ""]
+    out += ["*NODE FILE", "U, RF", "*EL FILE", 'S, PEEQ' if any(p.get('model') == 'elastoplastic' for _,p in groups) else 'S', "*END STEP", ""]
     return "\n".join(out)
 
 
@@ -260,27 +318,37 @@ def compile_calculix_thermal(case: dict, mesh: dict) -> str:
     return "\n".join(out)
 
 
-def parse_frd(path: Path, n_nodes: int) -> dict:
+def parse_frd(path: Path, n_nodes: int, history=False) -> dict:
     """Read DISP, STRESS and NDTEMP nodal blocks from an ASCII .frd file."""
-    widths = {"DISP": 3, "STRESS": 6, "NDTEMP": 1}
+    widths = {"DISP": 3, "STRESS": 6, "NDTEMP": 1, 'FORC':3, 'PE':1}
     res, block, vals = {}, None, None
+    frames = []; time = 1.
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if '100CL' in line:
+            match = re.search(r'100CL\s+\d+\s+([\d.Ee+\-]+)',line)
+            if match:
+                time = float(match[1])
         if line.startswith(" -4"):
             name = line[5:13].strip()
             block = name if name in widths else None
             vals = np.zeros((n_nodes, widths[block])) if block else None
         elif block and line.startswith(" -1"):
             node = int(line[3:13])
-            vals[node - 1] = [float(line[13 + 12 * i:25 + 12 * i]) for i in range(vals.shape[1])]
+            if node<=n_nodes:
+                vals[node - 1] = [float(line[13 + 12 * i:25 + 12 * i]) for i in range(vals.shape[1])]
         elif block and line.startswith(" -3"):
             res[block] = vals
+            if history:
+                if not frames or (block == 'DISP' and 'DISP' in frames[-1]):
+                    frames.append({'time':time})
+                frames[-1][block] = vals
             block = None
-    return res
+    return frames if history else res
 
 
 def run_calculix(case: dict, jd: Path, prog) -> dict:
     from .run_worker import _mesh_for_run, reference_cantilever, reference_thermal_block
-    from .templates import get as tpl
+    from .templates import get as tpl,element_groups
     ccx = find_calculix()
     if not ccx:
         raise RuntimeError("CalculiX (ccx) is not installed")
@@ -332,9 +400,68 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
     U, S = r["DISP"], r["STRESS"]
     vm = np.sqrt(0.5 * ((S[:, 0] - S[:, 1]) ** 2 + (S[:, 1] - S[:, 2]) ** 2 + (S[:, 2] - S[:, 0]) ** 2)
                  + 3 * (S[:, 3] ** 2 + S[:, 4] ** 2 + S[:, 5] ** 2))
-    np.savez_compressed(jd / "results.npz", u=U, vm=vm, s=S[:, :6], **({'T': T} if T is not None else {}))
+    fields = {'u':U,'vm':vm,'s':S[:,:6],**({'T':T} if T is not None else {})}
+    if 'PE' in r:
+        fields['peeq'] = r['PE'][:,0]
+    interfaces = {}; curve = []
+    response = {'u':U,'vm':vm,'s':S}
+    if mesh.get('_contact_pairs'):
+        from .contact import Constraints
+        from .fem_tet10 import structural_system,surface_forces,body_forces
+        from .run_worker import structural_loads
+        from .structural import acceleration
+        from .templates import element_prop
+        nodes = mesh['nodes']
+        K,thermal_force,*_ = structural_system(nodes,mesh['tets'],element_prop(case,mesh,'E'),element_prop(case,mesh,'nu'),
+            element_prop(case,mesh,'alpha'),T,units.to_si(case['physics'].get('T_ref',{'value':20,'unit':'degC'})))
+        fixed,tractions = structural_loads(case,mesh)
+        force = surface_forces(nodes,tractions).ravel()+thermal_force
+        acc = acceleration(case)
+        if acc is not None:
+            force += body_forces(nodes,mesh['tets'],element_prop(case,mesh,'rho'),acc).ravel()
+        residual = (K@U.ravel()-force).reshape(-1,3)
+        contact = Constraints(mesh['_contact_pairs'],len(U)*3,float(K.diagonal().mean()))
+        from scipy.sparse.linalg import lsmr
+        from .fem_tet10 import modal_constraints
+        from .run_worker import symmetry_rollers,prescribed_displacements
+        held = modal_constraints(nodes,fixed,symmetry_rollers(case,mesh),mesh['tets'])[0]
+        held = np.unique(np.r_[held,*[3*np.unique(tri)+c for tri,c,_ in prescribed_displacements(case,mesh)]])
+        free = np.setdiff1d(np.arange(3*len(nodes)),held)
+        cols = []; offset = 0
+        for rec in mesh['_contact_pairs']:
+            for j in range(len(rec['master'])):
+                cols.extend(3*(offset+j)+k for k in (range(3) if rec['type'] == 'frictional' else [0]))
+            offset += len(rec['master'])
+        multipliers = np.zeros(contact.B.shape[0])
+        multipliers[cols] = lsmr(contact.G[free][:,cols],residual.ravel()[free],atol=1e-11,btol=1e-11,maxiter=10000)[0]
+        cf,interfaces,comp = contact.fields(U.ravel(),multipliers)
+        fields.update(cf); response.update(interfaces=interfaces)
+        support = residual.ravel()-contact.G@multipliers
+        reaction = np.zeros(3*len(nodes)); reaction[held] = support[held]
+        physical = force-thermal_force
+        scale = max(np.linalg.norm(reaction),np.linalg.norm(np.abs(physical).reshape(-1,3).sum(0)),1e-30)
+        balance = float(np.linalg.norm((physical+reaction).reshape(-1,3).sum(0))/scale)
+    if case.get('physics',{}).get('analysis') == 'nonlinear':
+        frames = [f for f in parse_frd(wd/'job.frd',len(U),history=True) if 'DISP' in f and 'STRESS' in f]
+        for i,frame in enumerate(frames):
+            uf,sf = frame['DISP'],frame['STRESS']
+            from .fem_nonlinear import von_mises
+            face = case['physics'].get('nonlinear',{}).get('face','x1')
+            nds = np.unique(mesh.get('face_'+face,mesh['tets'][:1,:1]))
+            curve.append({'step':i+1,'load_fraction':frame['time'],'max_disp_m':float(np.linalg.norm(uf,axis=1).max()),
+                          'face_disp_m':uf[nds].mean(0).tolist(),'iterations':0})
+        if frames:
+            fields.update(step_u=np.stack([f['DISP'] for f in frames]),step_s=np.stack([f['STRESS'] for f in frames]),
+                          step_vm=np.stack([von_mises(f['STRESS']) for f in frames]))
+            if all('PE' in f for f in frames):
+                fields['step_peeq'] = np.stack([f['PE'][:,0] for f in frames])
+            elif all(p.get('model','linear') == 'linear' for _,p in element_groups(case,mesh.get('tet_body',np.zeros(len(mesh['tets']),int)))):
+                fields['peeq'] = np.zeros(len(U)); fields['step_peeq'] = np.zeros((len(frames),len(U)))
+    np.savez_compressed(jd/'results.npz',**fields)
     umag = np.linalg.norm(U, axis=1)
     metrics = {"max_disp_m": float(umag.max()), "max_vm_pa": float(vm.max()), **common}
+    if interfaces:
+        metrics.update(imbalance=balance,complementarity=comp)
     if T is not None:
         metrics.update(t_min_k=float(T.min()), t_max_k=float(T.max()))
     if case["template"] == "cantilever":
@@ -345,9 +472,10 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
         ref = reference_plate_hole(case, mesh["nodes"], vm, metrics)
     else:
         from .structural import reference
-        ref = reference(case,mesh,{'u':U,'vm':vm,'s':S},metrics)
-    return {"kind": "structural", "metrics": metrics, "converged": bool(np.isfinite(umag).all()),
-            "converged_detail": {"note": "linear static solve completed"}, "reference": ref}
+        ref = reference(case,mesh,response,metrics)
+    return {"kind": "structural", "metrics": metrics, "converged": bool(np.isfinite(umag).all() and metrics.get('imbalance',0)<5e-3),
+            "converged_detail": {"note": "CalculiX static solve completed"}, "reference": ref,
+            'interfaces':interfaces,'curve':curve,'large_deformation':case.get('physics',{}).get('analysis') == 'nonlinear' and case['physics'].get('nonlinear',{}).get('large_deformation',True)}
 
 
 def calculix_modes(case,mesh,jd,wd):
@@ -375,7 +503,7 @@ def calculix_modes(case,mesh,jd,wd):
             values[int(line[3:13])-1] = [float(line[13+12*i:25+12*i]) for i in range(3)]
         elif values is not None and line.startswith(' -3'):
             shapes.append(values); values = None
-    free_free = not any(b['role'] in ('fixed','constraint','symmetry') for b in case['boundaries'].values())
+    free_free = not any(b['role'] in ('fixed','beam-clamp','constraint','symmetry') for b in case['boundaries'].values())
     from .fem_tet10 import modal_constraints
     from .run_worker import symmetry_rollers
     fixed = [mesh['face_'+f] for f,b in case['boundaries'].items() if b['role'] == 'fixed']
