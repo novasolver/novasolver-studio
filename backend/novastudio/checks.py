@@ -2,6 +2,8 @@
 Every item names the step to fix and, where useful, the faces involved and the MCP call that fixes it."""
 from __future__ import annotations
 
+import numpy as np
+
 from . import geometry, templates, units
 from .config import engines
 from .i18n import t
@@ -166,8 +168,14 @@ def run(case: dict, lang: str) -> list[dict]:
         if not case.get("flow") and not any(v["role"] in ("inlet", "moving-wall") for v in b.values()):
             add("error", "no_inlet", "boundaries")
         if case.get("flow"):                       # external flow: Reynolds number from the body size
-            (x0, y0, z0), (x1, y1, z1) = case["geometry"]["bbox"]
-            L = max(x1 - x0, y1 - y0, z1 - z0)
+            # Same length as the solver and the results: the equivalent diameter of the frontal area. Before the
+            # mesh exists the frontal area is taken as the ellipse inscribed in the bounding box across the flow
+            # (a long airship read Re 8.0e6 here and 3.0e6 in its results).
+            from .flow3d import DIRS
+            ext = np.ptp(np.array(case["geometry"]["bbox"], float), axis=0)
+            axis = int(np.argmax(np.abs(DIRS.get(case["flow"].get("direction", "+x"), (1, 0, 0)))))
+            w, h = (ext[i] for i in range(3) if i != axis)
+            L = float(np.sqrt(w * h))               # sqrt(4 (pi w h / 4) / pi)
             re = units.to_si(case["flow"]["speed"]) * L / nu if nu > 0 else 0
             if re > 300:
                 add("warn", "turbulent_model", "physics", re=re)

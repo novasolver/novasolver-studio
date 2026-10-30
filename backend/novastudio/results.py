@@ -52,6 +52,18 @@ def load(case_id: str, run_id: str | None = None) -> tuple[Path, dict]:
     return jd, json.loads((jd / "results.json").read_text(encoding="utf-8"))
 
 
+# External-flow section shown around the body, in body lengths: upstream and sideways, and downstream for the wake.
+# 2 / 5 lengths made a 24 m airship a small dot in the middle of the view; the full domain stays in the run files.
+SECTION_AROUND, SECTION_WAKE = 0.75, 2.5
+
+
+def _compact(P, idx, values):
+    """Keep only the vertices the kept triangles use. Dropping triangles alone left the whole wind tunnel in the
+    vertex list, so the viewer framed the tunnel and the body was a dot (and the payload carried it too)."""
+    used, inv = np.unique(idx, return_inverse=True)
+    return P[used], inv.reshape(idx.shape), np.asarray(values)[used]
+
+
 def _card(key, value, unit, lang, digits=4):
     return {"key": key, "label": t(f"card.{key}", lang), "value": float(f"{value:.{digits}g}"), "unit": unit}
 
@@ -277,9 +289,10 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
             L = float((b1 - b0).max())
             from .flow3d import DIRS
             dvec = np.abs(np.array(DIRS[case["flow"]["direction"]], float))
-            lo, hi = b0 - 2.0 * L, b1 + np.where(dvec > 0, 5.0, 2.0) * L
+            lo, hi = b0 - SECTION_AROUND * L, b1 + np.where(dvec > 0, SECTION_WAKE, SECTION_AROUND) * L
             cen = P[idx].mean(axis=1)
             idx = idx[np.all((cen >= lo) & (cen <= hi), axis=1)]
+            P, idx, s = _compact(P, idx, s)
         vals = {quantity: s}
     elif kind in ("flow3d", "external"):
         mesh = np.load(jd / "mesh.npz")
@@ -309,11 +322,11 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
             if kind == "external" and len(idx):                          # keep the region around the body
                 bnodes = mesh["nodes"][np.unique(mesh["face_body"][:, :3])]
                 L = float(np.ptp(bnodes, axis=0).max())
-                lo, hi = bnodes.min(axis=0) - 2.0 * L, bnodes.max(axis=0) + np.where(
-                    np.abs(DIRS[case["flow"]["direction"]]) > 0, 5.0, 2.0) * L
+                lo, hi = bnodes.min(axis=0) - SECTION_AROUND * L, bnodes.max(axis=0) + np.where(
+                    np.abs(DIRS[case["flow"]["direction"]]) > 0, SECTION_WAKE, SECTION_AROUND) * L
                 cen = P[idx].mean(axis=1)
                 keep = np.all((cen >= lo) & (cen <= hi), axis=1)
-                idx = idx[keep]
+                P, idx, s = _compact(P, idx[keep], s)
             vals = {"speed": s}
     elif kind == "conjugate" and quantity == "speed":
         from .flow3d import slice_plane

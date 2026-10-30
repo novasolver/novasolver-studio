@@ -456,8 +456,19 @@ export class Viewer {
     }
     this.syncVisibility();
     this.updateGround();
+    // An external-flow section is not the shape the camera was fitted to at the geometry step: frame body + section
+    // once when a new one arrives (a 24 m airship otherwise sat as a dot in the middle of an empty view).
+    if (this.fieldMesh && this.fieldIsSlice()) {
+      const key = `${field!.positions.length}:${field!.positions[0]}:${field!.positions[field!.positions.length - 1]}`;
+      if (key !== this.framedSlice) {
+        this.framedSlice = key;
+        this.view("fit");
+      }
+    }
     this.dirty = true;
   }
+
+  private framedSlice = "";
 
   /** Show every triangle edge of the geometry (useful to inspect a generated mesh). */
   setWireframe(on: boolean): void {
@@ -1200,6 +1211,12 @@ export class Viewer {
     this.fieldEdges = null;
     const tris = (this.fieldMesh.geometry.index?.count ?? 0) / 3;
     if (tris > 400_000) return; // too heavy for integrated GPUs; skip outline
+    // A flow section is a flat triangle soup (one polygon per cut cell, vertices not shared): its "edges" are the
+    // seams between those polygons, drawn as stray dashes across the plane. A flat field has no edges worth showing.
+    this.fieldMesh.geometry.computeBoundingBox();
+    const size = this.fieldMesh.geometry.boundingBox!.getSize(new THREE.Vector3());
+    // (2 % as for the ground: OpenFOAM's cutting plane is flat only to a few cm on a 60 m tunnel)
+    if (Math.min(size.x, size.y, size.z) <= 0.02 * Math.max(size.x, size.y, size.z)) return;
     const eg = new THREE.EdgesGeometry(this.fieldMesh.geometry, 30);
     this.fieldEdges = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
     this.fieldEdges.visible = !this.modeAnimation;
