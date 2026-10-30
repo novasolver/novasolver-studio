@@ -113,6 +113,30 @@ export interface Sample {
   file: string;
 }
 
+export interface UpdateInfo {
+  current: string;
+  latest?: string;
+  available: boolean;
+  /** portable: the Windows zip updates itself; mcpb, python, dev: show how to update instead */
+  kind: "portable" | "mcpb" | "python" | "dev" | "other";
+  notes?: Partial<Record<Lang, string>>;
+  page?: Partial<Record<Lang, string>>;
+  pip?: string;
+  size?: number;
+  auto?: boolean;
+  offline?: boolean;
+  message?: string;
+  last_result?: { ok: boolean; from: string; to: string; message: string; at: string } | null;
+}
+
+export interface UpdateJob {
+  state: "idle" | "downloading" | "ready" | "applying" | "error";
+  version?: string;
+  bytes?: number;
+  total?: number;
+  error?: string;
+}
+
 /** A solved verification case published on GitHub (strings already in the request language). */
 export interface Example {
   name: string;

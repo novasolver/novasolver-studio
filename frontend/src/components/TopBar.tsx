@@ -1,4 +1,4 @@
-import { FolderOpen, Languages, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, Undo2, Redo2 } from "lucide-react";
+import { CircleHelp, FolderOpen, Languages, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, Undo2, Redo2 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Select } from "./ui/Select";
 import { Tooltip } from "./ui/Tooltip";
@@ -90,6 +90,7 @@ export function TopBar() {
   const history = useStore(s => s.payload?.history);
   const busy = useStore(s => s.historyBusy);
   const saving = useStore(s => s.saving);
+  const updateReady = useStore((s) => !!s.update?.available);
   return (
     <header className="relative z-20 grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line bg-bg px-3">
       <div className="flex min-w-0 items-center gap-1">
@@ -143,6 +144,12 @@ export function TopBar() {
               </span>
             )}
           />
+        </Tooltip>
+        <Tooltip content={t("help.title")}>
+          <Button variant="ghost" size="icon" aria-label={t("help.title")} onClick={() => ui.help(true)} className="relative">
+            <CircleHelp size={16} />
+            {updateReady && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent-fill" />}
+          </Button>
         </Tooltip>
         <Tooltip content={t(theme === "dark" ? "top.theme.toLight" : "top.theme.toDark")}>
           <Button variant="ghost" size="icon" aria-label={t(theme === "dark" ? "top.theme.toLight" : "top.theme.toDark")} onClick={toggleTheme}>

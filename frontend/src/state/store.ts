@@ -4,6 +4,8 @@ import { api, ApiError, connectEvents, faceRolePath, initApi, isMock, setApiLang
 import type {
   CasePayload,
   ExamplesPayload,
+  UpdateInfo,
+  UpdateJob,
   FieldPayload,
   GeometryPayload,
   Job,
@@ -49,6 +51,10 @@ export interface State {
   samples: Sample[];
   recent: CaseSummary[];
   importing: string | null; // file being imported
+  help: boolean;
+  update: UpdateInfo | null;
+  updateChecking: boolean;
+  updateJob: UpdateJob | null;
   examples: ExamplesPayload | null;
   examplesState: "idle" | "loading" | "ready" | "error";
   exampleOpening: { name: string; bytes: number; total: number } | null;
@@ -113,6 +119,10 @@ let state: State = {
   samples: [],
   recent: [],
   importing: null,
+  help: false,
+  update: null,
+  updateChecking: false,
+  updateJob: null,
   examples: null,
   examplesState: "idle",
   exampleOpening: null,
@@ -298,6 +308,7 @@ export async function boot() {
   unsubscribeEvents = connectEvents(onEvent, (c) => setState({ wsConnected: c }));
   setState({ boot: "ready" });
   void openFromLink();
+  if (mode === "backend") void checkUpdate(false, true);
 }
 
 /** Revisions produced by this GUI's own PATCHes; a WS "case" event for them is not external. */
@@ -1160,4 +1171,61 @@ export const ui = {
   palette: (v?: boolean) => setState((s) => ({ palette: v ?? !s.palette })),
   ai: (v?: boolean) => setState((s) => ({ ai: v ?? !s.ai })),
   log: (v?: boolean) => setState((s) => ({ logOpen: v ?? !s.logOpen })),
+  help: (v?: boolean) => setState((s) => ({ help: v ?? !s.help })),
 };
+
+// ------------------------------------------------------------------ updates
+/** passive = the start-up check, which respects "check once a day" being off. */
+export async function checkUpdate(force = false, passive = false) {
+  setState({ updateChecking: true });
+  try {
+    const u = await api.update(force, passive);
+    setState({ update: u });
+    const r = u.last_result;
+    if (r) {
+      // report the outcome of an update once (the backend keeps it until the next one)
+      let seen = "";
+      try { seen = localStorage.getItem("nss.updateResult") ?? ""; } catch { /* ignore */ }
+      if (seen !== r.at) {
+        toast(r.ok ? t("update.done", { version: r.to }) : t("update.restored", { version: r.from, message: r.message }), r.ok ? "info" : "error");
+        try { localStorage.setItem("nss.updateResult", r.at); } catch { /* ignore */ }
+      }
+    }
+  } catch (e) {
+    if (!passive) toast(errMsg(e), "error");
+  } finally {
+    setState({ updateChecking: false });
+  }
+}
+
+export async function setUpdateAuto(auto: boolean) {
+  await api.updateSettings(auto);
+  setState({ update: state.update && { ...state.update, auto } });
+}
+
+let updatePoll = 0;
+
+export async function startUpdate() {
+  try {
+    setState({ updateJob: await api.updateDownload() });
+  } catch (e) {
+    toast(errMsg(e), "error");
+    return;
+  }
+  window.clearInterval(updatePoll);
+  updatePoll = window.setInterval(async () => {
+    try {
+      const j = await api.updateStatus();
+      setState({ updateJob: j });
+      if (j.state !== "downloading") window.clearInterval(updatePoll);
+    } catch { /* keep polling */ }
+  }, 500);
+}
+
+export async function applyUpdate() {
+  try {
+    setState({ updateJob: await api.updateApply() });
+  } catch (e) {
+    toast(errMsg(e), "error");
+  }
+}

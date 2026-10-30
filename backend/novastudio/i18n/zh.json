@@ -555,5 +555,10 @@
   "err.examples_offline": "无法获取已求解示例（离线）。可从 {url} 下载 .nscase，然后用“打开案例文件”打开。",
   "err.example_unknown": "没有名为“{name}”的已求解示例。请用 list_examples 查看名称。",
   "err.example_corrupt": "已求解示例“{name}”的下载已损坏并已删除。请重新打开。",
-  "err.examples_missing": "此版本尚未发布已求解示例。已发布的示例见 {url}。"
+  "err.examples_missing": "此版本尚未发布已求解示例。已发布的示例见 {url}。",
+  "err.update_offline": "无法检查更新（离线）。最新版本见 https://novasolver.jp/zh/studio/。",
+  "err.update_not_portable": "此安装方式（{kind}）无法在应用内更新。请按提示的方法更新。",
+  "err.update_none": "您使用的 {version} 已是最新版本。",
+  "err.update_not_ready": "更新文件尚未下载。",
+  "err.update_busy": "还有 {count} 个计算任务在运行。请在完成后再更新。"
 }

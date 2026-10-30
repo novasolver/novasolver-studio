@@ -67,7 +67,9 @@ def main() -> None:
         from .api import app
         port = a.port if a.cmd == "serve" else _free_port(8765)
         if a.cmd is None:                                      # app mode: open the UI once the server is up
-            threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}/")).start()
+            import os
+            if not os.environ.get("NOVASTUDIO_NO_BROWSER"):    # set by the update tests
+                threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}/")).start()
             print(f"NovaSolver Studio is running at http://127.0.0.1:{port}/  (close this window to quit)")
         uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 

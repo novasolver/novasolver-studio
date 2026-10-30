@@ -3,5 +3,5 @@
 GUI (api.py), MCP (mcp_server.py) and CLI all call the same functions in commands.py.
 """
 
-__version__ = "0.6.2"
+__version__ = "0.6.3"
 SCHEMA_VERSION = "0.1"

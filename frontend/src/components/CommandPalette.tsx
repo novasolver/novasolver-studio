@@ -3,6 +3,7 @@ import {
   Bot,
   Box,
   ChartSpline,
+  CircleHelp,
   CornerDownLeft,
   Download,
   FileUp,
@@ -128,6 +129,7 @@ export function CommandPalette() {
         })),
       { id: "ai", group: t("palette.group.app"), label: t("cmd.ai"), icon: <Bot size={15} />, run: () => ui.ai(true) },
       { id: "log", group: t("palette.group.app"), label: t("cmd.log"), icon: <ScrollText size={15} />, run: () => ui.log() },
+      { id: "help", group: t("palette.group.app"), label: t("cmd.help"), icon: <CircleHelp size={15} />, run: () => ui.help(true) },
     );
     return list;
   }, [hasCase, lang, t]);

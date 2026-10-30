@@ -4,6 +4,8 @@
 import type {
   CasePayload,
   ExamplesPayload,
+  UpdateInfo,
+  UpdateJob,
   FieldPayload,
   GeometryPayload,
   Job,
@@ -156,6 +158,13 @@ async function importArchive(file: File): Promise<CasePayload> {
 }
 
 export const api = {
+  update: (force = false, passive = false) =>
+    mock ? Promise.resolve<UpdateInfo>({ current: "mock", available: false, kind: "dev" })
+      : request<UpdateInfo>("GET", `/api/update?force=${force}&passive=${passive}`),
+  updateSettings: (auto: boolean) => request("POST", "/api/update/settings", { auto }),
+  updateDownload: () => request<UpdateJob>("POST", "/api/update/download"),
+  updateStatus: () => request<UpdateJob>("GET", "/api/update/status"),
+  updateApply: () => request<UpdateJob>("POST", "/api/update/apply"),
   examples: () => request<ExamplesPayload>("GET", "/api/examples"),
   openExample: (name: string) => request<CasePayload>("POST", `/api/examples/${encodeURIComponent(name)}`),
   exampleProgress: (name: string) =>

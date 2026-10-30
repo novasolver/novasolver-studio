@@ -9,6 +9,7 @@ import { StartScreen } from "./components/StartScreen";
 import { CommandPalette } from "./components/CommandPalette";
 import { AiPanel } from "./components/AiPanel";
 import { DropOverlay } from "./components/ImportCad";
+import { HelpDialog, UpdateNotice } from "./components/HelpDialog";
 import { getState, goStep, selectFace, setState, STEPS, ui, useStore, viewCmd, undoCase, redoCase,
   hideSelected, showAllFaces, toggleSeeThrough } from "./state/store";
 
@@ -89,6 +90,8 @@ export default function App() {
       <StatusBar />
       <CommandPalette />
       <DropOverlay />
+      <HelpDialog />
+      <UpdateNotice />
     </div>
   );
 }

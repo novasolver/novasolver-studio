@@ -114,6 +114,48 @@ async def open_sample(name: str, physics: str | None = None, lang: str = "ja"):
     return await call(C.open_sample, name, physics, lang)
 
 
+@app.get("/api/update")
+async def update_check(force: bool = False, passive: bool = False, lang: str = "ja"):
+    from . import updates
+    try:
+        return await call(updates.check, force, passive)
+    except StudioError as e:
+        if e.key != "err.update_offline":
+            raise
+        # not an error for the UI: the help dialog shows one line instead
+        return {"current": __import__("novastudio").__version__, "available": False, "offline": True,
+                "kind": updates.install_kind(), "message": C.error_payload(e, lang_of(lang))["message"]}
+
+
+@app.post("/api/update/settings")
+async def update_settings(body: dict = Body(...)):
+    from . import updates
+    return await call(updates.save_state, auto_check=bool(body.get("auto", True)))
+
+
+@app.post("/api/update/download")
+async def update_download(lang: str = "ja"):
+    from . import updates
+    return await call(updates.start_download, lang_of(lang))
+
+
+@app.get("/api/update/status")
+async def update_status():
+    from . import updates
+    return updates.status()
+
+
+@app.post("/api/update/apply")
+async def update_apply():
+    """Starts the swap script, answers, then ends this process so the script can replace the app folder."""
+    import os
+    import threading
+    from . import updates
+    r = await call(updates.apply)
+    threading.Timer(1.5, lambda: os._exit(0)).start()
+    return r
+
+
 @app.post("/api/import-case")
 async def import_case(request: Request, lang: str = "ja"):
     """Raw .nscase bytes in the body."""

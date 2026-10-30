@@ -555,5 +555,10 @@
   "err.examples_offline": "Could not fetch the solved examples (offline). Download a .nscase from {url} and use Open case file.",
   "err.example_unknown": "There is no solved example named \"{name}\". Check the names with list_examples.",
   "err.example_corrupt": "The download of the solved example \"{name}\" was damaged and has been deleted. Open it again.",
-  "err.examples_missing": "No solved examples are published for this version yet. Published examples are at {url}."
+  "err.examples_missing": "No solved examples are published for this version yet. Published examples are at {url}.",
+  "err.update_offline": "Could not check for updates (offline). The latest version is listed at https://novasolver.jp/en/studio/.",
+  "err.update_not_portable": "This installation ({kind}) cannot update itself. Follow the update instructions shown.",
+  "err.update_none": "You have the latest version, {version}.",
+  "err.update_not_ready": "The update is not downloaded yet.",
+  "err.update_busy": "{count} job(s) are still running. Update when they have finished."
 }
