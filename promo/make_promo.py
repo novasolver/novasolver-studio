@@ -1,4 +1,4 @@
-"""CAD for the promotional analyses (STEP, units mm).  python samples/promo/make_promo.py
+"""CAD for the promotional analyses (STEP, units mm).  python promo/make_promo.py
 
 1. gpu_cold_plate.step   copper cold plate for a 700 W GPU: water body (Z-flow manifolds + 6 microchannels) and plate
 2. ev_busbar.step        copper busbar bolted to a battery terminal block (two bodies sharing the contact face)
