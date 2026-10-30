@@ -108,8 +108,8 @@ def structural_loads(case: dict, m: dict):
                 vec = np.broadcast_to(direction(d), (len(tri), 3))
             tractions.append((tri, vec * F / area.sum()))
         elif b["role"] == "pressure":
-            p = units.to_si(b["pressure"])
-            tractions.append((tri, -p * outward_normals(nodes, tets, tri)))
+            from .structural import pressure_load
+            tractions.append((tri, pressure_load(nodes, tets, tri, units.to_si(b["pressure"]))))
     return fixed, tractions
 
 

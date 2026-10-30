@@ -1010,11 +1010,16 @@ def mesh_job(job: dict) -> None:
                     tet_body.append(np.full(len(conn), vt, dtype=np.int64))
             tet = np.concatenate(tets)
             tet_body = np.concatenate(tet_body)
+            straightened = 0
+            if tet.shape[1] == 10:
+                from .fem_tet10 import straighten_inverted
+                coords, straightened = straighten_inverted(coords, tet)
             np.savez_compressed(out / "mesh.npz", nodes=coords, tets=tet, tet_body=tet_body,
                                 **{f"face_{k}": v for k, v in face_tri6.items()})
             q = gmsh.model.mesh.getElementQualities(gmsh.model.mesh.getElementsByType(11 if tet.shape[1] == 10 else 4)[0], "minSICN")
             stats = {"nodes": int(len(coords)), "elements": int(len(tet)), "element_type": f"tet{tet.shape[1]}",
-                     "quality_min": float(np.min(q)), "quality_mean": float(np.mean(q)), "h": h}
+                     "quality_min": float(np.min(q)), "quality_mean": float(np.mean(q)), "h": h,
+                     "straightened": int(straightened)}
             (out / "mesh_stats.json").write_text(json.dumps(stats), encoding="utf-8")
     finally:
         gmsh.finalize()

@@ -13,6 +13,13 @@ const WIDTH = 200;
 function tickFormat(lo: number, hi: number): (v: number, sig: number) => string {
   const step = (hi - lo) / 4;
   const mag = Math.max(Math.abs(lo), Math.abs(hi));
+  // rounding noise at the end of a stress range (5.92e-10 MPa) is zero to the reader
+  const zero = (f: (v: number, sig: number) => string) => (v: number, sig: number) =>
+    mag > 0 && Math.abs(v) < mag * 1e-9 ? "0" : f(v, sig);
+  return zero(tickFormatRaw(step, mag));
+}
+
+function tickFormatRaw(step: number, mag: number): (v: number, sig: number) => string {
   // A uniform field (a bar in pure tension) differs only by rounding noise: fixed decimals would print 283.14000000.
   if (step > 0 && step / mag < 1e-6) return (v) => fmt(v, 4);   // every tick the same value, not 283 / 280
   if (!(step > 0) || mag >= 1e6 || step / mag > 0.01) return (v, sig) => fmt(v, sig);

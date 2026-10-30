@@ -103,8 +103,18 @@ def canonical_tets(nodes: np.ndarray, tets: np.ndarray) -> np.ndarray:
     cand = x[:, 4:10]                                 # (E,6,3)
     d = np.linalg.norm(mid[:, :, None, :] - cand[:, None, :, :], axis=3)  # (E,6 edges,6 cand)
     pick = np.argmin(d, axis=2)
-    if not np.all(np.sort(pick, axis=1) == np.arange(6)):
-        raise ValueError("midside node matching failed (curved or non-conforming mesh)")
+    bad = np.flatnonzero(~np.all(np.sort(pick, axis=1) == np.arange(6), axis=1))
+    if len(bad):
+        # Gmsh moves midside nodes onto curved CAD faces; in a coarse element on a small hole two edges can then share
+        # the same nearest candidate. A one-to-one assignment per element resolves that; a node still further than
+        # half its edge from the edge midpoint means the mesh really is non-conforming.
+        from scipy.optimize import linear_sum_assignment
+        edge = np.linalg.norm(x[:, EDGES[:, 0]] - x[:, EDGES[:, 1]], axis=2)
+        for e in bad:
+            rows, cols = linear_sum_assignment(d[e])
+            if np.any(d[e][rows, cols] > 0.5 * edge[e]):
+                raise ValueError("midside node matching failed (curved or non-conforming mesh)")
+            pick[e] = cols
     out = tets.copy()
     out[:, 4:10] = np.take_along_axis(tets[:, 4:10], pick, axis=1)
     return out
@@ -126,6 +136,28 @@ def _dshape(g):
 DSHAPE = np.stack([_dshape(g) for g in GAUSS])  # (4,3,10)
 LG = np.column_stack([1 - GAUSS.sum(axis=1), GAUSS])
 SHAPE = np.column_stack([LG * (2 * LG - 1), 4 * LG[:, EDGES[:, 0]] * LG[:, EDGES[:, 1]]])
+
+
+def straighten_inverted(nodes, tets, rounds=5):
+    """Move the midside nodes of folded tet10 elements back to their edge midpoints.
+    Gmsh's HighOrderOptimize untangles most curved elements, but a coarse element on a small hole in a large part
+    can stay folded (negative Jacobian at a Gauss point) and stop the solve. A straight edge is always valid; it
+    only gives up the curved-surface accuracy of that one edge. Returns the new nodes and the number of elements fixed."""
+    nodes = np.array(nodes, dtype=float, copy=True)
+    fixed = set()
+    for _ in range(rounds):
+        ct = canonical_tets(nodes, tets)
+        X = nodes[ct]
+        bad = np.zeros(len(ct), bool)
+        for g in range(4):
+            bad |= np.linalg.det(np.einsum("ik,ekj->eij", DSHAPE[g], X)) <= 0
+        idx = np.flatnonzero(bad)
+        if not len(idx):
+            break
+        fixed.update(idx.tolist())
+        for k, (a, b) in enumerate(EDGES):
+            nodes[ct[idx, 4 + k]] = 0.5 * (nodes[ct[idx, a]] + nodes[ct[idx, b]])
+    return nodes, len(fixed)
 
 
 def gauss_to_nodes(tets, values, n, groups=None, flat=None):

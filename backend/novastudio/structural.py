@@ -52,6 +52,29 @@ def surface_rule(nodes, tri):
     return np.stack(points, 1), np.stack(weights, 1), np.asarray(shapes)
 
 
+def pressure_load(nodes, tets, tri, p):
+    """Consistent tri6 nodal forces of a pressure p [Pa] pushing into the face, integrated on the curved element.
+    Flat corner triangles miss the circular segments along a round edge: the 50 mm breech face of a bore took 3.3 %
+    too little force on a fine mesh."""
+    from .fem_tet10 import outward_normals
+    q, w = np.polynomial.legendre.leggauss(6)
+    q, w = (q+1)/2, w/2
+    X = nodes[tri]
+    sign = np.sign(np.einsum('ej,ej->e', np.cross(X[:, 1]-X[:, 0], X[:, 2]-X[:, 0]), outward_normals(nodes, tets, tri)))
+    forces = np.zeros((len(tri), 6, 3))
+    for i, a in enumerate(q):
+        for j, b in enumerate(q):
+            L = np.array([1-a-(1-a)*b, a, (1-a)*b])
+            N = np.r_[L*(2*L-1), 4*L[0]*L[1], 4*L[1]*L[2], 4*L[2]*L[0]]
+            dL = np.array([[-1, 1, 0], [-1, 0, 1]])
+            dN = np.column_stack([dL*(4*L-1), 4*(dL[:, 0]*L[1]+L[0]*dL[:, 1]),
+                                  4*(dL[:, 1]*L[2]+L[1]*dL[:, 2]), 4*(dL[:, 2]*L[0]+L[2]*dL[:, 0])])
+            J = np.einsum('ik,ekj->eij', dN, X)
+            area_vector = np.cross(J[:, 0], J[:, 1])*(w[i]*w[j]*(1-a))*sign[:, None]   # outward, |.| = dA
+            forces -= p*N[None, :, None]*area_vector[:, None, :]
+    return forces
+
+
 def face_load(case, face, nodes, tri, b):
     if b['role'] == 'bearing':
         desc = next((f for f in case['geometry'].get('faces', []) if f['key'] == face), {})

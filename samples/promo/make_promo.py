@@ -47,6 +47,22 @@ def ev_busbar():
     gmsh.write(str(OUT / "ev_busbar.step"))
 
 
+def ev_busbar_joint(layer=0.2):
+    """The same lap joint with a 0.2 mm layer between bar and block standing for the contact resistance of the
+    bolted joint (its conductivity is set per case: a tight joint ~10 uOhm, a loose one ~200 uOhm)."""
+    gmsh.model.add("ev_busbar_joint")
+    occ = gmsh.model.occ
+    block = occ.addBox(0, 0, 0, 20, 20, 15)
+    film = occ.addBox(0, 0, 15, 20, 20, layer)
+    bar = occ.addBox(0, 0, 15 + layer, 60, 20, 3)
+    hole = occ.addCylinder(10, 10, -1, 0, 0, 25, 3.25)
+    occ.cut([(3, block), (3, film), (3, bar)], [(3, hole)], removeTool=True)
+    occ.fragment(occ.getEntities(3), [])
+    occ.removeAllDuplicates()
+    occ.synchronize()
+    gmsh.write(str(OUT / "ev_busbar_joint.step"))
+
+
 def shelf(levels=4):
     """Steel rack 900 x 450 x 1800 mm: 40 x 40 mm uprights, 12 mm shelves (one welded body)."""
     gmsh.model.add("shelf")
@@ -67,6 +83,7 @@ if __name__ == "__main__":
     try:
         gpu_cold_plate()
         ev_busbar()
+        ev_busbar_joint()
         shelf()
     finally:
         gmsh.finalize()
