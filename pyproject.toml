@@ -17,6 +17,7 @@ dependencies = [
     "pyamg>=5.3.0", "gmsh>=4.15.2",
     "pymeshlab>=2025.7.post1", "fastapi>=0.162.0", "uvicorn[standard]>=0.54.0",
     "mcp>=2.3.0,<3", "matplotlib>=3.11.2; python_version >= '3.11'",
+    "cryptography>=42",   # Ed25519 signature of the update notice (latest.json)
     "matplotlib>=3.10.8; python_version < '3.11'", "psutil>=7.2.2", "pydantic>=2.14.1",
     "python-multipart>=0.0.32", "websockets>=17.3; python_version >= '3.11'",
     "websockets>=15.0.1; python_version < '3.11'", "anyio>=4.15.1",

@@ -560,5 +560,8 @@
   "err.update_not_portable": "此安装方式（{kind}）无法在应用内更新。请按提示的方法更新。",
   "err.update_none": "您使用的 {version} 已是最新版本。",
   "err.update_not_ready": "更新文件尚未下载。",
-  "err.update_busy": "还有 {count} 个计算任务在运行。请在完成后再更新。"
+  "err.update_busy": "还有 {count} 个计算任务在运行。请在完成后再更新。",
+  "err.update_folder_readonly": "由于无法写入 Studio 所在的文件夹（{path}），无法在应用内更新。请移到可写入的文件夹（如“文档”），或从下载页面重新安装。",
+  "err.update_folder_name": "Studio 正在从备份或临时文件夹（{name}）运行，无法更新。请从 {expected} 文件夹启动。",
+  "err.update_folder_network": "无法从网络文件夹更新。请将 Studio 放在本机的文件夹中。"
 }

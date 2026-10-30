@@ -24,6 +24,7 @@ function UpdateAction({ u }: { u: UpdateInfo }) {
   const t = useT();
   const lang = useStore((s) => s.lang);
   const job = useStore((s) => s.updateJob);
+  const [applying, setApplying] = useState(false);       // one click starts one swap
   if (u.kind === "mcpb") return <p className="prose-ui text-body text-fg-2">{t("update.mcpb")}</p>;
   if (u.kind === "dev") return <p className="prose-ui text-body text-fg-2">{t("update.dev")}</p>;
   if (u.kind !== "portable")
@@ -50,7 +51,7 @@ function UpdateAction({ u }: { u: UpdateInfo }) {
   }
   if (job?.state === "ready")
     return (
-      <Button onClick={() => void applyUpdate()}>
+      <Button disabled={applying} onClick={() => { setApplying(true); void applyUpdate().finally(() => setApplying(false)); }}>
         <RefreshCw size={14} strokeWidth={1.5} />
         {t("update.restart")}
       </Button>

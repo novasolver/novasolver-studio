@@ -560,5 +560,8 @@
   "err.update_not_portable": "この入れ方（{kind}）では、アプリ内で更新できません。案内に従って更新してください。",
   "err.update_none": "お使いの {version} が最新版です。",
   "err.update_not_ready": "更新ファイルの準備ができていません。先にダウンロードしてください。",
-  "err.update_busy": "計算中のジョブが {count} 件あります。終わってから更新してください。"
+  "err.update_busy": "計算中のジョブが {count} 件あります。終わってから更新してください。",
+  "err.update_folder_readonly": "Studio のフォルダ（{path}）に書き込めないため、アプリ内で更新できません。書き込めるフォルダ（例：ドキュメント）へ移すか、配布ページから入れ直してください。",
+  "err.update_folder_name": "バックアップや作業用のフォルダ（{name}）から起動しているため、更新できません。{expected} フォルダから起動してください。",
+  "err.update_folder_network": "ネットワーク上のフォルダからは更新できません。PC のフォルダに置いてください。"
 }

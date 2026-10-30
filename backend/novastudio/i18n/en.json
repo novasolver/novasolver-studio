@@ -560,5 +560,8 @@
   "err.update_not_portable": "This installation ({kind}) cannot update itself. Follow the update instructions shown.",
   "err.update_none": "You have the latest version, {version}.",
   "err.update_not_ready": "The update is not downloaded yet.",
-  "err.update_busy": "{count} job(s) are still running. Update when they have finished."
+  "err.update_busy": "{count} job(s) are still running. Update when they have finished.",
+  "err.update_folder_readonly": "Studio cannot update itself because its folder ({path}) is not writable. Move Studio to a writable folder (e.g. Documents) or reinstall it from the download page.",
+  "err.update_folder_name": "Studio runs from a backup or work folder ({name}), so it cannot update itself. Start it from the {expected} folder.",
+  "err.update_folder_network": "Studio cannot update itself from a network folder. Put it in a folder on this PC."
 }

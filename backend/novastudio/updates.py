@@ -29,13 +29,50 @@ from .store import StudioError
 
 LATEST_URLS = ("https://novasolver.jp/studio/latest.json",
                "https://raw.githubusercontent.com/novasolver/novasolver-studio/main/latest.json")
+# Ed25519 public key of the release signing key. latest.json is {"payload": {...}, "signature": base64}; the
+# signature covers the canonical JSON of the payload, so a changed URL, hash or version string is refused even when
+# novasolver.jp or the GitHub repository is compromised. The private key never leaves the release machine.
+PUBLIC_KEY = "9f/2Lc7qPbrzF+1FxDwdlG33l92nj/vqtb/sAVSthrw="
+# where the zip may come from (besides the signature): the GitHub release assets and the novasolver.jp mirror
+ZIP_PREFIXES = ("https://github.com/novasolver/novasolver-studio/releases/download/",
+                "https://novasolver.jp/dl/studio/")
 CHECK_EVERY_S = 24 * 3600
+RETRY_OFFLINE_S = 3600
 TIMEOUT = 10
 APP = "NovaSolverStudio"
+_VERSION = re.compile(r"\d{1,4}\.\d{1,4}\.\d{1,4}")
 
 
 def _version(v: str) -> tuple:
-    return tuple(int(x) for x in re.findall(r"\d+", str(v))[:3]) or (0,)
+    return tuple(int(x) for x in str(v).split(".")) if _VERSION.fullmatch(str(v)) else (0,)
+
+
+def canonical(payload: dict) -> bytes:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def _testing() -> bool:
+    return bool(os.environ.get("NOVASTUDIO_UPDATE_URL"))
+
+
+def _verify(doc) -> dict | None:
+    """The signed payload, or None when the signature is missing or wrong."""
+    import base64
+    try:
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    except ImportError:                       # no verifier: never trust an unsigned update
+        return None
+    if not (isinstance(doc, dict) and isinstance(doc.get("payload"), dict) and isinstance(doc.get("signature"), str)):
+        return None
+    # a test server signs with its own key; only together with the test URL override
+    key = os.environ.get("NOVASTUDIO_UPDATE_PUBKEY") if _testing() else None
+    try:
+        Ed25519PublicKey.from_public_bytes(base64.b64decode(key or PUBLIC_KEY)).verify(
+            base64.b64decode(doc["signature"]), canonical(doc["payload"]))
+    except (InvalidSignature, ValueError):
+        return None
+    return doc["payload"]
 
 
 def _dir() -> Path:
@@ -97,15 +134,18 @@ def _get(url: str, progress=None, limit: int = 1 << 31) -> bytes:
 
 
 def _allowed_url(u) -> bool:
-    # https only; plain http just for a local test server (NOVASTUDIO_UPDATE_URL)
-    return isinstance(u, str) and (u.startswith("https://") or u.startswith("http://127.0.0.1:"))
+    # the two release hosts; a local test server only with the test URL override
+    return isinstance(u, str) and (u.startswith(ZIP_PREFIXES) or (_testing() and u.startswith("http://127.0.0.1:")))
 
 
 def _valid_latest(d) -> bool:
+    """A signed payload with a plain x.y.z version (it becomes part of folder names and the swap script), allowed
+    download hosts and a SHA-256."""
     try:
-        return (isinstance(d, dict) and _version(d["version"]) > (0,) and all(
-            _allowed_url(u) for u in d["windows_zip"]["urls"])
-            and re.fullmatch(r"[0-9a-f]{64}", d["windows_zip"]["sha256"]) is not None)
+        return (isinstance(d, dict) and _VERSION.fullmatch(d["version"]) is not None
+                and isinstance(d["windows_zip"]["urls"], list) and d["windows_zip"]["urls"]
+                and all(_allowed_url(u) for u in d["windows_zip"]["urls"])
+                and re.fullmatch(r"[0-9a-f]{64}", d["windows_zip"]["sha256"]) is not None)
     except (KeyError, TypeError):
         return False
 
@@ -119,12 +159,14 @@ def check(force: bool = False, passive: bool = False) -> dict:
     if passive and not st.get("auto_check", True):
         return {"current": __version__, "available": False, "kind": install_kind(), "auto": False,
                 "last_result": st.get("last_result")}
+    if latest and not _valid_latest(latest):           # a cache written by an older, looser check
+        latest = None
     if force or not latest or time.time() - st.get("checked_at", 0) > CHECK_EVERY_S:
         error = None
         for url in _urls():
             try:
-                d = json.loads(_get(url, limit=1 << 20))
-                if _valid_latest(d):
+                d = _verify(json.loads(_get(url, limit=1 << 20)))
+                if d is not None and _valid_latest(d):
                     latest, error = d, None
                     break
                 error = "invalid"
@@ -132,7 +174,10 @@ def check(force: bool = False, passive: bool = False) -> dict:
                 error = type(e).__name__
         if error and not latest:
             raise StudioError("err.update_offline", 503)
-        st = save_state(latest=latest, checked_at=time.time()) if not error else st
+        if error:                                      # offline with a cache: try again in an hour, not every time
+            st = save_state(checked_at=time.time() - CHECK_EVERY_S + RETRY_OFFLINE_S)
+        else:
+            st = save_state(latest=latest, checked_at=time.time())
     available = _version(latest["version"]) > _version(__version__)
     return {"current": __version__, "latest": latest["version"], "available": available,
             "notes": latest.get("notes", {}), "date": latest.get("date"), "page": latest.get("page"),
@@ -153,8 +198,8 @@ def status() -> dict:
 
 
 def _staging_parent() -> Path:
-    """Unpack next to the app when its folder is writable (same volume: the swap is two renames); otherwise in the
-    data folder (the swap then copies across volumes)."""
+    """The new version is unpacked next to the app, so the swap is two renames on one volume. The swap renames the
+    app folder too, so a folder we cannot write to (Program Files, Controlled Folder Access) is refused up front."""
     parent = STUDIO_ROOT.parent
     try:
         probe = parent / f".nss-write-{secrets.token_hex(3)}"
@@ -162,12 +207,22 @@ def _staging_parent() -> Path:
         probe.unlink()
         return parent
     except OSError:
-        return _dir()
+        raise StudioError("err.update_folder_readonly", 400, path=str(parent))
+
+
+def _preflight() -> None:
+    if install_kind() != "portable":
+        raise StudioError("err.update_not_portable", 400, kind=install_kind())
+    # run from a backup (<app>.old-x.y.z): the cleanup of old backups would remove the running app itself
+    if re.search(r"\.old-|\.update-", STUDIO_ROOT.name) or STUDIO_ROOT.name != APP:
+        raise StudioError("err.update_folder_name", 400, name=STUDIO_ROOT.name, expected=APP)
+    if str(STUDIO_ROOT).startswith("\\\\"):
+        raise StudioError("err.update_folder_network", 400)
+    _staging_parent()
 
 
 def start_download(lang: str = "en") -> dict:
-    if install_kind() != "portable":
-        raise StudioError("err.update_not_portable", 400, kind=install_kind())
+    _preflight()
     info = check()
     if not info["available"]:
         raise StudioError("err.update_none", 400, version=info["current"])
@@ -207,7 +262,12 @@ def _download(latest: dict, lang: str) -> None:
 
 def _unpack(data: bytes, version: str) -> Path:
     import io
-    target = _staging_parent() / f"{APP}.update-{version}"
+    if not _VERSION.fullmatch(version):
+        raise ValueError("version")
+    parent = _staging_parent()
+    target = parent / f"{APP}.update-{version}"
+    if target.resolve().parent != parent.resolve():
+        raise ValueError("staging path")
     if target.exists():                            # left by an earlier attempt; its deepest files pass 260 characters
         shutil.rmtree("\\\\?\\" + str(target.resolve()) if os.name == "nt" else target)
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
@@ -237,8 +297,9 @@ SWAP = r"""
 $ErrorActionPreference = 'Stop'
 $log = '{log}'
 function Log($m) {{ Add-Content -LiteralPath $log -Value ((Get-Date -Format s) + ' ' + $m) -Encoding UTF8 }}
-# Remove-Item fails past 260 characters on Windows PowerShell 5.1; rd with the \\?\ prefix does not
-function Del($p) {{ if (Test-Path -LiteralPath $p) {{ cmd /c ('rd /s /q "\\?\' + $p + '"') | Out-Null }} }}
+# Remove-Item fails past 260 characters on Windows PowerShell 5.1; .NET with the \\?\ prefix does not (and, unlike
+# cmd, does not expand %VARS% that happen to be in a folder name)
+function Del($p) {{ if (Test-Path -LiteralPath $p) {{ [System.IO.Directory]::Delete('\\?\' + $p, $true) }} }}
 function Result($ok, $msg) {{
   $j = @{{ ok = $ok; from = '{old}'; to = '{new}'; message = $msg; at = (Get-Date -Format s) }} | ConvertTo-Json
   Set-Content -LiteralPath '{result}' -Value $j -Encoding UTF8
@@ -250,7 +311,7 @@ try {{
   Start-Sleep -Milliseconds 800
   $app = '{app}'; $staged = '{staged}'; $old = '{backup}'
   Get-ChildItem -LiteralPath (Split-Path $app) -Directory -Filter '{name}.old-*' -ErrorAction SilentlyContinue |
-    ForEach-Object {{ Del $_.FullName }}
+    Where-Object {{ $_.FullName -ne $app -and $_.FullName -ne $staged }} | ForEach-Object {{ Del $_.FullName }}
   $moved = $false
   for ($i = 0; $i -lt 30 -and -not $moved; $i++) {{
     try {{ Rename-Item -LiteralPath $app -NewName (Split-Path $old -Leaf); $moved = $true }}
@@ -266,6 +327,17 @@ try {{
     throw
   }}
   Del (Split-Path $staged)
+  # Solvers the user put into the app folder (OpenFOAM in solvers\openfoam): carry over what the new version lacks,
+  # only now that the swap has succeeded (a failed swap restores the old folder with them untouched).
+  $oldsol = Join-Path $old 'solvers'; $newsol = Join-Path $app 'solvers'
+  if (Test-Path -LiteralPath $oldsol) {{
+    New-Item -ItemType Directory -Force -Path $newsol | Out-Null
+    Get-ChildItem -LiteralPath $oldsol -Directory | Where-Object {{ -not (Test-Path -LiteralPath (Join-Path $newsol $_.Name)) }} |
+      ForEach-Object {{
+        try {{ Move-Item -LiteralPath $_.FullName -Destination $newsol; Log ('kept solver ' + $_.Name) }}
+        catch {{ Log ('solver ' + $_.Name + ' stays in ' + $old + ': ' + $_.Exception.Message) }}
+      }}
+  }}
   Result $true 'updated'
   Log 'updated, starting the new version'
 }} catch {{
@@ -278,19 +350,23 @@ Start-Process -FilePath (Join-Path '{app}' '{name}.exe') -WorkingDirectory '{app
 
 def apply() -> dict:
     """Start the swap script and tell the caller to exit the app (the API exits the process after replying)."""
-    if _job.get("state") != "ready":
-        raise StudioError("err.update_not_ready", 409)
     from . import jobs
     from .store import cases_dir
-    busy = [j for c in cases_dir().glob("c_*") for j in jobs.list_for_case(c.name) if j["state"] in ("queued", "running")]
-    if busy:
-        raise StudioError("err.update_busy", 409, count=len(busy))
+    with _lock:                                    # one swap only, even on a double click
+        if _job.get("state") != "ready":
+            raise StudioError("err.update_not_ready", 409)
+        busy = [j for c in cases_dir().glob("c_*") for j in jobs.list_for_case(c.name) if j["state"] in ("queued", "running")]
+        if busy:
+            raise StudioError("err.update_busy", 409, count=len(busy))
+        if not (_VERSION.fullmatch(_job.get("version", "")) and _VERSION.fullmatch(__version__)):
+            raise StudioError("err.update_not_ready", 409)
+        _job.update(state="applying")
     app = STUDIO_ROOT
     staged = Path(_job["staged"])
     q = lambda p: str(p).replace("'", "''")                        # PowerShell single-quoted literal
-    script = SWAP.format(log=q(_dir() / "update.log"), result=q(_dir() / "result.json"), pid=os.getpid(),
+    script = SWAP.format(log=q(_dir() / "update.log"), result=q(_dir() / "result.json"), pid=int(os.getpid()),
                          app=q(app), staged=q(staged), backup=q(app.parent / f"{APP}.old-{__version__}"),
-                         name=APP, old=__version__, new=_job["version"])
+                         name=q(APP), old=q(__version__), new=q(_job["version"]))
     ps1 = _dir() / "swap.ps1"
     ps1.write_text("﻿" + script, encoding="utf-8")            # BOM: PowerShell 5.1 reads non-ASCII paths right
     # Not DETACHED_PROCESS: PowerShell started with no console at all exits at once without running the script.
@@ -302,7 +378,6 @@ def apply() -> dict:
                      creationflags=flags, close_fds=True, cwd=str(_dir()), stdin=subprocess.DEVNULL,
                      stdout=out, stderr=subprocess.STDOUT)
     out.close()
-    _job.update(state="applying")
     return status()
 
 
