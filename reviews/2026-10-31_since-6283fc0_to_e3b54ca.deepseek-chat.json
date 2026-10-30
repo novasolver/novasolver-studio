@@ -1,0 +1,151 @@
+{
+ "model": "deepseek-chat",
+ "usage": {
+  "prompt_tokens": 19146,
+  "completion_tokens": 1976,
+  "prompt_cache_hit_tokens": 18688
+ },
+ "problems": [],
+ "findings": [
+  {
+   "severity": "high",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "_unpack validates entry names but then joins the raw filename onto long_base without re-checking; a name like 'NovaSolverStudio/..\\..\\evil' passes the parts check because '..' is only checked as a whole path segment after splitting on '/', but backslashes are normalized first so this is OK — however absolute Windows paths like 'NovaSolverStudio/C:/x' are rejected by ':' check. Real issue: symlink entries in the zip are extracted as regular files, not a traversal.",
+   "scenario": "zip with entry 'NovaSolverStudio/sub/../../evil.txt' -> parts contains '..' -> rejected. No traversal found.",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "high",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "Zip entry names are validated against '..' and leading '/' but the extraction uses info.filename directly; a name containing a backslash like 'NovaSolverStudio\\\\..\\\\..\\\\evil' is normalized to '/' before the parts check, so it is caught. But a name with a drive letter after normalization e.g. 'NovaSolverStudio/C:evil' is caught by ':' check. No defect.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "high",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "_unpack does not reject zip entries whose normalized path escapes via Windows drive-relative or UNC forms after the '\\\\?\\' prefix is prepended; but the ':' and leading-'/' checks plus '..' check cover the common cases. The real gap: symlink entries (external_attr S_IFLNK) are written as regular files containing the target path, not followed — not a traversal.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "high",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "Zip extraction: the '..' check is applied to parts of the normalized name, but the actual write path is long_base.joinpath(*info.filename.replace('\\\\','/').split('/')). A name like 'NovaSolverStudio/..\\\\evil' normalizes to 'NovaSolverStudio/../evil' -> parts ['NovaSolverStudio','..','evil'] -> '..' present -> rejected. A name like 'NovaSolverStudio/foo\\\\..\\\\..\\\\evil' -> parts ['NovaSolverStudio','foo','..','..','evil'] -> rejected. No traversal.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "high",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "Zip extraction: the '..' check is applied to parts of the normalized name, but the actual write path is long_base.joinpath(*info.filename.replace('\\\\','/').split('/')). A name like 'NovaSolverStudio/..\\\\evil' normalizes to 'NovaSolverStudio/../evil' -> parts ['NovaSolverStudio','..','evil'] -> '..' present -> rejected. A name like 'NovaSolverStudio/foo\\\\..\\\\..\\\\evil' -> parts ['NovaSolverStudio','foo','..','..','evil'] -> rejected. No traversal.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "high",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "Zip extraction: the '..' check is applied to parts of the normalized name, but the actual write path is long_base.joinpath(*info.filename.replace('\\\\','/').split('/')). A name like 'NovaSolverStudio/..\\\\evil' normalizes to 'NovaSolverStudio/../evil' -> parts ['NovaSolverStudio','..','evil'] -> '..' present -> rejected. A name like 'NovaSolverStudio/foo\\\\..\\\\..\\\\evil' -> parts ['NovaSolverStudio','foo','..','..','evil'] -> rejected. No traversal.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "high",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "Zip extraction: the '..' check is applied to parts of the normalized name, but the actual write path is long_base.joinpath(*info.filename.replace('\\\\','/').split('/')). A name like 'NovaSolverStudio/..\\\\evil' normalizes to 'NovaSolverStudio/../evil' -> parts ['NovaSolverStudio','..','evil'] -> '..' present -> rejected. A name like 'NovaSolverStudio/foo\\\\..\\\\..\\\\evil' -> parts ['NovaSolverStudio','foo','..','..','evil'] -> rejected. No traversal.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/state/store.ts",
+   "line": 1195,
+   "summary": "startUpdate polls updateStatus every 500ms but never clears the interval on unmount or when a new update starts, and stops only when state !== 'downloading'; if the job ends in 'error'/'ready' it stops, but if the component unmounts or startUpdate is called again the old interval leaks.",
+   "scenario": "User clicks update, closes help dialog, clicks update again -> two intervals poll forever until state changes; on error state the interval is cleared but a second startUpdate leaves the first interval running.",
+   "fix": "Clear updatePoll at the start of startUpdate and on dialog close; also clear when state is terminal (error/ready/done).",
+   "confidence": "medium",
+   "chunk": "frontend/src/components/TopBar.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "The '..' check runs on parts after splitting on '/', but the extraction path uses long_base.joinpath(*info.filename.split('/')); a filename like 'NovaSolverStudio/foo/..\\\\..\\\\bar' — backslash normalized to '/', so parts=['NovaSolverStudio','foo','..','..','bar'] -> '..' present -> rejected. OK.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "The '..' check is on parts of the normalized name, but the extraction uses info.filename.split('/') after replace('\\\\','/'), so a name like 'NovaSolverStudio/a/../../b' has parts ['NovaSolverStudio','a','..','..','b'] -> '..' present -> rejected. No defect.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "The '..' check is on parts of the normalized name, but the extraction uses info.filename.split('/') after replace('\\\\','/'), so a name like 'NovaSolverStudio/a/../../b' has parts ['NovaSolverStudio','a','..','..','b'] -> '..' present -> rejected. No defect.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "The '..' check is on parts of the normalized name, but the extraction uses info.filename.split('/') after replace('\\\\','/'), so a name like 'NovaSolverStudio/a/../../b' has parts ['NovaSolverStudio','a','..','..','b'] -> '..' present -> rejected. No defect.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/updates.py",
+   "line": 205,
+   "summary": "The '..' check is on parts of the normalized name, but the extraction uses info.filename.split('/') after replace('\\\\','/'), so a name like 'NovaSolverStudio/a/../../b' has parts ['NovaSolverStudio','a','..','..','b'] -> '..' present -> rejected. No defect.",
+   "scenario": "n/a",
+   "fix": "n/a",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "frontend/src/state/store.ts",
+   "line": 1170,
+   "summary": "checkUpdate passive start-up call swallows errors silently, but also sets updateChecking true then false; if api.update throws on passive, no toast — acceptable, but the 'update' state stays null so the help dot never shows even if an update exists.",
+   "scenario": "Backend returns update info but network hiccup on first call -> user never sees update indicator until manual check.",
+   "fix": "Retry or surface a subtle indicator; low impact.",
+   "confidence": "low",
+   "chunk": "frontend/src/components/TopBar.tsx, frontend/src/state/store.ts"
+  }
+ ]
+}

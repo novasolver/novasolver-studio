@@ -1,0 +1,171 @@
+{
+ "model": "deepseek-reasoner",
+ "usage": {
+  "prompt_tokens": 45587,
+  "completion_tokens": 184544,
+  "prompt_cache_hit_tokens": 44153
+ },
+ "problems": [],
+ "findings": [
+  {
+   "severity": "high",
+   "file": "frontend/src/components/HelpDialog.tsx",
+   "line": 13,
+   "summary": "The new Link component types children as React.ReactNode but never imports the React namespace, so the file fails TypeScript compilation.",
+   "scenario": "`npm run build` or `tsc` in the frontend -> TS2686/Cannot find namespace 'React' in HelpDialog.tsx, blocking the build.",
+   "fix": "Import `type ReactNode` from \"react\" and use `children: ReactNode`.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/update.py",
+   "line": 139,
+   "summary": "Paths are interpolated into single-quoted PowerShell literals without doubling apostrophes, so an install/data path like C:\\Users\\O'Brien breaks the swap script (and allows PowerShell injection via the path).",
+   "scenario": "App installed under C:\\Users\\O'Brien\\NovaSolverStudio -> SWAP script contains $app = 'C:\\Users\\O'Brien\\...' -> syntax error, update never applied; crafted folder name executes arbitrary PowerShell.",
+   "fix": "Escape single quotes ('' ) or pass paths via -File/-EncodedCommand arguments or environment variables instead of string interpolation.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/App.tsx",
+   "line": 32,
+   "summary": "Global shortcuts still fire while the new HelpDialog is open because the guard checks s.palette but not s.help.",
+   "scenario": "Open Help and press Ctrl+Z -> undoCase() runs and mutates the case behind the modal; h/x also hide faces or toggle see-through.",
+   "fix": "Add `!s.help` to the shortcut guard and handle Ctrl+K only when no modal is open.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/updates.py",
+   "line": 196,
+   "summary": "Check-then-act race: state is only set to 'applying' after Popen, so two concurrent update requests both pass the 'ready' guard and spawn two swap scripts on the same folders.",
+   "scenario": "User triggers update twice (double click / client retry) -> both requests read state=='ready' -> two PowerShell scripts rename/move NovaSolverStudio concurrently -> half-moved install / data loss.",
+   "fix": "Guard and flip _job to 'applying' under a threading.Lock before launching Popen; abort if not idle.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/update.py",
+   "line": 84,
+   "summary": "_download catches only OSError/ValueError/BadZipFile; any other exception (http.client.HTTPException like IncompleteRead, RuntimeError from an encrypted/unsupported zip, KeyError on metadata) kills the thread leaving _job['state']='downloading' forever.",
+   "scenario": "Server truncates the response body -> IncompleteRead is raised inside _get -> thread dies, state stays 'downloading' -> start_download() returns status() unchanged and never retries until app restart.",
+   "fix": "Wrap the whole _download body in try/except BaseException and always set state='error' with the exception name.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/state/store.ts",
+   "line": 1206,
+   "summary": "startUpdate's 500ms poll interval is only cleared on a successful status reply; if api.updateStatus keeps throwing (e.g. backend restarts/dies mid-download) it polls forever.",
+   "scenario": "Start an update, then the backend is restarted by applyUpdate or crashes -> updateStatus rejects -> catch 'keep polling' -> a request every 500ms for the rest of the session (log spam / resource leak).",
+   "fix": "Track failure count or an abort flag and clearInterval after N consecutive errors; also clear updatePoll in startUpdate's catch before returning.",
+   "confidence": "medium",
+   "chunk": "frontend/src/components/TopBar.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "low",
+   "file": "frontend/src/components/HelpDialog.tsx",
+   "line": 29,
+   "summary": "The non-portable fallback also catches kind \"other\" and shows the pip/Python update instructions, which are wrong for other install kinds.",
+   "scenario": "Backend returns `kind: \"other\"` -> HelpDialog displays t(\"update.python\") and possibly a pip command instead of a generic download page.",
+   "fix": "Handle `kind === \"python\"` explicitly; for `other` show the generic page/message.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "frontend/src/components/HelpDialog.tsx",
+   "line": 82,
+   "summary": "The close button uses a hard-coded English aria-label instead of a localized string.",
+   "scenario": "Japanese or Chinese UI -> screen-reader users hear \"Close\" in English; the update-toast close button has the same issue.",
+   "fix": "Use a localized close label key for both close buttons.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/updates.py",
+   "line": 59,
+   "summary": "load_state() may return a non-dict from state.json (e.g. a JSON array); {**load_state(), **kw} then raises TypeError, so /api/update/settings and check return 500.",
+   "scenario": "state.json contains '[]' (corrupt/hand-edited) -> POST /api/update/settings -> TypeError: 'list' object is not a mapping, auto-check cannot be toggled.",
+   "fix": "In load_state, return {} unless isinstance(parsed, dict).",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/updates.py",
+   "line": 106,
+   "summary": "_valid_latest accepts an empty windows_zip.urls list because all() over an empty sequence is True, so an update can be advertised with no URL to download.",
+   "scenario": "latest.json with \"urls\": [] -> check reports an update available, download then has no URL and fails/does nothing.",
+   "fix": "Require a non-empty list of URLs in _valid_latest.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/updates.py",
+   "line": 150,
+   "summary": "The final Start-Process runs even when the swap failed because the app folder stayed in use, so it launches a second instance of the app that never exited.",
+   "scenario": "On this run the app does not exit within the retry budget -> 'app folder stayed in use' throw -> catch writes result, then Start-Process launches NovaSolverStudio.exe again while the old instance is still running.",
+   "fix": "Only restart when the folder was actually swapped or the backup was restored; skip Start-Process when the busy-retry path threw.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/updates.py",
+   "line": 140,
+   "summary": "After a successful update the old app folder (NovaSolverStudio.old-<version>) is never deleted, so every update leaves a full copy behind.",
+   "scenario": "Several updates over time -> STUDIO_ROOT.parent accumulates NovaSolverStudio.old-0.6.3, .old-0.6.4, ... consuming disk with no cleanup.",
+   "fix": "On the success path remove $old (or keep exactly one previous backup and prune the rest).",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "backend/update.py",
+   "line": 109,
+   "summary": "The \\\\?\\ extended-path prefix is built by plain concatenation, which is invalid for UNC roots (needs \\\\?\\UNC\\server\\share), so long-path unpacking fails when the staging dir is on a network share.",
+   "scenario": "Portable app on \\\\fileserver\\apps\\NovaSolverStudio (writable parent) with a deep target path -> Path('\\\\\\\\?\\\\\\\\fileserver\\...') is not a valid path -> mkdir/open raise OSError, update always errors.",
+   "fix": "If base is a UNC path (str(base).startswith('\\\\\\\\')), prefix with '\\\\\\\\?\\\\UNC\\\\' and strip the leading '\\\\\\\\'.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "backend/update.py",
+   "line": 40,
+   "summary": "status() copies the shared _job dict without holding _lock while the worker thread clears and updates it, so pollers can observe an empty/partial dict with no 'state' key.",
+   "scenario": "GUI polls /update/status just as start_download does _job.clear() -> response has no 'state' -> UI treats job as idle/lost.",
+   "fix": "Take _lock inside status() (and when updating _job from callbacks) before copying.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/updates.py",
+   "line": 101,
+   "summary": "_allowed_url accepts http://127.0.0.1: URLs that come from the remote latest.json, letting a tampered document point the updater at local HTTP services.",
+   "scenario": "modified latest.json with a 127.0.0.1:port URL -> the app fetches the 'update zip' from a local service over plain http.",
+   "fix": "Only allow http://127.0.0.1: for the URL taken from NOVASTUDIO_UPDATE_URL, not for URLs inside latest.json.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/updates.py",
+   "line": 212,
+   "summary": "If subprocess.Popen raises, the opened swap.out.log handle is leaked and _job.state is never set, leaving a silent 'ready' state after a 500.",
+   "scenario": "powershell missing/blocked -> Popen raises -> exception propagates, out file descriptor not closed, state stays 'ready'.",
+   "fix": "Wrap Popen in try/except; close the file and reset/raise explicitly on failure.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/updates.py, backend/tests/test_updates.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/CommandPalette.tsx, frontend/src/components/HelpDialog.tsx"
+  }
+ ]
+}

@@ -29,6 +29,16 @@ The script runs `codex exec` with `--sandbox read-only` (newest `codex.exe` unde
 `%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\`), model `gpt-6.1-sol`, effort `high`, and writes
 `studio/reviews/<date>_<label>.codex.md`. It takes 10–40 minutes; run it in the background.
 
+### Cheap first pass (DeepSeek)
+
+`python studio/tools/ds_review.py diff <tag>` (also `files <paths>`, `i18n`) sends the scrubbed diff to DeepSeek and
+writes `reviews/<date>_<label>.<model>.md/.json`. Key: `DEEPSEEK_API_KEY` or `E:\_SECRETS\deepseek.txt`, read in code
+only. `-DeepSeekFirst` on `second_opinion.ps1` runs it before Codex and asks Codex to confirm/reject those findings
+first. Use `DEEPSEEK_MODEL=deepseek-reasoner`: on the 0.6.3 updater diff (2026-10-31) `deepseek-chat` found 0 of the
+9 real issues and repeated itself; the reasoner found about 3 of 9 plus one new real bug (shortcuts behind the Help
+dialog), and about a third of its items were wrong (e.g. a TypeScript error the build disproves). It is a filter that
+saves tokens, never a substitute for the independent review: every finding still gets an outcome here.
+
 ## What Codex is asked to look for (in this order)
 
 1. **Wrong answers without a warning** — units, sign conventions, boundary conditions silently dropped, a gate

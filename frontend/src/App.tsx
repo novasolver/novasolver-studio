@@ -29,7 +29,7 @@ function useShortcuts() {
         return;
       }
       const s = getState();
-      if (!s.palette && !isTyping(e) && s.payload) {
+      if (!s.palette && !s.help && !isTyping(e) && s.payload) {
         const key = e.key.toLowerCase();
         if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'y')) {
           e.preventDefault();
@@ -41,7 +41,7 @@ function useShortcuts() {
           if (key === 'x' && !e.altKey) { e.preventDefault(); toggleSeeThrough(); return; }
         }
       }
-      if (s.palette || e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return;
+      if (s.palette || s.help || e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return;
       if (e.key === "Escape") {
         if (s.ai) ui.ai(false);
         else if (s.logOpen) ui.log(false);
