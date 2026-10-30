@@ -1,0 +1,28 @@
+{
+ "payload": {
+  "version": "0.6.3",
+  "date": "2026-10-31",
+  "notes": {
+   "en": "• Studio now tells you when a new version is out and can update itself.\n• The update notice is signed.\n• The once-a-day check can be turned off.\n• New Help and version dialog with links to the guide, GitHub and the community.\n• External-flow results now frame the body and its wake.",
+   "ja": "・新しい版が出たことをお知らせし、Studio 自身で更新できるようになりました。\n・更新の通知には NovaSolver の電子署名が付いています。\n・1日1回の確認はオフにできます。\n・ヘルプ・バージョン情報画面を追加しました。\n・外部流れの結果が、物体と後流の範囲に合わせて表示されるようになりました。",
+   "zh": "・新版本发布时会通知您，并可在应用内自动更新。\n・更新通知带有 NovaSolver 的电子签名。\n・每天一次的检查可以关闭。\n・新增帮助与版本信息界面，可打开使用说明、GitHub 和交流社区。\n・外部流动的结果会自动对准物体和尾流区域，去除了截面上多余的线条，准备检查与结果使用相同的雷诺数基准。"
+  },
+  "page": {
+   "ja": "https://novasolver.jp/studio/",
+   "en": "https://novasolver.jp/en/studio/",
+   "zh": "https://novasolver.jp/zh/studio/"
+  },
+  "windows_zip": {
+   "urls": [
+    "https://github.com/novasolver/novasolver-studio/releases/download/v0.6.3/NovaSolverStudio-0.6.3-win64.zip",
+    "https://novasolver.jp/dl/studio/NovaSolverStudio-0.6.3-win64.zip"
+   ],
+   "sha256": "09aa6b8503c16793d1c7a7c6ca976b37acff68397cfb9e3aeae00fdc7ba294fc",
+   "size": 178883678
+  },
+  "python": {
+   "command": "uvx --from https://github.com/novasolver/novasolver-studio/releases/download/v0.6.3/novasolver_studio-0.6.3-py3-none-any.whl novasolver-studio"
+  }
+ },
+ "signature": "B+/ZRzrKjkirWOJdASXDfqn58PTqg4BsVthdcTR7IPLADvFirrMwFrOEJ7+da0R6OyD0RHEg5Z/wHYA5UUStBQ=="
+}

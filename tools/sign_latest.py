@@ -21,16 +21,20 @@ from novastudio.updates import PUBLIC_KEY, _valid_latest, canonical  # noqa: E40
 
 
 def notes(v: str) -> dict:
-    """First paragraph of the English and Japanese sections; Chinese falls back to the English one."""
+    """First sentence of each bullet of the English, Japanese and (if present) Chinese sections, in that order,
+    separated by '---'. A missing Chinese section falls back to English."""
     text = (ROOT / "release" / f"RELEASE_NOTES_v{v}.md").read_text(encoding="utf-8")
     parts = text.split("\n---\n")
-    def summary(part):
-        lines = [l.strip("-* ").strip() for l in part.splitlines() if l.strip().startswith(("-", "*"))]
-        return "\n".join("・" + l.split(".")[0] if re.search(r"[぀-ヿ]", l) else "• " + l.split(". ")[0]
-                         for l in lines[:5])
-    en = summary(parts[0])
-    ja = summary(parts[1]) if len(parts) > 1 else en
-    return {"en": en, "ja": ja, "zh": en}
+
+    def summary(part, cjk):
+        lines = [l.strip()[1:].strip() for l in part.splitlines() if l.strip().startswith(("- ", "* "))]
+        # CJK sentences end at '。'; English at '. ' (so novasolver.jp stays whole)
+        first = (lambda l: l.split("。")[0] + "。") if cjk else (lambda l: l.split(". ")[0].rstrip(".") + ".")
+        return "\n".join(("・" if cjk else "• ") + first(l) for l in lines[:5])
+    en = summary(parts[0], False)
+    ja = summary(parts[1], True) if len(parts) > 1 else en
+    zh = summary(parts[2], True) if len(parts) > 2 else en
+    return {"en": en, "ja": ja, "zh": zh}
 
 
 def main():
