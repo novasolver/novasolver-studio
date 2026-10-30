@@ -788,40 +788,52 @@ def _acquire_solver_slot(jd: Path) -> Path:
     ticket = queue / f"{time.time_ns():020d}_{jd.name}.json"
     ticket.write_text(json.dumps(me))
 
-    def first_in_line() -> bool:
+    def drop(t: Path) -> None:
+        # Windows refuses to delete a file another process is reading (WinError 32): retry on the next poll instead
+        try:
+            t.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def ahead() -> str | None:
+        """Job name of the oldest live waiter in front of us, or None when we are first in line."""
         for t in sorted(queue.glob("*.json")):
             if t == ticket:
-                return True
+                return None
             try:
                 o = json.loads(t.read_text())
                 if psutil.pid_exists(o["pid"]) and abs(psutil.Process(o["pid"]).create_time() - o["ctime"]) < 1:
-                    return False                               # an older waiter is alive: it goes first
+                    return o.get("job", "")                    # an older waiter is alive: it goes first
             except (OSError, ValueError, KeyError, psutil.Error):
                 try:
                     if time.time() - t.stat().st_mtime < 10:
-                        return False                           # being written right now
+                        return ""                              # being written right now
                 except OSError:
                     continue                                   # its owner just removed it
-            t.unlink(missing_ok=True)                          # a waiter that died
-        return True
+            drop(t)                                            # a waiter that died
+        return None
 
     try:
         while True:
-            if not first_in_line():
+            other = ahead()
+            if other is not None:
                 if (jd / "STOP").exists():
                     raise RuntimeError("stopped while waiting for another job")
-                update(jd, state="queued", message_key="job.waiting", message_args={"other": ""})
+                update(jd, state="queued", message_key="job.waiting", message_args={"other": other})
                 time.sleep(1.0)
                 continue
             try:
                 os.mkdir(slot)
-                (slot / "owner.json").write_text(json.dumps({"pid": os.getpid(), "job": jd.name,
-                                                             "ctime": psutil.Process().create_time()}))
-                return slot
             except FileExistsError:
                 _wait_for_owner(jd, slot, psutil)
+                continue
+            # the slot is ours: nothing after this point may lose it
+            drop(ticket)
+            (slot / "owner.json").write_text(json.dumps({"pid": os.getpid(), "job": jd.name,
+                                                         "ctime": psutil.Process().create_time()}))
+            return slot
     finally:
-        ticket.unlink(missing_ok=True)
+        drop(ticket)
 
 
 def _wait_for_owner(jd: Path, slot: Path, psutil) -> None:

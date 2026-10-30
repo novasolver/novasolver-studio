@@ -37,12 +37,19 @@ def test_straighten_inverted_unfolds_only_the_folded_element():
     mids = np.array([(corners[a] + corners[b]) / 2 for a, b in fem.EDGES])
     nodes = np.vstack([corners, mids])
     tets = np.arange(10)[None]
-    good, n = fem.straighten_inverted(nodes, tets)
-    assert n == 0 and np.allclose(good, nodes)
+    good, n, left = fem.straighten_inverted(nodes, tets)
+    assert n == 0 and left == 0 and np.allclose(good, nodes)
     folded = nodes.copy()
     folded[8] += [0, 0, -0.45]                           # bow edge (1,3)'s midside node out far enough to fold it
-    out, n = fem.straighten_inverted(folded, tets)
-    assert n == 1 and np.allclose(out, nodes)
+    out, n, left = fem.straighten_inverted(folded, tets)
+    assert n == 1 and left == 0 and np.allclose(out, nodes)
+    # folded only between the four Gauss points (det J > 0 there, < 0 at a mass-matrix point): still found
+    hidden = nodes.copy()
+    hidden[4] += 0.186 * np.array([0, 1, 1]) / np.sqrt(2)
+    X = hidden[tets]
+    assert all(np.linalg.det(np.einsum("ik,ekj->eij", fem.DSHAPE[g], X))[0] > 0 for g in range(4))
+    out, n, left = fem.straighten_inverted(hidden, tets)
+    assert n == 1 and left == 0 and np.allclose(out, nodes)
 
 
 def test_canonical_tets_assigns_crowded_midside_nodes():

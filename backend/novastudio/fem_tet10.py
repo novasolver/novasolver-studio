@@ -117,6 +117,17 @@ def canonical_tets(nodes: np.ndarray, tets: np.ndarray) -> np.ndarray:
             pick[e] = cols
     out = tets.copy()
     out[:, 4:10] = np.take_along_axis(tets[:, 4:10], pick, axis=1)
+    if len(bad):
+        # A per-element assignment could still swap two midside nodes of a sliver: every element sharing a midside
+        # node must put it on the same corner pair, or straightening that node would corrupt the neighbours.
+        pair = np.sort(out[:, :4][:, EDGES], axis=2)                     # (E,6,2) corner pair of each midside column
+        mids = out[:, 4:10].ravel()
+        key = pair.reshape(-1, 2)
+        order = np.argsort(mids, kind="stable")
+        m, k = mids[order], key[order]
+        same = m[1:] == m[:-1]
+        if np.any(same & np.any(k[1:] != k[:-1], axis=1)):
+            raise ValueError("midside node matching failed (curved or non-conforming mesh)")
     return out
 
 
@@ -138,26 +149,50 @@ LG = np.column_stack([1 - GAUSS.sum(axis=1), GAUSS])
 SHAPE = np.column_stack([LG * (2 * LG - 1), 4 * LG[:, EDGES[:, 0]] * LG[:, EDGES[:, 1]]])
 
 
+def _check_points():
+    """Points where a tet10 must have det J > 0: the stiffness Gauss points, the 5x5x5 mass-matrix rule and the
+    ten nodes. Four Gauss points alone passed an element folded between them (det J -0.003 at a mass point)."""
+    x, _ = np.polynomial.legendre.leggauss(5)
+    x = (x + 1) / 2
+    pts = [g for g in GAUSS]
+    for a in x:
+        for b in x:
+            for c in x:
+                pts.append([a, (1 - a) * b, (1 - a) * (1 - b) * c])
+    pts += [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    corner = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1.]])
+    pts += [list((corner[a] + corner[b]) / 2) for a, b in EDGES]
+    return np.stack([_dshape(np.asarray(p, float)) for p in pts])
+
+
+def folded_elements(nodes, ct, chunk=4000):
+    """Indices of canonical tet10 elements with det J <= 0 at any check point (in bounded chunks)."""
+    D = _check_points()
+    out = []
+    for s in range(0, len(ct), chunk):
+        X = nodes[ct[s:s + chunk]]
+        det = np.linalg.det(np.einsum("pik,ekj->epij", D, X))
+        out.append(s + np.flatnonzero(np.any(det <= 0, axis=1)))
+    return np.concatenate(out) if out else np.empty(0, int)
+
+
 def straighten_inverted(nodes, tets, rounds=5):
     """Move the midside nodes of folded tet10 elements back to their edge midpoints.
     Gmsh's HighOrderOptimize untangles most curved elements, but a coarse element on a small hole in a large part
-    can stay folded (negative Jacobian at a Gauss point) and stop the solve. A straight edge is always valid; it
-    only gives up the curved-surface accuracy of that one edge. Returns the new nodes and the number of elements fixed."""
+    can stay folded and stop the solve. A straight edge is always valid; it only gives up the curved-surface
+    accuracy of that one edge. Straightening a shared node can fold a neighbour, hence the rounds.
+    Returns the new nodes, the number of elements straightened and the number still folded."""
     nodes = np.array(nodes, dtype=float, copy=True)
     fixed = set()
+    ct = canonical_tets(nodes, tets)
     for _ in range(rounds):
-        ct = canonical_tets(nodes, tets)
-        X = nodes[ct]
-        bad = np.zeros(len(ct), bool)
-        for g in range(4):
-            bad |= np.linalg.det(np.einsum("ik,ekj->eij", DSHAPE[g], X)) <= 0
-        idx = np.flatnonzero(bad)
+        idx = folded_elements(nodes, ct)
         if not len(idx):
-            break
+            return nodes, len(fixed), 0
         fixed.update(idx.tolist())
         for k, (a, b) in enumerate(EDGES):
             nodes[ct[idx, 4 + k]] = 0.5 * (nodes[ct[idx, a]] + nodes[ct[idx, b]])
-    return nodes, len(fixed)
+    return nodes, len(fixed), int(len(folded_elements(nodes, ct)))
 
 
 def gauss_to_nodes(tets, values, n, groups=None, flat=None):

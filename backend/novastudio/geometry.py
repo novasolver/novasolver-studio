@@ -42,7 +42,7 @@ def dims(case: dict) -> list[float]:
     raise ValueError(kind)
 
 
-MESHER_VERSION = 18       # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
+MESHER_VERSION = 19      # bump whenever mesh_worker sizing rules change, so existing meshes are regenerated
 
 
 def _canon(o):
