@@ -296,7 +296,8 @@ def detect(case, mesh, search):
             gap = np.full(len(d), np.inf)
             gap[facing] = np.abs(np.einsum('ij,ij->i', Bf['c'][j[facing]] - A['c'][facing], A['n'][facing]))
             hit = facing & (gap <= search)
-            if hit.sum() < max(3, 0.05 * len(A['c'])):
+            # relative to the smaller face: a small face pressed on a large one covers little of the large one
+            if hit.sum() < max(3, 0.05 * min(len(A['c']), len(Bf['c']))):
                 continue
             slave, master = (a, b) if A['edge'] <= Bf['edge'] else (b, a)
             out.append({'master': [master], 'slave': [slave], 'gap_m': float(gap[hit].min()),

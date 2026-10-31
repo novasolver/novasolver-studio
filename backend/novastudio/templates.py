@@ -708,8 +708,9 @@ def new_case(template_id: str, case_id: str) -> dict:
 def face_descriptors(case: dict) -> None:
     """Cheap primitive descriptors; imported faces retain the CAD kernel's descriptors."""
     if case['geometry']['kind'] in ('gap_blocks', 'hertz'):
-        own = {'bottom': ['b1'], 'lower_top': ['b1'], 'upper_bottom': ['b2'], 'top': ['b2'], 'block_top': ['b1'], 'x1': ['b1'],
-               'cyl_surface': ['b2'], 'load': ['b2']}
+        own = {'bottom': ['b1'], 'lower_top': ['b1'], 'upper_bottom': ['b2'], 'top': ['b2']} \
+            if case['geometry']['kind'] == 'gap_blocks' else \
+            {'bottom': ['b1'], 'block_top': ['b1'], 'x1': ['b1'], 'cyl_surface': ['b2'], 'load': ['b2']}   # x1: block only
         case['geometry']['faces'] = [{'key':k,'n':i+1,'type':'Plane','bodies':own.get(k,['b1','b2']),'interface':False,
             'neighbors':[],'smooth_neighbors':[]} for i,k in enumerate(face_keys(case))]
         case['body_materials'] = case.get('body_materials',{'b1':'steel','b2':'steel'})

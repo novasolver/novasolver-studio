@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 
 # Ultimate strength and fully reversed endurance limit of a polished specimen (rotating beam), MPa; Ne the knee.
-# Aluminium has no true endurance limit: Se is the strength at 5e8 cycles and the line continues past it.
+# Aluminium and copper have no true endurance limit: Se is the strength at Ne and the line continues past it.
 METALS = {
     'steel': {'su': 400, 'se': 200, 'ne': 1e6},          # SS400 / S235: Se' = 0.5 Su
     'alloy_steel': {'su': 980, 'se': 490, 'ne': 1e6},    # SCM440 quenched and tempered
@@ -41,7 +41,8 @@ def material(case, body=None):
     se = units.to_si(own['se']) / 1e6 if own.get('se') else (base or {}).get('se')
     if not su or not se:
         return None
-    return {'su': su, 'se': se, 'ne': (base or {}).get('ne', 1e6), 'endurance': preset != 'aluminium'}
+    # non-ferrous metals have no true endurance limit: their S-N line goes on falling past Ne
+    return {'su': su, 'se': se, 'ne': (base or {}).get('ne', 1e6), 'endurance': preset not in ('aluminium', 'copper')}
 
 
 def evaluate(stress, case, mat):

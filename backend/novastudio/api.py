@@ -255,7 +255,7 @@ async def mesh(case_id: str, body: dict = Body(default={}), lang: str = "ja"):
 @app.post("/api/cases/{case_id}/detect-contacts")
 async def detect_contacts(case_id: str, body: dict = Body(default={}), lang: str = "ja"):
     b = body or {}
-    return await call(C.detect_contacts, case_id, b.get("search"), bool(b.get("apply")), lang)
+    return await call(C.detect_contacts, case_id, b.get("search"), b.get("apply") is True, lang)   # "false" is not true
 
 
 @app.post("/api/cases/{case_id}/run")

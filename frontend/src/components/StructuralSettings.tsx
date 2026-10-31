@@ -123,7 +123,8 @@ export function ContactPairsSettings() {
   const t = useT(); const p = useStore(s => s.payload);
   // imported assemblies can gain pairs (detect); templates show them only when they define some
   if (p?.ui.physics !== 'structural' || (!p.case.template.startsWith('import-') && !p.case.contact_pairs)) return null;
-  const pairs = Object.entries(p.case.contact_pairs ?? {});
+  // a pair being removed is null in the optimistic payload until the server answers
+  const pairs = Object.entries(p.case.contact_pairs ?? {}).filter(([, c]) => c && c.slave?.length && c.master?.length);
   const label = (k: string) => p.ui.faces.find(f => f.key === k)?.label ?? k;
   return <section className="px-4 pt-6"><SectionLabel>{t('pairs.title')}</SectionLabel>
     <p className="prose-ui mb-3 text-label text-fg-2">{t('pairs.note')}</p>

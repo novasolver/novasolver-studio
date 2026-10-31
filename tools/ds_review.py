@@ -32,7 +32,8 @@ SCRUB = [
     (re.compile(r"sk-[A-Za-z0-9]{20,}"), "sk-REDACTED"),
     (re.compile(r"ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"), "TOKEN-REDACTED"),
     (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S), "PRIVATE-KEY-REDACTED"),
-    (re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"), "user@example.com"),
+    # an address starts with a letter or digit: "+@mcp.tool" in a diff line is a decorator, not an e-mail address
+    (re.compile(r"(?<![\w.+-])[A-Za-z0-9][\w.+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"), "user@example.com"),
     (re.compile(r"(?i)[A-Z]:\\Users\\[^\\\s\"']+"), r"C:\\Users\\USER"),
     (re.compile(r"/home/[^/\s\"']+|/Users/[^/\s\"']+"), "/home/USER"),
 ]
