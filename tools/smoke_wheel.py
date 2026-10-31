@@ -104,7 +104,7 @@ def check_mcp(command: str, env: dict) -> None:
                 _stop_server(server)
             reader.join(timeout=2)
             server.stdout.close()
-    print("MCP: 28 tools, installed MCP command, samples and verified cantilever solve passed", flush=True)
+    print("MCP: 30 tools, installed MCP command, samples and verified cantilever solve passed", flush=True)
 
 
 def check_gui(command: str, env: dict, root: Path) -> None:

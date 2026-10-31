@@ -13,7 +13,7 @@
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/novasolver/novasolver-studio/releases/download/v0.7.0/novasolver-studio-0.7.0-win64.mcpb",
-      "fileSha256": "646fa736196ddef6683bf9cb319729bdc02357a86034dbadbf623236680a9e70",
+      "fileSha256": "f7b3f1e639afebf3139ac704e6079fdec287ae489d38764a8991f02d2417f55b",
       "transport": {
         "type": "stdio"
       }

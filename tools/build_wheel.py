@@ -32,7 +32,7 @@ def main() -> None:
         raise SystemExit("npm is required to build the frontend")
     subprocess.run([npm, "run", "build"], cwd=ROOT / "frontend", check=True)
     stage_resources()
-    subprocess.run([sys.executable, "-m", "build", "--outdir", str(ROOT / "dist-py")], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, "-I", "-m", "build", "--outdir", str(ROOT / "dist-py")], cwd=ROOT, check=True)
 
 
 if __name__ == "__main__":
