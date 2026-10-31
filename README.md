@@ -14,6 +14,12 @@ menu and MCP `export_results` tool write ParaView VTU, CSV or a self-contained p
 > Early preview (v0.x). Every result comes with a clear status: **ran → converged → verified**.
 > 開発中のプレビュー版です。結果には常に「実行できた → 収束した → 検証済み」の判定がつきます。
 
+> **Your models never leave your computer.** No telemetry, no account, no upload; the only network use is the
+> optional update check and example download, and an offline mode turns even those off. The source is public, and an
+> automated test fails if any other code starts using the network. See [docs/PRIVACY.md](docs/PRIVACY.md).
+> **形状・解析条件・結果は、PC の外へ送りません。** 利用状況の収集・アカウント・アップロードはありません。通信は更新の確認と
+> 例題のダウンロードだけで、オフラインモードではそれも止まります。詳しくは [docs/PRIVACY.md](docs/PRIVACY.md)。
+
 ## What it does / できること
 
 | Analysis | Geometry | Quick preview (built-in, seconds) | Final solve | Verification |

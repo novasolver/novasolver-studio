@@ -547,5 +547,7 @@
   "fatigue.surface.hot-rolled": "热轧",
   "fatigue.surface.as-forged": "锻造原状",
   "fatigue.note": "以施加的载荷为峰值，在 R × 载荷与载荷之间以恒定幅值反复，用古德曼图估算安全系数，用 S-N 线估算寿命。R = −1 为对称循环，R = 0 为脉动循环。",
-  "update.offlineMode": "离线模式：Studio 不连接互联网（不检查更新，也不下载示例）。"
+  "update.offlineMode": "离线模式：Studio 不连接互联网（不检查更新，也不下载示例）。",
+  "help.privacy": "几何模型、分析条件和结果不会发送到这台电脑之外。所有分析都在本机进行，也不收集使用数据。",
+  "help.privacyLink": "数据处理（以及如何在源代码中确认）"
 }

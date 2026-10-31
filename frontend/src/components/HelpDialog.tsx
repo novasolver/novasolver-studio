@@ -93,6 +93,8 @@ export function HelpDialog() {
           <Link href={SITE[lang]}>{t("help.site")}</Link>
           <Link href={GITHUB}>{t("help.github")}</Link>
           <Link href={communityUrl(lang, "help")}>{t("help.community")}</Link>
+          <p className="prose-ui pt-1 text-label text-fg-2">{t("help.privacy")}</p>
+          <Link href={`${GITHUB}/blob/main/docs/PRIVACY.md`}>{t("help.privacyLink")}</Link>
         </section>
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
