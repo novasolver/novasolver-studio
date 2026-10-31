@@ -49,7 +49,8 @@ def generate(size,divisions):
 
 
 DIVISIONS = {'large-cantilever':(64,4,2),'plastic-bar':(10,2,2),
-             'plastic-beam-collapse':(32,2,6),'rubber-tension':(2,2,10)}
+             'plastic-beam-collapse':(32,2,6),'rubber-tension':(2,2,10),
+             'column-buckling':(48,3,3),'column-buckling-clamped':(48,3,3)}
 
 
 def write(case,folder):

@@ -249,7 +249,7 @@ async def update_case(case_id: str, expected_revision: int, changes: dict[str, A
     Assemblies (STEP with several bodies, structural/thermal/electric): body_materials.<body> = a preset (steel, aluminium,
     concrete, insulation, glass, wood, fr4, silicon, ptfe, alumina, ...), body_props.<body>.k|E|nu|eps_r|sigma overrides one value.
     Set the role first (same call is fine); value fields must match the role.
-    Structural: physics.analysis=modal|static|nonlinear, physics.modes=1..30; materials.solid.alpha (1/K), rho;
+    Structural: physics.analysis=modal|static|nonlinear|buckling, physics.modes=1..30 (buckling: load factors and critical loads of the applied loads); materials.solid.alpha (1/K), rho;
     physics.nonlinear={large_deformation:true,steps:"auto" or n,max_iterations:25,path:[load fractions],face:key}.
     materials.solid.model and body_props.<b>.model=linear|elastoplastic|neo-hookean; sy and H (post-yield tangent, Pa).
     Elastoplastic supports small strain only; neo-hookean requires large deformation. Pressure follows deformation.
@@ -323,6 +323,20 @@ async def generate_mesh(case_id: str, size: Literal["coarse", "normal", "fine"] 
         return e
     st = r["stats"]
     return _ok(f"{st.get('nodes')} nodes, {st.get('elements')} elements ({st.get('element_type')})", r)
+
+
+@mcp.tool(annotations=WRITE)
+async def detect_contacts(case_id: str, search_mm: float = 1.0, apply: bool = False, language: Lang = "ja") -> CallToolResult:
+    """Find faces of different parts that face each other within search_mm (separately modelled parts of an assembly,
+    a gap that may close). apply=true adds them as contact_pairs of type bonded; change a pair with
+    update_case(changes={"contact_pairs.<name>.type": "frictionless" | "frictional" | "no-separation", "...mu": 0.2}).
+    Static analysis only (small sliding)."""
+    r, e = await _call(C.detect_contacts, language, case_id, {"value": search_mm, "unit": "mm"}, apply, language, source='ai')
+    if e:
+        return e
+    lines = [f"{p['name']}: master {p['master']} / slave {p['slave']}, gap {p['gap_mm']:.4g} mm, coverage {p['coverage']*100:.0f} %"
+             for p in r["pairs"]]
+    return _ok(("\n".join(lines) or "no candidate pairs") + ("\n(applied as bonded)" if r["applied"] else ""), r)
 
 
 # ------------------------------------------------------------------ solving
@@ -405,7 +419,10 @@ async def get_results(case_id: str, run_id: str | None = None, language: Lang = 
     s = f"{_gates_line(r['gates'])}{' (STALE: case changed since this run)' if r['stale'] else ''}\n"
     s += "\n".join(f"{c['label']}: {c['value']} {c['unit']}" for c in r["cards"])
     for m in r.get('modes',[]):
-        s += f"\nMode {m['mode']}: {m['frequency_hz']:.6g} Hz; effective mass x/y/z {m['effective_mass']}"
+        if 'load_factor' in m:
+            s += f"\nBuckling mode {m['mode']}: load factor {m['load_factor']:.6g}, critical load {m['critical_load_n']:.6g} N"
+        else:
+            s += f"\nMode {m['mode']}: {m['frequency_hz']:.6g} Hz; effective mass x/y/z {m['effective_mass']}"
     required = ("capacitance",) if r.get("kind") == "electrostatic" else ("resistance", "t_max") if r.get("kind") == "current" else ()
     for key in required:
         if not any(c["key"] == key for c in r["cards"]):

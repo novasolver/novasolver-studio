@@ -62,6 +62,17 @@ def _mesh_for_run(case: dict, jd: Path, prog):
             _write_json(record,[{k:v.tolist() if isinstance(v,np.ndarray) else v for k,v in r.items()} for r in pairs])
         np.savez_compressed(jd/'mesh.npz',**m)
         m['_contact_pairs'] = pairs
+    if case.get('contact_pairs'):
+        from .contact import mortar_pairs
+        from .store import StudioError
+        prog('job.contact_search', 0.06)
+        records = mortar_pairs(case, m)
+        missing = [r for r in records if r.get('no_contact')]
+        if missing:
+            r = missing[0]
+            raise StudioError('err.contact_pair_none', 400, pair=r['face'],
+                              distance='-' if r['closest_m'] is None else f"{r['closest_m']*1e3:.3g}")
+        m['_contact_pairs'] = list(m.get('_contact_pairs', [])) + records
     return m
 
 
@@ -180,6 +191,8 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     E, nu = element_prop(case, m, "E"), element_prop(case, m, "nu")     # per element for multi-material assemblies
     if case.get('physics', {}).get('analysis') == 'modal':
         return run_modal(case, jd, prog, m)
+    if case.get('physics', {}).get('analysis') == 'buckling':
+        return run_buckling(case, jd, prog, m)
     if case.get('physics',{}).get('analysis') == 'nonlinear' or m.get('_contact_pairs') or any(
             b['role'] in ('displacement','spring') for b in case['boundaries'].values()):
         return run_incremental(case,jd,prog,m)
@@ -192,7 +205,8 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
                         T_ref=units.to_si(case['physics'].get('T_ref', {'value': 20, 'unit': 'degC'})))
     U = r["u"]
     umag = np.linalg.norm(U, axis=1)
-    np.savez_compressed(jd / "results.npz", u=U, vm=r["vm"], s=r["s"], reaction=r['nodal_reaction'],
+    extra, fatigue_metrics = fatigue_fields(case, nodes, fixed, r["s"])
+    np.savez_compressed(jd / "results.npz", u=U, vm=r["vm"], s=r["s"], reaction=r['nodal_reaction'], **extra,
                         **({'T': fem_tet10.nodal_temperatures(T,nodes,fem_tet10.canonical_tets(nodes,tets))} if T is not None else {}))
     metrics = {"max_vm_pa": float(r["vm"].max()), "max_disp_m": float(umag.max()),
                "reaction_n": float(np.linalg.norm(r["reaction"])), "applied_n": float(np.linalg.norm(r["applied"])),
@@ -204,6 +218,7 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     if T is not None:
         metrics.update(t_min_k=float(T.min()), t_max_k=float(T.max()))
     metrics.update(support_peak(nodes, fixed, r["vm"]))
+    metrics.update(fatigue_metrics)
     if case["template"] == "cantilever":
         metrics["tip_disp_m"] = float(-U[np.unique(m["face_x1"]), 2].mean())
         ref = reference_cantilever(case, metrics["tip_disp_m"])
@@ -215,6 +230,26 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
     converged = bool(r["imbalance"] < 5e-3 and np.isfinite(umag).all())
     return {"kind": "structural", "metrics": metrics, "converged": converged,
             "converged_detail": {"imbalance": r["imbalance"], "limit": 5e-3}, "reference": ref}
+
+
+def fatigue_fields(case, nodes, fixed, stress):
+    """Nodal fatigue safety factor and life when physics.fatigue is on (one metal material). The minimum next to a
+    fully fixed face is a singularity like the peak stress there, so the minimum away from the supports is kept too."""
+    from .fatigue import settings, material, evaluate, INFINITE
+    if not settings(case)['enabled']:
+        return {}, {}
+    mat = None if case.get('body_materials') else material(case)
+    if mat is None:
+        return {}, {'fatigue_unavailable': True}
+    f = evaluate(stress, case, mat)
+    sf = np.where(np.isfinite(f['sf']), f['sf'], 1e6)
+    m = {'fatigue_sf_min': float(sf.min()), 'fatigue_life_min': float(f['life'].min()), 'fatigue_infinite': INFINITE,
+         'fatigue_se_pa': f['se_pa'], 'fatigue_su_pa': f['su_pa'], 'fatigue_ka': f['ka'], 'fatigue_ratio': f['ratio'],
+         'fatigue_at_m': nodes[int(np.argmin(sf))].tolist()}
+    away = support_peak(nodes, fixed, -sf)                       # the same "a couple of elements away" rule
+    if away.get('max_vm_away_pa') is not None:
+        m['fatigue_sf_min_away'] = float(-away['max_vm_away_pa'])
+    return {'fatigue_sf': sf, 'fatigue_life': f['life']}, m
 
 
 def prescribed_displacements(case,m):
@@ -298,6 +333,30 @@ def run_modal(case, jd, prog, m):
     return {'kind': 'modal', 'modes': r['modes'], 'free_free': r['free_free'], 'metrics': metrics,
             'converged': r['converged'], 'converged_detail': {'eigen_residual': r['residual'], 'limit': 1e-5},
             'reference': modal_reference(case, r['modes'])}
+
+
+def run_buckling(case, jd, prog, m):
+    from .fem_tet10 import solve_buckling
+    from .templates import element_prop
+    from .store import StudioError
+    fixed, tractions = structural_loads(case, m)
+    try:
+        r = solve_buckling(m['nodes'], m['tets'], element_prop(case,m,'E'), element_prop(case,m,'nu'), fixed, tractions,
+                           symmetry_rollers(case,m), prescribed_displacements(case,m), int(case['physics'].get('modes',4)),
+                           lambda k,f: prog(k,f), springs=spring_stiffness(case,m))
+    except RuntimeError as e:
+        raise StudioError('err.buckling_failed', 400, why=str(e))
+    if not r['load_factors']:
+        raise StudioError('err.buckling_none', 400)
+    p0 = r['applied_load']
+    table = [{'mode': i+1, 'load_factor': lam, 'critical_load_n': lam*p0} for i, lam in enumerate(r['load_factors'])]
+    np.savez_compressed(jd/'results.npz', u=r['u'], mode_shapes=r['mode_shapes'], phi=r['mode_shapes'])
+    metrics = {'load_factor': table[0]['load_factor'], 'critical_load_n': table[0]['critical_load_n'], 'applied_n': p0,
+               'nodes': len(m['nodes']), 'elements': len(m['tets']), 'negative_factors': r['negative_factors']}
+    from .structural import buckling_reference
+    return {'kind': 'buckling', 'modes': table, 'free_free': False, 'metrics': metrics,
+            'converged': r['converged'], 'converged_detail': {'eigen_residual': r['residual'], 'limit': 1e-5},
+            'reference': buckling_reference(case, table)}
 
 
 def thermal_groups(case: dict, m: dict, nested=False):
@@ -644,12 +703,16 @@ def primary_quantity(case: dict, res: dict) -> tuple[str, float, str]:
                     'large-cantilever':('tip_disp','tip_disp_m','m'),
                     'plastic-bar':('axial_stress','axial_stress_pa','Pa'),
                     'plastic-beam-collapse':('limit_load','limit_load_n','N'),
-                    'rubber-tension':('axial_stress','axial_stress_pa','Pa')}.get(case['template'])
+                    'rubber-tension':('axial_stress','axial_stress_pa','Pa'),
+                    'hertz-cylinder':('contact_pressure','contact_pressure_pa','Pa'),
+                    'fatigue-bar':('fatigue_sf','fatigue_sf_min','-')}.get(case['template'])
         if response and response[1] in m:
             return response[0],m[response[1]],response[2]
         return ("max_disp", m["max_disp_m"], "m")
     if k == 'modal':
         return ('frequency', m['frequency_hz'], 'Hz')
+    if k == 'buckling':
+        return ('critical_load', m['critical_load_n'], 'N')
     if k == "thermal":
         n_fixed = sum(1 for b in case["boundaries"].values() if b.get("role") == "temperature")
         if n_fixed >= 2:

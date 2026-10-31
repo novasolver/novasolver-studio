@@ -89,6 +89,10 @@ def export(case, format, lang):
                     writer.writerow(['mode','frequency_hz','effective_mass_x','effective_mass_y','effective_mass_z'])
                     for m in raw['modes']:
                         writer.writerow([m['mode'],m['frequency_hz'],*m['effective_mass']])
+                elif raw['kind'] == 'buckling':
+                    writer.writerow(['mode','load_factor','critical_load_n'])
+                    for m in raw['modes']:
+                        writer.writerow([m['mode'],m['load_factor'],m['critical_load_n']])
                 else:
                     header = ['node','x_m','y_m','z_m']
                     arrays = [nodes]
@@ -281,6 +285,9 @@ def report(case,jd,raw,lang):
         html += table((t('export.mode', lang), 'f [Hz]', 'Mx %', 'My %', 'Mz %'),
                       [(x['mode'], _num(x['frequency_hz'], 5), *[('0' if e*100 < .05 else f'{e*100:.1f}') for e in x['effective_mass']])
                        for x in raw['modes']], (1, 2, 3, 4))
+    if raw['kind'] == 'buckling':
+        html += table((t('export.mode', lang), 'λ', 'P_cr [N]'),
+                      [(x['mode'], _num(x['load_factor'], 5), _num(x['critical_load_n'], 5)) for x in raw['modes']], (1, 2))
     # 3. how far the answer is checked
     html += heading('verification')
     gates = pl['gates']

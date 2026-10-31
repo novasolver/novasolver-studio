@@ -336,7 +336,7 @@ def test_old_case():
 def test_mcp_contract_and_i18n():
     from novastudio import mcp_server as M
     source = Path(M.__file__).read_text(encoding='utf-8')
-    assert source.count('@mcp.tool(') == 28
+    assert source.count('@mcp.tool(') == 29
     for fn in (M.undo_change, M.get_gui_selection, M.render_view):
         assert len(fn.__doc__) < 600
     root = Path(__file__).resolve().parents[2]

@@ -1,4 +1,5 @@
-import { change, selectFace, setState, useStore, useT } from '../state/store';
+import { change, detectContacts, selectFace, setState, useStore, useT } from '../state/store';
+import { Button } from './ui/Button';
 import { NumberInput } from './ui/Input';
 import { Select } from './ui/Select';
 import { Field, SectionLabel } from './ui/misc';
@@ -23,12 +24,15 @@ export function StructuralSettings() {
   if (p?.ui.physics !== 'structural') return null;
   const physics = p.case.physics;
   const modal = physics?.analysis === 'modal';
+  const buckling = physics?.analysis === 'buckling';
   const nonlinear = physics?.analysis === 'nonlinear';
   const thermal = physics?.thermal_load?.mode ?? 'none';
   return <>
     <section className="px-4 pt-6"><SectionLabel>{t('struct.analysis')}</SectionLabel>
-      <Select value={nonlinear ? 'nonlinear':modal ? 'modal':'static'} ariaLabel={t('struct.analysis')}
-        options={['static','modal','nonlinear'].map(v => ({value:v,label:t('struct.'+v)}))} onChange={v => change('physics.analysis',v)} />
+      <Select value={nonlinear ? 'nonlinear':modal ? 'modal':buckling ? 'buckling':'static'} ariaLabel={t('struct.analysis')}
+        options={['static','modal','buckling','nonlinear'].map(v => ({value:v,label:t('struct.'+v)}))} onChange={v => change('physics.analysis',v)} />
+      {buckling && <div className="mt-4"><Field label={t('struct.modes')}><NumberInput ariaLabel={t('struct.modes')} value={physics?.modes ?? 4} min={1} max={20}
+        onCommit={v => change('physics.modes',v)} /></Field><p className="prose-ui mt-2 text-label text-fg-2">{t('struct.bucklingNote')}</p></div>}
       {nonlinear && <div className="mt-4 flex flex-col gap-4">
         <label className="flex h-8 items-center gap-2 text-body text-fg"><input type="checkbox" checked={physics?.nonlinear?.large_deformation !== false}
           onChange={e => change('physics.nonlinear.large_deformation',e.target.checked)} />{t('struct.large')}</label>
@@ -49,7 +53,19 @@ export function StructuralSettings() {
     {nonlinear && <section className="px-4 pt-6"><SectionLabel>{t('struct.models')}</SectionLabel>
       {p.case.body_materials ? Object.keys(p.case.body_materials).map(b => <MaterialModel key={b} body={b} />):<MaterialModel />}
     </section>}
-    {!modal && <>
+    {!modal && !buckling && !nonlinear && <section className="px-4 pt-6"><SectionLabel>{t('fatigue.title')}</SectionLabel>
+      <label className="flex h-8 items-center gap-2 text-body text-fg"><input type="checkbox" checked={!!physics?.fatigue?.enabled}
+        onChange={e => change('physics.fatigue.enabled',e.target.checked)} />{t('fatigue.enable')}</label>
+      {physics?.fatigue?.enabled && <div className="mt-3 flex flex-col gap-4">
+        <Field label={t('fatigue.ratio')}><NumberInput ariaLabel={t('fatigue.ratio')} value={physics.fatigue.ratio ?? -1} min={-1} max={0.99}
+          onCommit={v => change('physics.fatigue.ratio',v)} /></Field>
+        <Field label={t('fatigue.surface')}><Select ariaLabel={t('fatigue.surface')} value={physics.fatigue.surface ?? 'machined'}
+          options={['polished','ground','machined','hot-rolled','as-forged'].map(v => ({value:v,label:t('fatigue.surface.'+v)}))}
+          onChange={v => change('physics.fatigue.surface',v)} /></Field>
+        <p className="prose-ui text-label text-fg-2">{t('fatigue.note')}</p>
+      </div>}
+    </section>}
+    {!modal && !buckling && <>
       <section className="px-4 pt-6"><SectionLabel>{t('struct.thermal')}</SectionLabel>
         <Select value={thermal} ariaLabel={t('struct.thermal')} options={['none','uniform','solve'].map(v => ({value:v,label:t('struct.thermal.'+v)}))}
           onChange={v => change('physics.thermal_load.mode',v)} />
@@ -100,6 +116,29 @@ function MaterialModel({body}:{body?:string}) {
         onCommit={(v,u) => change(path+'.'+k,{value:v,unit:u ?? q.unit})} /></Field>;})}
       <p className="prose-ui text-label text-fg-2">{t('struct.plasticSmall')}</p></>}
   </div>;
+}
+
+/** Contact between separate parts (faces that share no nodes): detected pairs, their type and friction. */
+export function ContactPairsSettings() {
+  const t = useT(); const p = useStore(s => s.payload);
+  // imported assemblies can gain pairs (detect); templates show them only when they define some
+  if (p?.ui.physics !== 'structural' || (!p.case.template.startsWith('import-') && !p.case.contact_pairs)) return null;
+  const pairs = Object.entries(p.case.contact_pairs ?? {});
+  const label = (k: string) => p.ui.faces.find(f => f.key === k)?.label ?? k;
+  return <section className="px-4 pt-6"><SectionLabel>{t('pairs.title')}</SectionLabel>
+    <p className="prose-ui mb-3 text-label text-fg-2">{t('pairs.note')}</p>
+    {pairs.map(([name, c]) => <div key={name} className="mb-4 flex flex-col gap-3">
+      <button className="flex min-h-8 items-center gap-2 text-left text-body text-fg" onClick={() => {selectFace(c.slave[0],'set');setState({seeThrough:true});}}>
+        <span>{c.slave.map(label).join(', ')} → {c.master.map(label).join(', ')}</span></button>
+      <div className="flex items-center gap-2">
+        <Select ariaLabel={`${name} ${t('contact.type')}`} value={c.type} options={['bonded','frictionless','frictional','no-separation'].map(v => ({value:v,label:t('contact.'+v)}))}
+          onChange={v => change(`contact_pairs.${name}.type`,v)} />
+        <Button variant="ghost" size="sm" onClick={() => change(`contact_pairs.${name}`,null)}>{t('pairs.remove')}</Button>
+      </div>
+      {c.type === 'frictional' && <Field label={t('contact.mu')}><NumberInput ariaLabel={t('contact.mu')} value={c.mu} min={0} onCommit={v => change(`contact_pairs.${name}.mu`,v)} /></Field>}
+    </div>)}
+    <Button variant="secondary" size="sm" onClick={() => void detectContacts()}>{t('pairs.detect')}</Button>
+  </section>;
 }
 
 export function ContactsSettings() {

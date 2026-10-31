@@ -258,7 +258,7 @@ export function ViewerPane() {
   const range = useStore((s) => s.range);
   const deform = useStore((s) => s.deformScale);
   const animation = useStore(s => s.modeAnimation);
-  const modal = useStore(s => s.results?.kind === 'modal');
+  const modal = useStore(s => s.results?.kind === 'modal' || s.results?.kind === 'buckling');
   const probeValue = useStore(s => s.probeValue);
   const resultsLoading = useStore((s) => s.resultsLoading);
   const meshExists = useStore((s) => !!s.payload?.ui.mesh?.state.exists);

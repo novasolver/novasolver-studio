@@ -595,6 +595,20 @@ function openPayload(p: CasePayload, step: StepId = "geometry") {
   if (p.steps.run !== "todo" || p.latest_run) void loadResults(false);
 }
 
+/** Find facing faces of separate parts and add them as bonded contact pairs (then each pair's type can change). */
+export async function detectContacts() {
+  const p = state.payload;
+  if (!p) return;
+  try {
+    await settle();
+    const r = await api.detectContacts(p.case.case_id, true);
+    toast(r.pairs.length ? t("pairs.found", { n: r.pairs.length }) : t("pairs.none"));
+    if (r.applied) await refreshCase(false);
+  } catch (e) {
+    toast(errMsg(e), "error");
+  }
+}
+
 async function refreshCase(reloadGeometry: boolean) {
   const p = state.payload;
   if (!p) return;

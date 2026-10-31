@@ -103,14 +103,215 @@ def split_mesh(case, mesh):
     return out, records
 
 
+# ---------------------------------------------------------------- separate surfaces (contact_pairs): averaged-gap mortar
+
+PAIR_TYPES = ('bonded', 'frictionless', 'frictional', 'no-separation')
+
+
+def pair_settings(pair):
+    return {'type': 'bonded', 'mu': .2, 'search': {'value': 1, 'unit': 'mm'}, **pair}
+
+
+def _sub_rule(n=4):
+    """Quadrature on the four sub-triangles of the tri6 parent (corner, corner, corner, middle). Returns parametric
+    points (Q,2), weights on the parent (sum 1/2) and the piecewise-linear hats psi (Q,6) of the sub-triangle mesh,
+    whose integrals are A/12 at corners and A/4 at midsides: the same positive dual areas the conformal contact uses."""
+    x, w = np.polynomial.legendre.leggauss(n)
+    x, w = (x + 1) / 2, w / 2
+    ref = np.array([[0, 0], [1, 0], [0, 1], [.5, 0], [.5, .5], [0, .5]])
+    subs = [(0, 3, 5), (3, 1, 4), (5, 4, 2), (3, 4, 5)]
+    P, W, H = [], [], []
+    for s in subs:
+        A = ref[list(s)]
+        for i, a in enumerate(x):
+            for j, b in enumerate(x):
+                l1, l2 = a, (1 - a) * b                    # collapsed (Duffy) coordinates on the sub-triangle
+                l0 = 1 - l1 - l2
+                P.append(l0 * A[0] + l1 * A[1] + l2 * A[2])
+                W.append(w[i] * w[j] * (1 - a) * 0.25)     # each sub-triangle is a quarter of the parent
+                h = np.zeros(6)
+                h[list(s)] = (l0, l1, l2)
+                H.append(h)
+    return np.array(P), np.array(W), np.array(H)
+
+
+def _tri6(xi, eta):
+    """tri6 shape functions and parametric derivatives (Gmsh order: 3 corners, then edges 01, 12, 20)."""
+    L = np.stack([1 - xi - eta, xi, eta], -1)
+    N = np.concatenate([L * (2 * L - 1), 4 * L[..., [0]] * L[..., [1]], 4 * L[..., [1]] * L[..., [2]],
+                        4 * L[..., [2]] * L[..., [0]]], -1)
+    dL = np.array([[-1, 1, 0], [-1, 0, 1]], float)    # d(L0,L1,L2)/d(xi,eta)
+    def d(k):
+        a = dL[k]
+        return np.concatenate([a * (4 * L - 1),
+                               4 * (a[0] * L[..., [1]] + L[..., [0]] * a[1]),
+                               4 * (a[1] * L[..., [2]] + L[..., [1]] * a[2]),
+                               4 * (a[2] * L[..., [0]] + L[..., [2]] * a[0])], -1)
+    return N, d(0), d(1)
+
+
+def _project(points, dirs, Xm, search, candidates=8):
+    """Project each point along its direction onto the master tri6 surface: x_m(xi, eta) = p + t d. Returns the
+    master element, (xi, eta) and t of the nearest hit within `search` (element -1 where there is none)."""
+    from scipy.spatial import cKDTree
+    centre = Xm[:, :3].mean(1)
+    size = np.linalg.norm(Xm[:, :3] - centre[:, None], axis=2).max(1)
+    tree = cKDTree(centre)
+    k = min(candidates, len(Xm))
+    _, cand = tree.query(points, k=k)
+    cand = cand.reshape(len(points), k)
+    best_e = np.full(len(points), -1); best_t = np.full(len(points), np.inf); best_xi = np.zeros((len(points), 2))
+    for c in range(k):
+        e = cand[:, c]
+        X = Xm[e]                                          # (P,6,3)
+        xi = np.full((len(points), 2), 1 / 3); t = np.zeros(len(points))
+        for _ in range(8):                                 # Newton on F = x_m(xi) - p - t d
+            N, d1, d2 = _tri6(xi[:, 0], xi[:, 1])
+            F = np.einsum('pi,pij->pj', N, X) - points - t[:, None] * dirs
+            J = np.stack([np.einsum('pi,pij->pj', d1, X), np.einsum('pi,pij->pj', d2, X), -dirs], -1)
+            step = np.linalg.solve(J + 1e-30 * np.eye(3), -F[..., None])[..., 0]
+            xi += step[:, :2]; t += step[:, 2]
+        tol = 1e-6
+        inside = (xi[:, 0] >= -tol) & (xi[:, 1] >= -tol) & (xi.sum(1) <= 1 + tol) & (np.abs(t) <= search) & \
+                 (np.linalg.norm(points - centre[e], axis=1) <= size[e] + search * 2 + 1e-12)
+        better = inside & (np.abs(t) < np.abs(best_t))
+        best_e[better], best_t[better], best_xi[better] = e[better], t[better], xi[better]
+    return best_e, best_xi, best_t
+
+
+def mortar_pairs(case, mesh):
+    """Constraint records for contact_pairs between surfaces that share no nodes. For each slave node i the averaged
+    jump J_i = (1/A_i) int psi_i (u_s - u_m(p(x))) dA is held in the contact laws, where p projects the slave point
+    along the slave normal onto the master surface (small sliding: once, in the initial configuration)."""
+    pairs = case.get('contact_pairs', {})
+    if not pairs:
+        return []
+    nodes, tets = mesh['nodes'], mesh['tets']
+    ndof = 3 * len(nodes)
+    Q, W, H = _sub_rule(6)
+    Ns, d1s, d2s = _tri6(Q[:, 0], Q[:, 1])
+    records = []
+    for name, raw in sorted(pairs.items()):
+        cfg = pair_settings(raw)
+        if set(cfg['master']) & set(cfg['slave']):
+            raise StudioError('err.contact_pair_same_face', 400, pair=name)
+        tri_m = np.concatenate([mesh['face_' + f] for f in cfg['master']])
+        tri_s = np.concatenate([mesh['face_' + f] for f in cfg['slave']])
+        if np.intersect1d(np.unique(tri_m), np.unique(tri_s)).size:
+            raise StudioError('err.contact_pair_shared_nodes', 400, pair=name)
+        search = units.to_si(cfg['search'])
+        Xs = nodes[tri_s]                                   # (S,6,3)
+        pts = np.einsum('qi,sij->sqj', Ns, Xs)              # (S,Q,3)
+        t1 = np.einsum('qi,sij->sqj', d1s, Xs); t2 = np.einsum('qi,sij->sqj', d2s, Xs)
+        cr = np.cross(t1, t2)
+        jac = np.linalg.norm(cr, axis=2)
+        ns = cr / jac[..., None]
+        out = fem.outward_normals(nodes, tets, tri_s)       # orient the parametric normal outward
+        ns *= np.sign(np.einsum('sqj,sj->sq', ns, out))[..., None]
+        w = W[None, :] * jac                                # (S,Q) area weights
+        e, xi, t = _project(pts.reshape(-1, 3), ns.reshape(-1, 3), nodes[tri_m], search)
+        hit = (e >= 0).reshape(w.shape)
+        slave = np.unique(tri_s)
+        local = {int(n): i for i, n in enumerate(slave)}
+        A = np.zeros(len(slave)); nsum = np.zeros((len(slave), 3)); gsum = np.zeros(len(slave))
+        rows, cols, vals = [], [], []
+        Nm = np.zeros((len(e), 6))
+        if hit.any():
+            Nm[e >= 0] = _tri6(xi[e >= 0, 0], xi[e >= 0, 1])[0]
+        Nm = Nm.reshape(len(tri_s), len(Q), 6)
+        em = e.reshape(w.shape); tq = np.where(e >= 0, t, 0.).reshape(w.shape)   # a miss has t = inf (0 * inf = nan)
+        for a in range(6):                                  # weight node a of each slave element with psi_a
+            ia = np.array([local[int(n)] for n in tri_s[:, a]])
+            wa = w * H[None, :, a] * hit                    # (S,Q)
+            np.add.at(A, ia, wa.sum(1))
+            np.add.at(nsum, ia, np.einsum('sq,sqj->sj', wa, ns))
+            np.add.at(gsum, ia, (wa * tq).sum(1))
+            for b in range(6):                              # slave side
+                rows.append(ia); cols.append(tri_s[:, b]); vals.append((wa * Ns[None, :, b]).sum(1))
+            for b in range(6):                              # master side, at the projected points
+                mnode = np.where(em >= 0, tri_m[np.maximum(em, 0), b], 0)
+                rows.append(np.repeat(ia, len(Q))); cols.append(mnode.ravel()); vals.append(-(wa * Nm[:, :, b]).ravel())
+        keep = A > 1e-12 * max(A.max(initial=0), 1e-300)
+        if not keep.any():
+            records.append({'face': name, 'no_contact': True, 'closest_m': float(np.abs(t[np.isfinite(t)]).min()) if np.isfinite(t).any() else None})
+            continue
+        r = np.concatenate(rows); c = np.concatenate(cols); v = np.concatenate(vals)
+        S = sp.csr_matrix((v, (r, c)), shape=(len(slave), len(nodes)))
+        S = sp.diags(np.where(keep, 1 / np.where(keep, A, 1), 0)) @ S
+        S = S[keep]
+        n = -nsum[keep] / np.linalg.norm(nsum[keep], axis=1)[:, None]   # master-side normal: slave moving along -n closes
+        J = sp.kron(S, sp.eye(3), format='csr')           # world components, rows 3i..3i+2
+        body = mesh.get('tet_body')
+        def owner(tri):
+            if body is None:
+                return 0
+            hits = np.isin(tets[:, :4], tri[0, :3]).sum(1) == 3
+            return int(body[np.flatnonzero(hits)[0]])
+        bilateral = cfg['type'] in ('bonded', 'no-separation')
+        records.append({'face': name, 'bodies': [owner(tri_m), owner(tri_s)], 'master': np.unique(tri_m),
+                        'slave': slave[keep], 'normal': n, 'area': A[keep], 'type': cfg['type'], 'mu': cfg['mu'],
+                        'g0': np.zeros(int(keep.sum())) if cfg['type'] == 'bonded' else gsum[keep] / A[keep],
+                        'J': J, 'tied': cfg['type'] == 'bonded', 'bilateral': bilateral})
+    return records
+
+
+def detect(case, mesh, search):
+    """Candidate contact_pairs: faces of different bodies, no shared nodes, closer than `search` with facing normals
+    (n_a . n_b < -0.9 where they are close). The side with the smaller elements is the slave."""
+    from scipy.spatial import cKDTree
+    nodes, tets = mesh['nodes'], mesh['tets']
+    desc = {f['key']: f for f in case['geometry'].get('faces', []) if not f.get('interface')}
+    info = {}
+    for key, f in desc.items():
+        tri = mesh.get('face_' + key)
+        if tri is None or not len(tri) or len(f.get('bodies', [])) != 1:
+            continue
+        c = nodes[tri[:, :3]].mean(1)
+        info[key] = {'tri': tri, 'c': c, 'n': fem.outward_normals(nodes, tets, tri), 'body': f['bodies'][0],
+                     'edge': float(np.linalg.norm(nodes[tri[:, 0]] - nodes[tri[:, 1]], axis=1).mean()),
+                     'nodes': set(np.unique(tri).tolist()), 'tree': cKDTree(c)}
+    out, keys = [], sorted(info)
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            A, Bf = info[a], info[b]
+            if A['body'] == Bf['body'] or A['nodes'] & Bf['nodes']:
+                continue
+            reach = search + max(A['edge'], Bf['edge'])        # centroids of facing elements are up to an edge apart
+            d, j = Bf['tree'].query(A['c'], distance_upper_bound=reach)
+            close = np.isfinite(d)
+            if not close.any():
+                continue
+            facing = close.copy()
+            facing[close] = np.einsum('ij,ij->i', A['n'][close], Bf['n'][j[close]]) < -0.9
+            # the normal distance between the facing elements, not the centroid distance, must be within search
+            gap = np.full(len(d), np.inf)
+            gap[facing] = np.abs(np.einsum('ij,ij->i', Bf['c'][j[facing]] - A['c'][facing], A['n'][facing]))
+            hit = facing & (gap <= search)
+            if hit.sum() < max(3, 0.05 * len(A['c'])):
+                continue
+            slave, master = (a, b) if A['edge'] <= Bf['edge'] else (b, a)
+            out.append({'master': [master], 'slave': [slave], 'gap_m': float(gap[hit].min()),
+                        'coverage': float(hit.mean())})
+    return out
+
+
 class Constraints:
     def __init__(self, records, ndof, stiffness):
+        # conformal node pairs first, then the mortar pairs of separate surfaces (each with its own operator J)
+        records = [r for r in records if 'J' not in r and not r.get('no_contact')] + [r for r in records if 'J' in r]
         self.records = records
-        self.count = sum(len(r['master']) for r in records)
-        self.area = np.concatenate([r['area'] for r in records]) if records else np.empty(0)
-        self.g0 = np.concatenate([np.full(len(r['master']),r['g0']) for r in records]) if records else np.empty(0)
-        self.mu = np.concatenate([np.full(len(r['master']),r['mu'] if r['type'] == 'frictional' else 0) for r in records]) if records else np.empty(0)
-        self.bilateral = np.concatenate([np.full(len(r['master']),r['type'] == 'no-separation') for r in records]) if records else np.empty(0,bool)
+        mortar = [r for r in records if 'J' in r]
+        records = [r for r in records if 'J' not in r]
+        everything = self.records
+        self.count = sum(len(r['slave'] if 'J' in r else r['master']) for r in everything)
+        size = lambda r: len(r['slave'] if 'J' in r else r['master'])
+        self.area = np.concatenate([r['area'] for r in everything]) if everything else np.empty(0)
+        self.g0 = np.concatenate([np.broadcast_to(r['g0'], size(r)).astype(float) for r in everything]) if everything else np.empty(0)
+        self.mu = np.concatenate([np.full(size(r),r['mu'] if r['type'] == 'frictional' else 0) for r in everything]) if everything else np.empty(0)
+        self.bilateral = np.concatenate([np.full(size(r),r['type'] in ('no-separation','bonded')) for r in everything]) if everything else np.empty(0,bool)
+        self.tied = np.concatenate([np.full(size(r),bool(r.get('tied'))) for r in everything]) if everything else np.empty(0,bool)
+        # conformal offsets (press-fit interference) are ramped with the load; a mortar pair's measured gap is not
+        self.ramped = np.concatenate([np.full(size(r),'J' not in r) for r in everything]) if everything else np.empty(0,bool)
         rows, cols, values, bases = [], [], [], []
         start = 0
         for r in records:
@@ -124,8 +325,15 @@ class Constraints:
                 cols.extend(np.broadcast_to(3*r[side][:,None,None]+np.arange(3)[None,None,:],basis.shape).ravel())
                 values.extend((sign*basis).ravel())
             start += len(n)
-        self.basis = np.concatenate(bases) if bases else np.empty((0,3,3))
-        self.B = sp.csr_matrix((values,(rows,cols)),shape=(3*self.count,ndof))
+        cc = start                                      # conformal pairs; the mortar rows follow
+        mbases = []
+        for r in mortar:
+            n = r['normal']
+            axis = np.eye(3)[np.argmin(np.abs(n),axis=1)]
+            t = np.cross(n,axis); t /= np.linalg.norm(t,axis=1)[:,None]
+            mbases.append(np.stack([n,t,np.cross(n,t)],axis=1))
+        self.basis = np.concatenate(bases+mbases) if bases or mbases else np.empty((0,3,3))
+        Bc = sp.csr_matrix((values,(rows,cols)),shape=(3*cc,ndof))
         masses = []
         self.integrals = []
         for rec in records:
@@ -137,14 +345,25 @@ class Constraints:
                 mass = sp.diags(rec['area'])
             masses.append(mass)
             self.integrals.extend(np.asarray(mass.sum(0)).ravel())
+        for rec in mortar:
+            self.integrals.extend(rec['area'])
         self.integrals = np.asarray(self.integrals)
-        R = sp.bsr_matrix((self.basis,np.arange(self.count),np.arange(self.count+1)),shape=(3*self.count,3*self.count)).tocsr()
+        def rotation(b):
+            return sp.bsr_matrix((b,np.arange(len(b)),np.arange(len(b)+1)),shape=(3*len(b),3*len(b))).tocsr()
+        Rc = rotation(self.basis[:cc])
         mass = sp.kron(sp.block_diag(masses,format='csr'),sp.eye(3),format='csr') if masses else sp.csr_matrix((0,0))
         # Unknowns are nodal tractions times positive dual areas. Integrate their tri6 field
         # consistently into bulk nodal forces; a uniform pressure has zero corner *force*,
         # while its corner pressure is positive. Coulomb acts on pressure, not on that zero force.
-        self.force_pairs = mass@R.T@sp.diags(np.repeat(1/self.area,3))
-        self.G = (R.T@self.B).T@self.force_pairs
+        fc = mass@Rc.T@sp.diags(np.repeat(1/self.area[:cc],3)) if cc else sp.csr_matrix((0,0))
+        Gc = ((Rc.T@Bc).T@fc) if cc else sp.csr_matrix((ndof,0))
+        # Mortar: lambda_i is the traction times A_i in the local basis. The work of the averaged jump gives the
+        # nodal forces B^T lambda directly, and the force on the slave side is R^T lambda.
+        Rm = rotation(self.basis[cc:]) if mortar else sp.csr_matrix((0,0))
+        Bm = (Rm@sp.vstack([r['J'] for r in mortar],format='csr')) if mortar else sp.csr_matrix((0,ndof))
+        self.B = sp.vstack([Bc,Bm],format='csr')
+        self.force_pairs = sp.block_diag([fc,Rm.T],format='csr') if cc and mortar else (fc if cc else Rm.T.tocsr())
+        self.G = sp.hstack([Gc,Bm.T],format='csr')
         self.slip_reference = np.zeros((self.count,2))
         self.blocked = np.zeros((self.count,3),bool)
         # An active-set scaling, not a penalty approximation: the converged equations are exact constraints.
@@ -152,7 +371,7 @@ class Constraints:
 
     def equations(self, u, lam, offset_scale=1.):
         d = (self.B@u).reshape(-1,3)
-        g = d[:,0]+self.g0*offset_scale
+        g = d[:,0]+self.g0*np.where(self.ramped,offset_scale,1.)   # a real gap is there from the start
         l = lam.reshape(-1,3)
         r = self.rho
         trial = l[:,0]-r*g
@@ -168,7 +387,10 @@ class Constraints:
             z = l[i,1:]-r*increment
             radius = self.mu[i]*max(p[i],0)
             norm = np.linalg.norm(z)
-            if radius > 0 and norm <= radius:
+            if self.tied[i]:                            # bonded separate parts: no slip, whatever the pressure
+                residual[i,1:] = increment
+                Du[i,1:,1:] = np.eye(2); Dl[i,1:,1:] = 0
+            elif radius > 0 and norm <= radius:
                 residual[i,1:] = increment
                 Du[i,1:,1:] = np.eye(2); Dl[i,1:,1:] = 0
             elif radius > 0 and norm > radius:
@@ -207,9 +429,10 @@ class Constraints:
         interfaces = {}; start = 0
         l = lam.reshape(-1,3)
         for rec in self.records:
-            sl = slice(start,start+len(rec['master']))
+            mortar = 'J' in rec
+            sl = slice(start,start+len(rec['slave' if mortar else 'master']))
             pressure = l[sl,0]/self.area[sl]
-            for side in ('master','slave'):
+            for side in (('slave',) if mortar else ('master','slave')):   # mortar values live on the slave nodes
                 idx = rec[side]
                 fields['p_contact'][idx] = pressure
                 fields['contact_gap'][idx] = gap[sl]
@@ -217,6 +440,9 @@ class Constraints:
                 fields['contact_status'][idx] = status[sl]
             force = (self.force_pairs@lam).reshape(-1,3)[sl].sum(0)
             normal_force = float(np.sum(pressure*self.integrals[sl]))
+            if mortar:
+                # the averaged-gap constraint has no "inside" sign of its own: the compressive force is l_n
+                normal_force = float(np.sum(l[sl,0]))
             interfaces[rec['face']] = {'force_n':force.tolist(), 'normal_force_n':normal_force,
                 'pressure_pa':normal_force/float(self.area[sl].sum()),
                 'status_counts':{k:int(np.sum(status[sl] == j)) for j,k in enumerate(('open','stick','slip'))},

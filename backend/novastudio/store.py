@@ -151,7 +151,8 @@ def editable_paths(case: dict) -> list[str]:
                   'physics.thermal_load.mode', 'physics.thermal_load.temperature', 'physics.gravity.enabled',
                   'physics.thermal_load.body_temperatures',
                   'physics.gravity.g', 'physics.gravity.direction', 'physics.rotation.enabled', 'physics.rotation.rpm',
-                  'physics.rotation.axis', 'physics.rotation.axis_point']
+                  'physics.rotation.axis', 'physics.rotation.axis_point',
+                  'physics.fatigue.enabled', 'physics.fatigue.ratio', 'physics.fatigue.surface', 'physics.fatigue.cycles']
         for f in case['geometry'].get('faces',[]):
             if f.get('interface'):
                 paths += [f"contacts.{f['key']}" ]+[f"contacts.{f['key']}.{k}" for k in ('type','mu','offset')]
@@ -167,7 +168,7 @@ def editable_paths(case: dict) -> list[str]:
     if "solid" in mats:
         paths += ["materials.solid.preset", "materials.solid.E", "materials.solid.nu", "materials.solid.sy",
                   "materials.solid.k", "materials.solid.eps_r", "materials.solid.sigma", 'materials.solid.rho', 'materials.solid.alpha',
-                  'materials.solid.model', 'materials.solid.H']
+                  'materials.solid.model', 'materials.solid.H', 'materials.solid.su', 'materials.solid.se']
     if "fluid" in mats:
         paths += ["materials.fluid.preset", "materials.fluid.nu"]
     for face in templates.face_keys(case):
@@ -184,8 +185,9 @@ def editable_paths(case: dict) -> list[str]:
 
 
 ENUMS = {
-    'physics.analysis': ['static', 'linear-static', 'modal', 'nonlinear'],
+    'physics.analysis': ['static', 'linear-static', 'modal', 'nonlinear', 'buckling'],
     'physics.thermal_load.mode': ['none', 'uniform', 'solve'],
+    'physics.fatigue.surface': ['polished', 'ground', 'machined', 'hot-rolled', 'as-forged'],
     'physics.rotation.axis': ['x', 'y', 'z'],
     "mesh.size": ["coarse", "normal", "fine"],
     "run.mode": ["preview", "final"],
@@ -193,6 +195,49 @@ ENUMS = {
 }
 
 GEOM_KEYS = ("geometry.", "mesh.")
+
+
+PAIR_NAME = re.compile(r'^[A-Za-z0-9_-]{1,40}$')
+
+
+def _set_contact_pair(case: dict, path: str, value) -> dict:
+    """contact_pairs.<name> = {master, slave, type, mu, search} or None (delete); contact_pairs.<name>.<field> = value."""
+    from .contact import PAIR_TYPES, pair_settings
+    if templates.get(case['template'])['physics'] != 'structural':
+        raise StudioError('err.path', 400, path=path)
+    parts = path.split('.')
+    if len(parts) not in (2, 3) or not PAIR_NAME.match(parts[1]):
+        raise StudioError('err.path', 400, path=path)
+    name = parts[1]
+    pairs = case.setdefault('contact_pairs', {})
+    old = copy.deepcopy(pairs.get(name))
+    if len(parts) == 2 and value is None:
+        pairs.pop(name, None)
+        if not pairs:
+            case.pop('contact_pairs')
+        return {'path': path, 'old': old, 'new': None}
+    cfg = copy.deepcopy(value) if len(parts) == 2 else {**copy.deepcopy(old or {}), parts[2]: value}
+    if not isinstance(cfg, dict) or set(cfg) - {'master', 'slave', 'type', 'mu', 'search'}:
+        raise StudioError('err.path', 400, path=path)
+    faces = set(templates.face_keys(case))
+    for side in ('master', 'slave'):
+        v = cfg.get(side)
+        if not isinstance(v, list) or not v or any(not isinstance(k, str) or k not in faces for k in v):
+            raise StudioError('err.contact_pair_faces', 400, pair=name)
+    if set(cfg['master']) & set(cfg['slave']):
+        raise StudioError('err.contact_pair_same_face', 400, pair=name)
+    cfg = pair_settings(cfg)
+    if cfg['type'] not in PAIR_TYPES or isinstance(cfg['mu'], bool) or not isinstance(cfg['mu'], (int, float)) \
+            or not math.isfinite(cfg['mu']) or cfg['mu'] < 0:
+        raise StudioError('err.path', 400, path=path)
+    try:
+        cfg['search'] = units.normalize(cfg['search'], {'value': 1, 'unit': 'mm'})
+        if not 0 < units.to_si(cfg['search']) < 1:
+            raise ValueError()
+    except (units.UnitError, ValueError, TypeError):
+        raise StudioError('err.path', 400, path=path)
+    pairs[name] = cfg
+    return {'path': path, 'old': old, 'new': copy.deepcopy(cfg)}
 
 
 def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
@@ -232,6 +277,9 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             else:
                 groups[name] = list(dict.fromkeys(value))
             diff.append({'path': path, 'old': old, 'new': groups.get(name)})
+            continue
+        if path.startswith('contact_pairs.'):
+            diff.append(_set_contact_pair(new, path, value))
             continue
         if path not in allowed:
             raise StudioError("err.path", 400, path=path)
@@ -300,6 +348,12 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                         raise ValueError('nonfinite temperature')
                 except (units.UnitError, TypeError, ValueError):
                     raise StudioError('err.path', 400, path=path)
+        elif path in ('physics.fatigue.ratio', 'physics.fatigue.cycles'):
+            # load ratio R = min/max of the cycle in [-1, 1); target life in cycles
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or \
+                    (path.endswith('ratio') and not -1 <= value < 1) or (path.endswith('cycles') and not 1 <= value <= 1e12):
+                raise StudioError('err.path', 400, path=path)
+            nv = float(value)
         elif path in ('physics.modes', 'physics.rotation.rpm'):
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < (1 if path.endswith('modes') else 0) or (path.endswith('modes') and (int(value) != value or value > 30)):
                 raise StudioError('err.path', 400, path=path)

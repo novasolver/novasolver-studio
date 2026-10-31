@@ -759,6 +759,73 @@ def mesh_job(job: dict) -> None:
                 # sizing from the curvature of a discrete surface follows its facets, not the shape: very slow, no gain
                 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
             bbox = [[xmin, ymin, zmin], [xmax, ymax, zmax]]
+        elif job['kind'] == 'gap_blocks':
+            # two blocks one above the other with a gap, meshed independently (no shared nodes): the upper block is
+            # finer, so the contact interface is non-matching on purpose
+            occ = gmsh.model.occ
+            lx,ly,lz = job['dims']; bbox = [[0,0,0],[lx,ly,lz]]
+            g = job['gap']; hb = (lz-g)/2
+            occ.addBox(0,0,0,lx,ly,hb,tag=1)
+            occ.addBox(0,0,hb+g,lx,ly,hb,tag=2)
+            h = min(lx,ly,hb)/DIVS[job.get('size','normal')]
+            occ.synchronize()
+            grouped = {}
+            for _,tag in gmsh.model.getEntities(2):
+                bb = gmsh.model.getBoundingBox(2,tag)
+                if abs(bb[5]-bb[2])<1e-6:
+                    z = bb[2]
+                    lower = 1 in gmsh.model.getAdjacencies(2,tag)[0]          # with no gap both faces sit at z = hb
+                    key = ('bottom' if z<hb/2 else 'lower_top') if lower else ('upper_bottom' if z<hb+g+hb/2 else 'top')
+                else:
+                    key = face_key(bb,(lx,ly,lz),1e-6)
+                keys[tag] = key; grouped.setdefault(key,[]).append(tag)
+            for key,tags_ in grouped.items():
+                gmsh.model.addPhysicalGroup(2,tags_,name=key)
+                area = sum(occ.getMass(2,t) for t in tags_)
+                cen = sum(occ.getMass(2,t)*np.array(occ.getCenterOfMass(2,t)) for t in tags_)/area
+                bodies_ = sorted({int(v) for t in tags_ for v in gmsh.model.getAdjacencies(2,t)[0]})
+                face_info.append({'key':key,'n':len(face_info)+1,'area':area,'centroid':cen.tolist(),
+                    'type':'Plane','interface':False,'bodies':['b'+str(v) for v in bodies_]})
+        elif job['kind'] == 'hertz':
+            # the bottom of a cylinder (radius R, axis z), cut flat at height cap, resting on a block; both a thin slab
+            # held in z (plane strain). x = 0 is the symmetry plane through the line of contact at (0, hb). Only the part
+            # of a large cylinder near the contact is modelled: Hertz is local. Fine elements around the contact.
+            occ = gmsh.model.occ
+            lx,ly,lz = job['dims']; bbox = [[0,0,0],[lx,ly,lz]]
+            R, a = job['radius'], job['contact_halfwidth']
+            hb = job['block_height']; cap = ly-hb
+            occ.addBox(0,0,0,lx,hb,lz,tag=1)
+            cyl = occ.addCylinder(0,hb+R,0,0,0,lz,R,tag=10)
+            occ.intersect([(3,cyl)],[(3,occ.addBox(0,hb,0,min(R,lx),cap,lz,tag=11))],tag=2)
+            occ.synchronize()
+            scale = {'coarse':1.6,'normal':1.,'fine':.625}[job.get('size','normal')]
+            hc = a/5*scale
+            h = 2*lz*scale
+            fb = gmsh.model.mesh.field.add('Box')
+            for k_,v_ in (('VIn',hc),('VOut',h),('XMin',-1.),('XMax',2.5*a),('YMin',hb-1.5*a),('YMax',hb+1.5*a),
+                          ('ZMin',-1.),('ZMax',lz+1.),('Thickness',4*a)):
+                gmsh.model.mesh.field.setNumber(fb,k_,v_)
+            gmsh.model.mesh.field.setAsBackgroundMesh(fb)
+            gmsh.option.setNumber('Mesh.MeshSizeExtendFromBoundary',0)
+            job['_hmin'] = hc
+            grouped = {}
+            for _,tag in gmsh.model.getEntities(2):
+                bb = gmsh.model.getBoundingBox(2,tag)
+                if gmsh.model.getType(2,tag) == 'Cylinder':
+                    key = 'cyl_surface'
+                elif abs(bb[4]-bb[1])<1e-6:
+                    y = bb[1]
+                    key = 'bottom' if y<hb/2 else 'load' if y>hb+cap/2 else 'block_top'
+                else:
+                    key = face_key(bb,(lx,ly,lz),1e-6)
+                keys[tag] = key; grouped.setdefault(key,[]).append(tag)
+            for key,tags_ in grouped.items():
+                gmsh.model.addPhysicalGroup(2,tags_,name=key)
+                area = sum(occ.getMass(2,t) for t in tags_)
+                cen = sum(occ.getMass(2,t)*np.array(occ.getCenterOfMass(2,t)) for t in tags_)/area
+                bodies_ = sorted({int(v) for t in tags_ for v in gmsh.model.getAdjacencies(2,t)[0]})
+                face_info.append({'key':key,'n':len(face_info)+1,'area':area,'centroid':cen.tolist(),
+                    'type':gmsh.model.getType(2,tags_[0]),'interface':False,'bodies':['b'+str(v) for v in bodies_]})
         elif job['kind'] in ('press_fit','stacked'):
             occ = gmsh.model.occ
             lx,ly,lz = job['dims']; bbox = [[0,0,0],[lx,ly,lz]]
@@ -915,7 +982,7 @@ def mesh_job(job: dict) -> None:
                 gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
                 gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
                 job["_hmin"] = min(sp["h"] for sp in spots)
-        if job["kind"] in ('import','press_fit','stacked') and not job.get("domain"):
+        if job["kind"] in ('import','press_fit','stacked','gap_blocks','hertz') and not job.get("domain"):
             # one physical volume per body: gmshToFoam turns them into cellZones (b<tag>) for multi-region solvers
             for _, vt in gmsh.model.getEntities(3):
                 gmsh.model.addPhysicalGroup(3, [vt], tag=100000 + vt, name=f"b{vt}")
@@ -928,6 +995,8 @@ def mesh_job(job: dict) -> None:
             # the corner points of an OCC primitive carry a default size of their own (about 20 mm on a 100 mm cube):
             # it overruled h, so "normal" and "fine" gave the same mesh and a mesh study could not refine
             gmsh.model.mesh.setSize(gmsh.model.getEntities(0), h)
+            if job['kind'] == 'gap_blocks':                # the upper block finer: a non-matching interface
+                gmsh.model.mesh.setSize(gmsh.model.getBoundary([(3, 2)], recursive=True), h * 0.625)
         gmsh.option.setNumber("Mesh.MeshSizeMax", h)
         gmsh.option.setNumber("Mesh.MeshSizeMin", job["_hmin"] * 0.5 if job.get("_hmin") else h * (0.5 if job["kind"] != "import" else 0.1))
         gmsh.option.setNumber("Mesh.Algorithm3D", 1)

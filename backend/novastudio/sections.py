@@ -27,7 +27,7 @@ def section_field(jd, kind, quantity, mode, P, triangles, scalars, displacement,
     origin = offset*normal
     output, values, indices = [], [], []
     from .probe import _fields, _Locator
-    if kind == 'modal':
+    if kind in ('modal', 'buckling'):
         u = data['mode_shapes'][mode-1]
         nodal = np.column_stack([np.linalg.norm(u,axis=1),u])
     else:

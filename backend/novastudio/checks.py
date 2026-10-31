@@ -80,6 +80,26 @@ def run(case: dict, lang: str) -> list[dict]:
             add('error','contact_modal','physics')
         if large and any(c.get('type','bonded') != 'bonded' for c in case.get('contacts',{}).values()):
             add('error','contact_large_deformation','physics')
+        if case['physics'].get('fatigue', {}).get('enabled'):
+            from .fatigue import material
+            if case['physics'].get('analysis') in ('modal', 'buckling', 'nonlinear') or case.get('contact_pairs') or \
+                    any(c.get('type','bonded') != 'bonded' for c in case.get('contacts',{}).values()) or \
+                    case['run'].get('mode') == 'final':
+                add('warn','fatigue_scope','physics')
+            elif case.get('body_materials') or material(case) is None:
+                add('warn','fatigue_material','physics')
+        if case.get('contact_pairs'):
+            if case['physics'].get('analysis') in ('modal', 'buckling'):
+                add('error','contact_pairs_analysis','physics')
+            if large:
+                add('error','contact_large_deformation','physics')
+        if case['physics'].get('analysis') == 'buckling':
+            # the prestress of the eigenproblem comes from one linear static step of the applied loads only
+            tl = case['physics'].get('thermal_load', {})
+            if any(c.get('type','bonded') != 'bonded' for c in case.get('contacts',{}).values()) or \
+                    (tl if isinstance(tl, str) else tl.get('mode','none')) != 'none' or \
+                    any(case['physics'].get(k, {}).get('enabled') for k in ('gravity','rotation')):
+                add('error','buckling_loads','physics')
         for mat in mats:
             model = mat.get('model','linear')
             if model != 'linear' and not nonlinear:

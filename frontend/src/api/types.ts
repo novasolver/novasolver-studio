@@ -31,6 +31,8 @@ export interface Quantity {
 
 export interface CaseSchema {
   contacts?: Record<string, ContactSettings>;
+  /** contact between separate surfaces (no shared nodes): master/slave face keys */
+  contact_pairs?: Record<string, { master: string[]; slave: string[]; type: ContactSettings["type"]; mu: number; search: Quantity }>;
   body_props?: Record<string, Record<string, unknown>>;
   body_materials?: Record<string, string>;
   face_groups?: Record<string, string[]>;
@@ -42,6 +44,7 @@ export interface CaseSchema {
   engine?: { kind: string; version?: string };
   geometry?: { kind: string; params?: Record<string, Quantity> };
   physics?: { kind: string; joule_heating?: boolean; analysis?: string; modes?: number;
+    fatigue?: { enabled?: boolean; ratio?: number; surface?: string; cycles?: number };
     nonlinear?: { large_deformation?: boolean; steps?: 'auto' | number; max_iterations?: number; path?: number[]; face?: string };
     T_ref?: Quantity; thermal_load?: { mode: string; temperature?: Quantity };
     gravity?: { enabled?: boolean; g?: Quantity; direction?: string };
@@ -290,7 +293,7 @@ export interface ResultsPayload {
   curve?: { step: number; load_fraction: number; max_disp_m: number; face_disp_m: number[]; iterations: number }[];
   interfaces?: Record<string, { force_n: number[]; normal_force_n: number; pressure_pa: number; status_counts: Record<string,number> }>;
   large_deformation?: boolean;
-  modes?: { mode: number; frequency_hz: number; effective_mass: number[] }[];
+  modes?: { mode: number; frequency_hz?: number; effective_mass?: number[]; load_factor?: number; critical_load_n?: number }[];
   free_free?: boolean;
   kind?: string;
   run_id?: string;

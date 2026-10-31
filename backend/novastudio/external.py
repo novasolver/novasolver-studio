@@ -196,6 +196,10 @@ def compile_calculix(case: dict, mesh: dict, temperature=...) -> str:
         raise StudioError('err.plastic_large',400)
     if any(b['role'] == 'spring' for b in case['boundaries'].values()):
         raise StudioError('err.final_unsupported',400,feature='distributed spring supports')
+    if case.get('physics',{}).get('analysis') == 'buckling':
+        raise StudioError('err.final_unsupported',400,feature='linear buckling (solved by the built-in solver)')
+    if case.get('contact_pairs'):
+        raise StudioError('err.final_unsupported',400,feature='contact between separate surfaces (solved by the built-in solver)')
     contact_faces = [f for f in case['geometry'].get('faces',[]) if f.get('interface') and settings(case,f['key'])['type'] != 'bonded']
     if contact_faces and nonlinear:
         raise StudioError('err.final_unsupported',400,feature='combined nonlinear contact step output')

@@ -226,11 +226,45 @@ def modal_reference(case, table):
     return ref
 
 
+def buckling_reference(case, table):
+    """Euler columns: fixed-free P = pi^2 EI/(4 L^2); clamped at both ends (axial shortening imposed) P = 4 pi^2 EI/L^2."""
+    from .reference_loads import unsupported_loads
+    excluded = unsupported_loads(case)
+    if excluded:
+        return excluded
+    b, tid = case['boundaries'], case['template']
+    na = {'applicable': False, 'why_key': 'verify.structural_pattern_reason'}
+    others = [v['role'] for f, v in b.items() if f not in ('x0', 'x1')]
+    if tid not in ('column-buckling', 'column-buckling-clamped') or case.get('body_materials') or b['x0']['role'] != 'fixed' \
+            or any(r != 'free' for r in others):
+        return na
+    x1 = b['x1']
+    if tid == 'column-buckling' and not (x1['role'] == 'load' and x1.get('direction') == '-x'):
+        return na
+    if tid == 'column-buckling-clamped' and not (x1['role'] == 'displacement' and x1.get('ux') is not None
+                                                 and units.to_si(x1['ux']) < 0 and all(x1.get(k) is not None and units.to_si(x1[k]) == 0 for k in ('uy', 'uz'))):
+        return na
+    from .templates import solid_props
+    E = solid_props(case)['E']
+    p = case['geometry']['params']
+    L, w, h = (units.to_si(p[k]) for k in ('length', 'width', 'height'))
+    I = max(w, h)*min(w, h)**3/12
+    k, formula = (0.25, 'Euler, fixed-free: P = pi^2 E I / (4 L^2)') if tid == 'column-buckling' else \
+        (4.0, 'Euler, clamped at both ends: P = 4 pi^2 E I / L^2')
+    ref = comparison(case, 'critical_load', table[0]['critical_load_n'], k*np.pi**2*E*I/L**2, 'N', formula)
+    if len(table) >= 2 and abs(w/h-1) < 1e-8:
+        # a square section buckles equally about both axes: the second mode is the other half of the pair
+        second = comparison(case, 'critical_load', table[1]['critical_load_n'], k*np.pi**2*E*I/L**2, 'N', formula)
+        ref['second_axis'] = second
+        ref['pass'] = ref['pass'] and second['pass']
+    return ref
+
+
 def reference(case, mesh, r, metrics):
     from .templates import solid_props
     from .reference_loads import unsupported_loads
     tid = case['template']
-    if tid in ('press-fit','stacked-blocks','friction-block','large-cantilever','plastic-bar','plastic-beam-collapse','rubber-tension'):
+    if tid in ('press-fit','stacked-blocks','friction-block','large-cantilever','plastic-bar','plastic-beam-collapse','rubber-tension','gap-blocks','tied-parts','hertz-cylinder'):
         return nonlinear_reference(case,mesh,r,metrics)
     expected = {'thermal-bar-fixed': {'thermal'}, 'thermal-bar-free': {'thermal'}, 'hanging-bar': {'gravity'},
                 'rotating-disk': {'rotation'}}
@@ -302,7 +336,36 @@ def reference(case, mesh, r, metrics):
         ref['shear'] = comparison(case,'shear',metrics['shear_pa'],abs(torque)*R/J,'Pa','tau = T R/J')
         ref['pass'] &= ref['shear']['pass']
         return ref
+    if tid == 'fatigue-bar':
+        # uniaxial bar, peak stress sigma = F/A cycled between R sigma and sigma: Goodman by hand
+        roles = {'x0':'constraint','y0':'symmetry','z0':'symmetry','x1':'load','y1':'free','z1':'free'}
+        if 'fatigue_sf_min' not in metrics or any(b[f]['role'] != v for f,v in roles.items()) or b['x0'].get('components') != 'x' \
+                or b['x1'].get('direction') != '+x':
+            return na
+        A = units.to_si(p['width'])*units.to_si(p['height'])
+        smax = units.to_si(b['x1']['force'])/A
+        R_ = metrics['fatigue_ratio']; se, su = metrics['fatigue_se_pa'], metrics['fatigue_su_pa']
+        amp, mean = (1-R_)/2*smax, (1+R_)/2*smax
+        expected = 1/(amp/se+mean/su) if mean > 0 else se/amp
+        return comparison(case,'fatigue_sf',metrics['fatigue_sf_min'],expected,'-',
+                          'Goodman: n = 1/(sigma_a/Se + sigma_m/Su), sigma_a = (1-R) sigma/2, sigma_m = (1+R) sigma/2')
     return na
+
+
+def hertz_line(case):
+    """Hertz line contact of two equal elastic bodies (cylinder on a flat), plane strain. P per unit length from the
+    load on the quarter model: the full force is twice it (symmetry at x = 0), spread over the slab thickness.
+    1/E* = 2 (1 - nu^2)/E; a = sqrt(4 P R/(pi E*)); p0 = 2 P/(pi a)."""
+    from .templates import solid_props
+    p = case['geometry']['params']
+    props = solid_props(case)
+    R, T = units.to_si(p['radius']), units.to_si(p['thickness'])
+    load = case['boundaries'].get('load', {})
+    F = units.to_si(load['force']) if load.get('role') == 'load' and load.get('force') is not None else 0.
+    P = 2*F/T
+    Es = props['E']/(2*(1-props['nu']**2))
+    a = np.sqrt(4*P*R/(np.pi*Es)) if P > 0 else 0.05*R
+    return {'P': P, 'E_star': Es, 'a': float(a), 'p0': float(2*P/(np.pi*a)) if P > 0 else 0.}
 
 
 def nonlinear_reference(case,mesh,r,metrics):
@@ -314,6 +377,49 @@ def nonlinear_reference(case,mesh,r,metrics):
     tid = case['template']; p = case['geometry']['params']; props = solid_props(case)
     E,nu = props['E'],props['nu']
     na = {'applicable':False,'why_key':'verify.structural_pattern_reason'}
+    if tid == 'hertz-cylinder':
+        b = case['boundaries']
+        pair = case.get('contact_pairs',{}).get('interface')
+        contact = r.get('interfaces',{}).get('interface')
+        expected = {'load':'load','x0':'symmetry','bottom':'fixed','z0':'constraint','z1':'constraint'}
+        if not pair or not contact or pair.get('type') != 'frictionless' or case.get('body_props') or \
+                any(b.get(f,{}).get('role') != v for f,v in expected.items()) or b['load'].get('direction') != '-y' or \
+                any(b[f].get('components') != 'z' for f in ('z0','z1')) or \
+                any(solid_props(case,k)['E'] != E or solid_props(case,k)['nu'] != nu for k in case.get('body_materials',{})):
+            return na
+        hz = hertz_line(case)
+        slave = np.unique(mesh['face_block_top']) if 'face_block_top' in mesh else None
+        if slave is None or 'p_contact' not in r:
+            return na
+        pc = np.asarray(r['p_contact'])[slave]
+        x = mesh['nodes'][slave, 0]
+        metrics['contact_pressure_pa'] = float(pc.max())
+        loaded = x[pc > 0.02*pc.max()]
+        metrics['contact_halfwidth_m'] = float(loaded.max()) if len(loaded) else 0.
+        ref = comparison(case,'contact_pressure',metrics['contact_pressure_pa'],hz['p0'],'Pa',
+                         'Hertz line contact, plane strain: p0 = sqrt(P E*/(pi R)), 1/E* = 2(1 - nu^2)/E')
+        half = comparison(case,'contact_halfwidth',metrics['contact_halfwidth_m'],hz['a'],'m','Hertz: a = sqrt(4 P R/(pi E*))')
+        half['tolerance_pct'] = 10.; half['pass'] = bool(abs(half['error_pct']) <= 10.)
+        ref['halfwidth'] = half
+        ref['pass'] &= half['pass']
+        return ref
+    if tid in ('gap-blocks','tied-parts'):
+        # two equal blocks in series, rollers on x0/y0/bottom, top face displaced along z: uniform uniaxial stress
+        # sigma = E (|d| - g)/(2h) once the gap g has closed (tied: g = 0, tension or compression alike)
+        pair = case.get('contact_pairs',{}).get('interface')
+        contact = r.get('interfaces',{}).get('interface')
+        top = case['boundaries'].get('top',{})
+        if not pair or not contact or top.get('role') != 'displacement' or top.get('uz') is None or case.get('body_props') \
+                or any(solid_props(case,b)['E'] != E for b in case.get('body_materials',{})):
+            return na
+        if pair.get('type') != ('bonded' if tid == 'tied-parts' else 'frictionless'):
+            return na
+        d = abs(units.to_si(top['uz'])); h = units.to_si(p['height']); g = units.to_si(p['gap'])
+        area = units.to_si(p['length'])*units.to_si(p['width'])
+        force = E*max(d-g,0)/(2*h)*area
+        metrics['contact_force_n'] = abs(contact['normal_force_n'])
+        return comparison(case,'contact_force',metrics['contact_force_n'],force,'N',
+                          'Two blocks in series: F = E (d - g) A / (2 h)' if tid == 'gap-blocks' else 'Tied bar: F = E d A / (2 h)')
     if tid in ('press-fit','stacked-blocks','friction-block'):
         contact = r.get('interfaces',{}).get('interface')
         if not contact:

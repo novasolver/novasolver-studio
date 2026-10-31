@@ -198,6 +198,8 @@ export const api = {
   run: (id: string, mode: "preview" | "final") => request<RunResponse>("POST", `/api/cases/${encodeURIComponent(id)}/run`, { mode }),
   /** Mesh convergence study: one background job that solves on coarse, normal and fine meshes. */
   convergence: (id: string) => request<RunResponse>("POST", `/api/cases/${encodeURIComponent(id)}/convergence`),
+  detectContacts: (id: string, apply: boolean) => request<{ pairs: { name: string; master: string[]; slave: string[]; gap_mm: number }[]; applied: boolean }>(
+    "POST", `/api/cases/${encodeURIComponent(id)}/detect-contacts`, { apply }),
   job: (jobId: string) => request<Job>("GET", `/api/jobs/${encodeURIComponent(jobId)}`),
   stopJob: (jobId: string) => request<Job>("POST", `/api/jobs/${encodeURIComponent(jobId)}/stop`),
   results: (id: string) => request<ResultsPayload>("GET", `/api/cases/${encodeURIComponent(id)}/results`),

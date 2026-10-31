@@ -25,18 +25,22 @@ export function ResultsTools() {
   const offline = useStore(s => s.mode === 'mock');
   const [axis,setAxis] = useState(() => section ? ['x','y','z'][section.normal.findIndex(v => v === 1)] ?? 'camera':'x');
   if (!r || !cid) return null;
-  const supportsSection = ['structural','modal','thermal','electrostatic','current','conjugate'].includes(r.kind ?? '');
+  const supportsSection = ['structural','modal','buckling','thermal','electrostatic','current','conjugate'].includes(r.kind ?? '');
+  const buckling = r.kind === 'buckling';
   const plane = (a: string, p: number) => ({ normal:a === 'camera' ? getViewer()?.cameraDirection() ?? [1,0,0] : ['x','y','z'].map(v => v === a ? 1:0), position:p });
   return <>
     {!!r.curve?.length && <NonlinearResults />}
-    {r.modes && <section className="px-4 pt-6"><SectionLabel>{t('modal.modes')}</SectionLabel>
+    {r.modes && <section className="px-4 pt-6"><SectionLabel>{t(buckling ? 'buckling.modes':'modal.modes')}</SectionLabel>
       <div className="tnum overflow-x-auto rounded-[8px] bg-raised px-2 py-1 text-label">
-        <table className="w-full text-right"><thead className="text-fg-2"><tr><th className="h-8 text-left font-medium">{t('modal.mode')}</th><th className="font-medium">Hz</th><th className="font-medium">Mx %</th><th className="font-medium">My %</th><th className="font-medium">Mz %</th></tr></thead>
+        <table className="w-full text-right"><thead className="text-fg-2"><tr><th className="h-8 text-left font-medium">{t('modal.mode')}</th>
+          {buckling ? <><th className="font-medium">λ</th><th className="font-medium">{t('buckling.load')}</th></>
+            : <><th className="font-medium">Hz</th><th className="font-medium">Mx %</th><th className="font-medium">My %</th><th className="font-medium">Mz %</th></>}</tr></thead>
           <tbody>{r.modes.map(m => <tr key={m.mode} className="border-t border-line text-fg">
             <td className="text-left"><button className="flex h-8 items-center gap-1" onClick={() => void selectMode(m.mode)} aria-pressed={selected === m.mode}>
               <span aria-hidden className={`h-3 w-3 rounded-full border border-line-strong ${selected === m.mode ? 'bg-fg':'bg-surface'}`} />{m.mode}</button></td>
-            <td>{fmt(m.frequency_hz,5)}</td>{/* participation below 0.05 % is round-off ("1.89e-14"): show 0 so the table reads at a glance */}
-            {m.effective_mass.map((v,i) => <td key={i}>{v*100 < .05 ? '0' : (v*100).toFixed(1)}</td>)}</tr>)}</tbody></table>
+            {m.load_factor !== undefined ? <><td>{fmt(m.load_factor,4)}</td><td>{fmt(m.critical_load_n ?? 0,4)} <span className="text-fg-3">N</span></td></>
+              : <><td>{fmt(m.frequency_hz ?? 0,5)}</td>{/* participation below 0.05 % is round-off ("1.89e-14"): show 0 so the table reads at a glance */}
+            {(m.effective_mass ?? []).map((v,i) => <td key={i}>{v*100 < .05 ? '0' : (v*100).toFixed(1)}</td>)}</>}</tr>)}</tbody></table>
       </div>
       <Button variant="secondary" className="mt-3" onClick={() => setState({modeAnimation:!animation})}>
         {animation ? <Pause size={14} strokeWidth={1.5} />:<Play size={14} strokeWidth={1.5} />}{t(animation ? 'modal.pause':'modal.animate')}

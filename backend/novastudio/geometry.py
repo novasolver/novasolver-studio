@@ -21,6 +21,11 @@ def dims(case: dict) -> list[float]:
         return [units.to_si(p["length"]), units.to_si(p["width"]), units.to_si(p["height"])]
     if kind == 'stacked':
         return [units.to_si(p['length']),units.to_si(p['width']),2*units.to_si(p['height'])]
+    if kind == 'gap_blocks':
+        return [units.to_si(p['length']),units.to_si(p['width']),2*units.to_si(p['height'])+units.to_si(p['gap'])]
+    if kind == 'hertz':          # block, then the bottom of the cylinder cut flat at the block height (or its radius)
+        h, r = units.to_si(p['height']), units.to_si(p['radius'])
+        return [units.to_si(p['length']),h+min(h,r),units.to_si(p['thickness'])]
     if kind == 'press_fit':
         return [units.to_si(p['outer_radius'])]*2+[units.to_si(p['height'])]
     if kind == "plate_hole":
@@ -62,6 +67,9 @@ def mesh_key(case: dict) -> str:
     from .box_mesh import DIVISIONS
     if case['template'] in DIVISIONS:
         extra['divisions'] = DIVISIONS[case['template']]
+    if case['geometry']['kind'] == 'hertz':        # the refinement around the contact follows the load
+        from .structural import hertz_line
+        extra['contact_halfwidth'] = round(hertz_line(case)['a'], 9)
     if case["template"] in ("import-flow", "import-conjugate"):   # mesh size follows the inlet/outlet faces
         from .flow3d import mesh_size
         extra = {"h": round(mesh_size(case), 9)}
@@ -96,6 +104,13 @@ def worker_job(case: dict, **kw) -> dict:
         job['radius'] = units.to_si(case['geometry']['params']['radius'])
     if case['geometry']['kind'] == 'press_fit':
         job['radius'] = units.to_si(case['geometry']['params']['radius'])
+    if case['geometry']['kind'] == 'gap_blocks':
+        job['gap'] = units.to_si(case['geometry']['params']['gap'])
+    if case['geometry']['kind'] == 'hertz':
+        from .structural import hertz_line
+        job['radius'] = units.to_si(case['geometry']['params']['radius'])
+        job['block_height'] = units.to_si(case['geometry']['params']['height'])
+        job['contact_halfwidth'] = hertz_line(case)['a']
     job.update(kw)
     return job
 

@@ -504,6 +504,21 @@ def _box(l, w, h):
 _free = {f: {'role': 'free'} for f in FACE_KEYS}
 TEMPLATES['cantilever-modal'] = _structural_template('cantilever-modal', _box(200,10,10),
     {'analysis': 'modal', 'modes': 6}, {**copy.deepcopy(_free), 'x0': {'role': 'fixed'}}, 'frequency', _box_fields)
+# Euler columns, L/h = 40. The clamped column is driven by a 0.1 mm axial shortening of x1 with y and z held.
+TEMPLATES['column-buckling'] = _structural_template('column-buckling', _box(400,10,10), {'analysis': 'buckling', 'modes': 4},
+    {**copy.deepcopy(_free), 'x0': {'role': 'fixed'}, 'x1': {'role': 'load', 'force': {'value': 1, 'unit': 'kN'}, 'direction': '-x'}},
+    'critical_load', _box_fields + [('boundaries.x1.force', 'field.force', 'force', 0, 1e9)])
+TEMPLATES['column-buckling-clamped'] = _structural_template('column-buckling-clamped', _box(400,10,10), {'analysis': 'buckling', 'modes': 4},
+    {**copy.deepcopy(_free), 'x0': {'role': 'fixed'},
+     'x1': {'role': 'displacement', 'ux': {'value': -0.1, 'unit': 'mm'}, 'uy': {'value': 0, 'unit': 'mm'}, 'uz': {'value': 0, 'unit': 'mm'}}},
+    'critical_load', _box_fields)
+# Fatigue of a bar loaded 0 -> 15 kN -> 0 (R = 0, sigma_max 150 MPa), polished: Goodman by hand.
+TEMPLATES['fatigue-bar'] = _structural_template('fatigue-bar', _box(100,10,10),
+    {'fatigue': {'enabled': True, 'ratio': 0.0, 'surface': 'polished', 'cycles': 1e6}},
+    {**copy.deepcopy(_free), 'x0': {'role': 'constraint', 'components': 'x'}, 'y0': {'role': 'symmetry'},
+     'z0': {'role': 'symmetry'}, 'x1': {'role': 'load', 'force': {'value': 15, 'unit': 'kN'}, 'direction': '+x'}},
+    'fatigue_sf', _box_fields + [('boundaries.x1.force', 'field.force', 'force', 0, 1e9)])
+TEMPLATES['fatigue-bar']['case']['reference']['tolerance_pct'] = 1.
 for _tid in ('thermal-bar-fixed', 'thermal-bar-free'):
     _b = {**copy.deepcopy(_free), 'x0': {'role': 'constraint', 'components': 'x'},
           'y0': {'role': 'symmetry'}, 'z0': {'role': 'symmetry'}}
@@ -579,7 +594,37 @@ for _tid in ('stacked-blocks','friction-block'):
     TEMPLATES[_tid] = _structural_template(_tid,{'kind':'stacked','params':{'length':{'value':20,'unit':'mm'},'width':{'value':20,'unit':'mm'},'height':{'value':20,'unit':'mm'}}},
         {},_b,'contact_force',_box_fields)
     TEMPLATES[_tid]['case']['contacts'] = {'interface':{'type':'frictional' if _tid == 'friction-block' else 'frictionless','mu':.2,'offset':{'value':0,'unit':'mm'}}}
-TEMPLATES['friction-block']['case']['body_props'] = {'b1':{'nu':{'value':0,'unit':'-'}},'b2':{'nu':{'value':0,'unit':'-'}}}
+# Separate parts (no shared face), meshed independently: the upper block is finer, so the contact is non-matching.
+for _tid in ('gap-blocks', 'tied-parts'):
+    _gap = 0.05 if _tid == 'gap-blocks' else 0
+    _b = {'bottom': {'role': 'constraint', 'components': 'z'}, 'x0': {'role': 'symmetry'}, 'y0': {'role': 'symmetry'},
+          'x1': {'role': 'free'}, 'y1': {'role': 'free'}, 'lower_top': {'role': 'free'}, 'upper_bottom': {'role': 'free'},
+          'top': {'role': 'displacement', 'ux': None, 'uy': None, 'uz': {'value': -0.1 if _tid == 'gap-blocks' else 0.05, 'unit': 'mm'}}}
+    TEMPLATES[_tid] = _structural_template(_tid, {'kind': 'gap_blocks', 'params': {
+        'length': {'value': 20, 'unit': 'mm'}, 'width': {'value': 20, 'unit': 'mm'}, 'height': {'value': 20, 'unit': 'mm'},
+        'gap': {'value': _gap, 'unit': 'mm'}}}, {}, _b, 'contact_force',
+        _box_fields + [('geometry.params.gap', 'param.block_gap', 'length', 0, 50)])
+    TEMPLATES[_tid]['case']['contact_pairs'] = {'interface': {'master': ['lower_top'], 'slave': ['upper_bottom'],
+        'type': 'frictionless' if _tid == 'gap-blocks' else 'bonded', 'mu': .2, 'search': {'value': 1, 'unit': 'mm'}}}
+    TEMPLATES[_tid]['case']['reference']['tolerance_pct'] = .5
+# Hertz line contact: R 40 mm steel cylinder on a steel block, a 0.5 mm slab held in z (plane strain), quarter model.
+# The load gives a contact half-width a = 1 mm (R/40, peak strain about 0.7 %, so small strain holds): P = a^2 pi E*/(4R)
+# per metre; the model carries half of it.
+# The block is 10a wide and 8a deep: a small model that solves in about a minute, close enough to a half-space.
+_Es = 205e9/(2*(1-.3**2))
+TEMPLATES['hertz-cylinder'] = _structural_template('hertz-cylinder', {'kind': 'hertz', 'params': {
+    'radius': {'value': 40, 'unit': 'mm'}, 'length': {'value': 10, 'unit': 'mm'}, 'height': {'value': 8, 'unit': 'mm'},
+    'thickness': {'value': 0.5, 'unit': 'mm'}}}, {},
+    {'load': {'role': 'load', 'force': {'value': round(1e-3**2*3.141592653589793*_Es/(4*.04)*.5e-3/2, 3), 'unit': 'N'},
+              'direction': '-y'},
+     'x0': {'role': 'symmetry'}, 'bottom': {'role': 'fixed'}, 'z0': {'role': 'constraint', 'components': 'z'},
+     'z1': {'role': 'constraint', 'components': 'z'}, 'x1': {'role': 'free'}, 'block_top': {'role': 'free'},
+     'cyl_surface': {'role': 'free'}}, 'contact_pressure',
+    [('geometry.params.radius', 'param.radius', 'length', 1, 1000), ('boundaries.load.force', 'field.force', 'force', 0, 1e9)])
+TEMPLATES['hertz-cylinder']['case']['contact_pairs'] = {'interface': {'master': ['cyl_surface'], 'slave': ['block_top'],
+    'type': 'frictionless', 'mu': .2, 'search': {'value': 2, 'unit': 'mm'}}}
+TEMPLATES['hertz-cylinder']['case']['reference']['tolerance_pct'] = 5.
+TEMPLATES['friction-block']['case']['body_props'] ={'b1':{'nu':{'value':0,'unit':'-'}},'b2':{'nu':{'value':0,'unit':'-'}}}
 TEMPLATES['stacked-blocks']['case']['reference']['tolerance_pct'] = .5
 TEMPLATES['friction-block']['case']['reference']['tolerance_pct'] = 1.
 TEMPLATES['plastic-bar']['case']['reference']['tolerance_pct'] = 1.
@@ -653,7 +698,7 @@ def new_case(template_id: str, case_id: str) -> dict:
         "checks": {},
         "provenance": {},
     }
-    for key in ('contacts','body_materials','body_props'):
+    for key in ('contacts','contact_pairs','body_materials','body_props'):
         if key in c:
             case[key] = c[key]
     face_descriptors(case)
@@ -662,6 +707,13 @@ def new_case(template_id: str, case_id: str) -> dict:
 
 def face_descriptors(case: dict) -> None:
     """Cheap primitive descriptors; imported faces retain the CAD kernel's descriptors."""
+    if case['geometry']['kind'] in ('gap_blocks', 'hertz'):
+        own = {'bottom': ['b1'], 'lower_top': ['b1'], 'upper_bottom': ['b2'], 'top': ['b2'], 'block_top': ['b1'], 'x1': ['b1'],
+               'cyl_surface': ['b2'], 'load': ['b2']}
+        case['geometry']['faces'] = [{'key':k,'n':i+1,'type':'Plane','bodies':own.get(k,['b1','b2']),'interface':False,
+            'neighbors':[],'smooth_neighbors':[]} for i,k in enumerate(face_keys(case))]
+        case['body_materials'] = case.get('body_materials',{'b1':'steel','b2':'steel'})
+        return
     if case['geometry']['kind'] in ('press_fit','stacked'):
         from .geometry import dims
         size = dims(case)

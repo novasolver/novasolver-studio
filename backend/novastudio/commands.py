@@ -558,6 +558,38 @@ def generate_mesh(case_id: str, size: str | None = None, lang: str = "ja", sourc
     return {"ok": True, "case_id": case_id, "revision": case["revision"], "stats": stats}
 
 
+def detect_contacts(case_id: str, search: str | dict | None = None, apply: bool = False, lang: str = "ja",
+                    source: str = 'gui') -> dict:
+    """Suggest contact_pairs between separate parts (faces of different bodies within `search`, facing each other).
+    With apply=True they are added as bonded pairs (the CAD default); the type is then changed per pair."""
+    import numpy as np
+    from .contact import detect
+    case = store.load(case_id)
+    if templates.get(case["template"])["physics"] != "structural":
+        raise StudioError("err.path", 400, path="detect_contacts")
+    s = units.to_si(units.normalize(search, {"value": 1, "unit": "mm"})) if search is not None else 1e-3
+    ms = geometry.mesh_state(case)
+    if not ms["exists"] or ms["stale"]:
+        geometry.generate_mesh(case)
+    mesh = dict(np.load(geometry.mesh_dir(case) / "mesh.npz"))
+    found = detect(case, mesh, s)
+    existing = {(tuple(p['master']), tuple(p['slave'])) for p in case.get('contact_pairs', {}).values()}
+    found = [f for f in found if (tuple(f['master']), tuple(f['slave'])) not in existing
+             and (tuple(f['slave']), tuple(f['master'])) not in existing]
+    names, n = [], 1
+    for f in found:
+        while f"pair{n}" in case.get('contact_pairs', {}):
+            n += 1
+        f['name'] = f"pair{n}"
+        names.append(f['name']); n += 1
+    if apply and found:
+        update_case(case_id, case["revision"], {f"contact_pairs.{f['name']}": {
+            "master": f["master"], "slave": f["slave"], "type": "bonded", "search": {"value": s * 1e3, "unit": "mm"}}
+            for f in found}, lang, source=source)
+    return {"case_id": case_id, "search_mm": s * 1e3, "applied": bool(apply and found),
+            "pairs": [{k: f[k] for k in ("name", "master", "slave", "coverage")} | {"gap_mm": f["gap_m"] * 1e3} for f in found]}
+
+
 def geometry_payload(case_id: str, lang: str = "ja") -> dict:
     case = store.load(case_id)
     tp = templates.get(case["template"])

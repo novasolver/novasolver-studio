@@ -32,7 +32,7 @@ def _fields(kind: str, data, mode: int = 1) -> dict[str, tuple[np.ndarray, str]]
         if 'T' in data.files:
             out['temp'] = (data['T']-273.15,'°C')
         return out
-    if kind == 'modal':
+    if kind in ('modal', 'buckling'):
         if not 1 <= mode <= len(data['mode_shapes']):
             raise StudioError('err.path',400,path=f'mode={mode}')
         u = data['mode_shapes'][mode-1]

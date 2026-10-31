@@ -61,7 +61,7 @@ import { fmt, fmtDuration, fmtGci, fmtInt, fmtSignedPct, unitLabel } from "../li
 import { STEP_ICONS } from "./stepIcons";
 import { cadPhysicsOf, pickCadFile } from "./ImportCad";
 import { SelectionActions } from './SelectionActions';
-import { ContactsSettings, StructuralSettings, VectorInput } from './StructuralSettings';
+import { ContactPairsSettings, ContactsSettings, StructuralSettings, VectorInput } from './StructuralSettings';
 import { ResultsTools } from './ResultsTools';
 
 // ------------------------------------------------------------------ shared bits
@@ -912,6 +912,7 @@ function BoundariesStep() {
     <>
       <FaceGroups />
         <ContactsSettings />
+        <ContactPairsSettings />
       <Section
         title={t("bc.faces")}
         right={

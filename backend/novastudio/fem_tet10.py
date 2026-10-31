@@ -45,7 +45,7 @@ def committable_bytes() -> int | None:
 
 # measured peak of the whole run worker (thick-sphere octant, 2026-10-28): 1.58 GB at 117k nodes, 3.84 GB at 454k
 MEM_BASE = 600e6
-MEM_PER_NODE = {"structural": 7.5e3, "scalar": 2.5e3, "modal": 22e3, 'nonlinear': 24e3}
+MEM_PER_NODE = {"structural": 7.5e3, "scalar": 2.5e3, "modal": 22e3, 'nonlinear': 24e3, "buckling": 24e3}
 
 
 def check_memory(n_nodes: int, kind: str, steps: int = 1) -> None:
@@ -614,6 +614,114 @@ def solve_modal(nodes, tets, E, nu, rho, fixed_faces=(), rollers=(), modes=6, pr
     display = shapes/np.linalg.norm(shapes, axis=2).max(axis=1)[:, None, None]
     return {'modes': table, 'phi': shapes, 'mode_shapes': display, 'free_free': free_free,
             'residual': float(rel.max()), 'converged': bool(rel.max() < 1e-5)}
+
+
+BUCKLING_STRAIN_LIMIT = 0.05
+
+
+def geometric_stiffness(nodes, tets, stress):
+    """Initial-stress stiffness K_sigma = sum_e int G^T (sigma0 x I3) G dV, with sigma0 (E,4,6) at the 4 Gauss points
+    (xx, yy, zz, xy, yz, zx). Assembled as a scalar 10x10 per element, then expanded to the three components."""
+    Kg = sp.csr_matrix((len(nodes), len(nodes)))
+    for s in range(0, len(tets), ASSEMBLY_CHUNK):
+        sl = slice(s, s + ASSEMBLY_CHUNK)
+        conn, X = tets[sl], nodes[tets[sl]]
+        ke = np.zeros((len(conn), 10, 10))
+        for g in range(4):
+            J = np.einsum("ik,ekj->eij", DSHAPE[g], X)
+            detJ = np.linalg.det(J)
+            dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(detJ), 3, 10)))
+            sg = stress[sl, g]
+            S = np.empty((len(detJ), 3, 3))
+            S[:, 0, 0], S[:, 1, 1], S[:, 2, 2] = sg[:, 0], sg[:, 1], sg[:, 2]
+            S[:, 0, 1] = S[:, 1, 0] = sg[:, 3]
+            S[:, 1, 2] = S[:, 2, 1] = sg[:, 4]
+            S[:, 0, 2] = S[:, 2, 0] = sg[:, 5]
+            ke += (GW[g] * detJ)[:, None, None] * np.einsum("eia,eij,ejb->eab", dNdx, S, dNdx)
+        Kg += sp.csr_matrix((ke.ravel(), (np.repeat(conn, 10, 1).ravel(), np.tile(conn, (1, 10)).ravel())), shape=Kg.shape)
+    return sp.kron(Kg, sp.eye(3), format="csr")
+
+
+def solve_buckling(nodes, tets, E, nu, fixed_faces=(), tractions=(), rollers=(), prescribed=(), modes=4,
+                   progress=lambda *_: None, *, springs=None, nodal_forces=None):
+    """Linear (eigenvalue) buckling: a linear static step for the applied load P0, then (K + lambda K_sigma) phi = 0
+    on the supported dofs, solved as theta = 1/lambda with -K_sigma phi = theta K phi (K is positive definite).
+    prescribed: (tri, component, value) imposed in the static step and held at zero in the eigenproblem."""
+    tets = canonical_tets(nodes, tets)
+    n, ndof = len(nodes), 3 * len(nodes)
+    check_memory(n, "buckling")
+    progress("job.assembling", 0.10)
+    K, f, vol, dofs, Ds, mat, _ = structural_system(nodes, tets, E, nu)
+    f += surface_forces(nodes, tractions).ravel()
+    if nodal_forces is not None:
+        f += np.asarray(nodal_forces).ravel()
+    spring = np.zeros(ndof) if springs is None else np.asarray(springs).ravel()
+    if np.any(spring):
+        K = K + sp.diags(spring)
+    held = [3 * np.unique(fa)[:, None] + np.arange(3) for fa in fixed_faces]
+    held += [3 * np.unique(tri) + c for tri, c in rollers]
+    up = np.zeros(ndof)
+    for tri, c, value in prescribed:
+        idx = 3 * np.unique(tri) + c
+        held.append(idx)
+        up[idx] = value
+    fixed = np.unique(np.concatenate([h.ravel() for h in held])) if held else np.array([], int)
+    free = np.setdiff1d(np.arange(ndof), fixed)
+    if not len(fixed) and not np.any(spring):
+        raise RuntimeError("buckling needs supports")
+    progress("job.solving", 0.30)
+    Kff = K[free][:, free].tocsc()
+    lu = spla.splu(Kff) if len(free) <= MODAL_DIRECT_LIMIT else None
+    rhs = f[free] - K[free][:, fixed] @ up[fixed]
+    u = up.copy()
+    u[free] = lu.solve(rhs) if lu is not None else _amg_cg(K[free][:, free].tobsr(blocksize=(3, 3)), rhs)
+    reaction = np.zeros(ndof)
+    reaction[fixed] = K[fixed] @ u - f[fixed]
+    X = nodes[tets]
+    stress = np.zeros((len(tets), 4, 6))
+    max_strain = 0.0
+    for g in range(4):
+        J = np.einsum("ik,ekj->eij", DSHAPE[g], X)
+        dNdx = np.linalg.solve(J, np.broadcast_to(DSHAPE[g], (len(tets), 3, 10)))
+        strain = np.einsum("eij,ej->ei", _bmatrix(dNdx), u[dofs])
+        max_strain = max(max_strain, float(np.abs(strain).max()))
+        stress[:, g] = np.einsum("ekl,el->ek", Ds[mat], strain)
+    progress("job.buckling_eigen", 0.55)
+    A = -geometric_stiffness(nodes, tets, stress)[free][:, free]
+    count = min(int(modes), len(free) - 2)
+    if lu is not None:
+        Minv = spla.LinearOperator(Kff.shape, matvec=lu.solve, dtype=float)
+        theta, vectors = spla.eigsh(A, k=count, M=Kff, Minv=Minv, which="LA", tol=1e-10)
+    else:
+        import pyamg
+        ml = pyamg.smoothed_aggregation_solver(K[free][:, free].tocsr(), B=rigid_body_modes(nodes)[free],
+                                               symmetry="symmetric")
+        X0 = np.random.default_rng(0).normal(size=(len(free), count))
+        theta, vectors = spla.lobpcg(A, X0, B=K[free][:, free], M=ml.aspreconditioner(), largest=True, tol=1e-9, maxiter=1000)
+    order = np.argsort(-theta)
+    theta, vectors = theta[order], vectors[:, order]
+    residual = A @ vectors - (Kff @ vectors) * theta
+    rel = np.linalg.norm(residual, axis=0) / np.maximum(np.linalg.norm(Kff @ vectors, axis=0) * np.abs(theta), 1e-300)
+    # A factor that would strain the part by more than 5 % is not buckling within linear elasticity: a pulled bar has
+    # such roots from the small compressive stresses next to its supports (lambda ~ 6e5 for a steel column in tension).
+    positive = (theta > 0) & (theta * BUCKLING_STRAIN_LIMIT > max_strain)
+    phi = np.zeros((ndof, len(theta)))
+    phi[free] = vectors
+    shapes = phi.T.reshape(-1, n, 3)
+    shapes = shapes / np.maximum(np.linalg.norm(shapes, axis=2).max(axis=1), 1e-300)[:, None, None]
+    applied = f.reshape(-1, 3).sum(axis=0)
+    # P0: the applied force, or (displacement-driven) the reaction it takes to impose the displacement
+    p0 = float(np.linalg.norm(applied))
+    if p0 == 0 and len(prescribed):
+        pidx = np.unique(np.concatenate([3 * np.unique(tri) + c for tri, c, _ in prescribed]))
+        r = np.zeros(3)
+        np.add.at(r, pidx % 3, reaction[pidx])
+        p0 = float(np.linalg.norm(r))
+    lam = 1.0 / theta[positive]
+    return {"load_factors": lam.tolist(), "negative_factors": (1.0 / theta[~positive & (theta < 0)]).tolist(),
+            "mode_shapes": shapes[positive], "u": u.reshape(-1, 3), "applied_load": p0,
+            "residual": float(rel[positive].max()) if positive.any() else float("nan"),
+            "converged": bool(positive.any() and rel[positive].max() < 1e-5)}
 
 
 # exact consistent "mass" matrix of a straight-sided 6-node triangle, times 180/A

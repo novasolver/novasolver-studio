@@ -15,6 +15,7 @@ from .store import StudioError, case_dir
 
 QUANTITIES = {
     'modal': [('mode', '-', 'sequential')],
+    'buckling': [('mode', '-', 'sequential')],
     "electrostatic": [("v", "V", "sequential"), ("emag", "kV/mm", "sequential")],
     "current": [("temp", "°C", "sequential"), ("v", "V", "sequential"), ("jmag", "A/mm2", "sequential"), ("q", "W/cm3", "sequential")],
     "structural": [("vm", "MPa", "sequential"), ("disp", "mm", "sequential"), ("uz", "mm", "diverging")],   # stress first: what decides failure
@@ -86,6 +87,8 @@ def quantities_for(r):
         choices = choices + [('p_contact','MPa','sequential'),('contact_gap','mm','sequential'),('contact_slip','mm','sequential'),('contact_status','-','sequential')]
     if r.get('curve'):
         choices = choices + [('peeq','-','sequential')]
+    if 'fatigue_sf_min' in r.get('metrics', {}):
+        choices = choices + [('fatigue_sf','-','sequential'),('fatigue_life','log10','sequential')]
     return [(q, u, k) for q, u, k in choices
             if not (r["kind"] == "current" and q == "temp" and "t_max_k" not in r["metrics"])]
 
@@ -96,6 +99,9 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     cards = []
     if r['kind'] == 'modal':
         cards = [_card('frequency', m['frequency_hz'], 'Hz', lang)]
+    elif r['kind'] == 'buckling':
+        cards = [_card('critical_load', m['critical_load_n'], 'N', lang), _card('load_factor', m['load_factor'], '-', lang),
+                 _card('applied_load', m['applied_n'], 'N', lang)]
     elif r["kind"] == "electrostatic":
         if "capacitance_f" in m:
             scale, unit = display_scale("F", m["capacitance_f"])
@@ -117,6 +123,11 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
         cards = [_card("tip_disp", m["tip_disp_m"] * 1e3, "mm", lang)] if "tip_disp_m" in m else []
         if "kt" in m:
             cards.append(_card("kt", m["kt"], "-", lang))
+        if 'fatigue_sf_min' in m:
+            # the minimum next to a rigid support is a singularity: lead with the value away from the supports
+            sf = m.get('fatigue_sf_min_away', m['fatigue_sf_min']) if m.get('peak_on_support') else m['fatigue_sf_min']
+            cards.append(_card('fatigue_sf', min(sf, 1e6), '-', lang, 3))
+            cards.append(_card('fatigue_life', min(m['fatigue_life_min'], m['fatigue_infinite']), 'cycles', lang, 3))
         cards += [_card("max_vm", m["max_vm_pa"] / 1e6, "MPa", lang), _card("max_disp", m["max_disp_m"] * 1e3, "mm", lang)]
         if "reaction_n" in m and m.get('applied_n',m['reaction_n']) > max(1e-9,1e-9*m.get('force_scale_n',0)):
             cards.append(_card("reaction", m["reaction_n"], "N", lang))
@@ -190,6 +201,20 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
         warnings.append({'code':'modal_displacement_ignored','message':t('check.modal_displacement_ignored',lang)})
     if r['kind'] == 'structural' and not r.get('large_deformation') and not r.get('limit_reached') and (m.get('max_strain',0)>.01 or m.get('max_rotation',0)>.0872665):
         warnings.append({'code':'large_deformation','message':t('result.large_deformation',lang)})
+    if m.get('fatigue_unavailable'):
+        warnings.append({'code':'fatigue_unavailable','message':t('result.fatigue_unavailable',lang)})
+    if 'fatigue_sf_min' in m:
+        sf = m.get('fatigue_sf_min_away', m['fatigue_sf_min']) if m.get('peak_on_support') else m['fatigue_sf_min']
+        if sf < 1:
+            warnings.append({'code':'fatigue_fail','message':t('result.fatigue_fail',lang,sf=sf)})
+        if m['fatigue_life_min'] >= m['fatigue_infinite']:
+            warnings.append({'code':'fatigue_infinite','message':t('result.fatigue_infinite',lang)})
+        warnings.append({'code':'fatigue_basis','message':t('result.fatigue_basis',lang,se=m['fatigue_se_pa']/1e6,
+                         su=m['fatigue_su_pa']/1e6,ka=m['fatigue_ka'],r=m['fatigue_ratio'])})
+    if r['kind'] == 'buckling':
+        if m['load_factor'] < 1:
+            warnings.append({'code':'buckles_below_load','message':t('result.buckles_below_load',lang,f=m['load_factor'])})
+        warnings.append({'code':'buckling_imperfection','message':t('result.buckling_imperfection',lang)})
     if r.get('free_free'):
         warnings.append({'code':'free_free', 'message':t('result.free_free',lang)})
     if m.get("air_e_max_v_m", 0) > 3e6:
@@ -218,7 +243,7 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
             "quantities": quantities, "nova_tool": _nova_tool(case), "convergence": _conv_view(r.get("convergence"), lang),
             'curve':r.get('curve',[]),'interfaces':r.get('interfaces',{}),'large_deformation':r.get('large_deformation',False),
             'error':r.get('error'),
-            **({'modes':r['modes'], 'free_free':r.get('free_free',False)} if r['kind'] == 'modal' else {})}
+            **({'modes':r['modes'], 'free_free':r.get('free_free',False)} if r['kind'] in ('modal', 'buckling') else {})}
 
 
 def _conv_view(c, lang):
@@ -357,7 +382,7 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
         P = mesh["nodes"][used]
         vals = {"temp": data["T"][used] - 273.15}
         idx = inv.reshape(-1, 3)
-    elif kind in ('structural', 'modal'):
+    elif kind in ('structural', 'modal', 'buckling'):
         mesh = np.load(jd / "mesh.npz")
         if quantity in ('p_contact','contact_gap','contact_slip','contact_status'):
             contacts = [mesh[k] for k in mesh.files if k.startswith('contact_master_') or k.startswith('contact_slave_')]
@@ -369,7 +394,7 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
             tri = _surface_from_mesh(mesh)
         used, inv = np.unique(tri, return_inverse=True)
         P = mesh["nodes"][used]
-        if kind == 'modal':
+        if kind in ('modal', 'buckling'):
             if not 1 <= mode <= len(data['mode_shapes']):
                 raise StudioError('err.path',400,path=f'mode={mode}')
             U = data['mode_shapes'][mode-1,used]
@@ -380,6 +405,10 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
             for q,scale in [('p_contact',1e-6),('contact_gap',1e3),('contact_slip',1e3),('contact_status',1),('peeq',1)]:
                 if q in data.files:
                     vals[q] = data[q][used]*scale
+            if 'fatigue_sf' in data.files:
+                # colour range: a safety factor above 10 and a life past the infinite-life cap read the same
+                vals['fatigue_sf'] = np.minimum(data['fatigue_sf'][used], 10.)
+                vals['fatigue_life'] = np.log10(np.maximum(data['fatigue_life'][used], 1.))
             if 'T' in data.files:
                 vals['temp'] = data['T'][used]-273.15
         disp = U
@@ -418,7 +447,7 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
         out["auto_deform_scale"] = 1. if r.get('large_deformation') else float(0.08 * bbox / dmax) if dmax > 0 else 1.0
     if step is not None:
         out['step'] = step
-    if kind == 'modal':
+    if kind in ('modal', 'buckling'):
         out['mode'] = mode
     if section is not None:
         out['section'] = section
@@ -476,7 +505,7 @@ def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None, 
         ax.view_init(20, -62)
         ax.set_axis_off()
         cax = fig.add_axes([0.86, 0.15, 0.02, 0.65])
-        note = f" / deformation x{f['auto_deform_scale']:.0f}" if "displacement" in f else ""
+        note = f" / deformation x{f['auto_deform_scale']:.3g}" if "displacement" in f else ""
     else:
         Lx, Ly = np.ptp(P[:, 0]), np.ptp(P[:, 1])
         aspect = Lx / max(Ly, 1e-12)

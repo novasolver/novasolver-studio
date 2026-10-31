@@ -252,6 +252,12 @@ async def mesh(case_id: str, body: dict = Body(default={}), lang: str = "ja"):
     return await call(C.generate_mesh, case_id, (body or {}).get("size"), lang)
 
 
+@app.post("/api/cases/{case_id}/detect-contacts")
+async def detect_contacts(case_id: str, body: dict = Body(default={}), lang: str = "ja"):
+    b = body or {}
+    return await call(C.detect_contacts, case_id, b.get("search"), bool(b.get("apply")), lang)
+
+
 @app.post("/api/cases/{case_id}/run")
 async def run(case_id: str, body: dict = Body(default={}), lang: str = "ja"):
     r = await call(C.run_simulation, case_id, (body or {}).get("mode"), 0.0, lang)
