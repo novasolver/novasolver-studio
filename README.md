@@ -61,6 +61,7 @@ mesh-convergence column is published with each release as `docs/VALIDATION.md`):
 | Water cooling (conjugate heat transfer) | import (2+ bodies) | — | OpenFOAM® (chtMultiRegionSimpleFoam) | heat balance (0.03%) |
 
 Also: a [Blender add-on](integrations/blender/) (send the active object to Studio, PLA/PETG/ABS/TPU or metals),
+a [FreeCAD macro](integrations/freecad/) (send the selected part as STEP),
 3D-printing examples, ParaView VTU / CSV / printable HTML report export, and a Windows installer with `.nscase`
 file association.
 

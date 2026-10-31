@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""FreeCAD macro: analyse the selected part in NovaSolver Studio.
+
+Exports the selected objects (or the active body) as STEP, so Studio keeps the real faces (planes, cylinders, fillets)
+for picking supports and loads, and opens it as a new case in the Studio running on this computer. Talks only to
+127.0.0.1; nothing leaves the computer.
+
+Install: Macro > Macros... > User macros location: copy this file there, then run it (or add it to a toolbar).
+Studio: https://novasolver.jp/studio/  (free, open source)
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+import urllib.request
+import webbrowser
+from pathlib import Path
+
+PHYSICS = "structural"          # or "thermal"; change here, or pick in Studio afterwards
+
+
+def data_dir():
+    """Where Studio writes running.json while it runs (same rule as Studio's osdirs.py)."""
+    if os.environ.get("LOCALAPPDATA"):
+        return Path(os.environ["LOCALAPPDATA"]) / "NovaSolverStudio"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "NovaSolverStudio"
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "NovaSolverStudio"
+
+
+def running_port():
+    try:
+        port = int(json.loads((data_dir() / "running.json").read_text(encoding="utf-8"))["port"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return port if 1024 <= port <= 65535 else None
+
+
+def studio_program():
+    if os.environ.get("LOCALAPPDATA"):
+        exe = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "NovaSolverStudio" / "NovaSolverStudio.exe"
+        if exe.is_file():
+            return [str(exe)]
+    cmd = shutil.which("NovaSolverStudio.exe") or shutil.which("novasolver-studio")
+    return [cmd] if cmd else None
+
+
+def send_step(path, physics=PHYSICS, lang="ja"):
+    """Hand a STEP file to Studio (starting it if needed); returns the new case id."""
+    port, program = running_port(), studio_program()
+    if port is None:
+        if program is None:
+            webbrowser.open("https://novasolver.jp/studio/")
+            raise RuntimeError("NovaSolver Studio is not installed")
+        subprocess.Popen(program, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        t0 = time.monotonic()
+        while (port := running_port()) is None:
+            if time.monotonic() - t0 > 180:
+                raise TimeoutError("NovaSolver Studio did not start within 3 minutes")
+            time.sleep(1)
+    q = urllib.parse.urlencode({"physics": physics, "filename": Path(path).name, "units": "mm", "lang": lang})
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/import?{q}", data=Path(path).read_bytes(),
+                                 method="POST", headers={"Content-Type": "application/octet-stream"})
+    with urllib.request.urlopen(req, timeout=600) as r:
+        cid = json.loads(r.read().decode("utf-8"))["case"]["case_id"]
+    if not re.fullmatch(r"c_\d{8}_\d{6}_[0-9a-f]{4}", cid):
+        raise ValueError("unexpected case id")
+    if program:
+        subprocess.Popen([*program, "--case", cid], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+    else:
+        webbrowser.open(f"http://127.0.0.1:{port}/?case={cid}")
+    return cid
+
+
+def main():
+    import FreeCAD
+    import FreeCADGui
+    import Import
+    objs = [o for o in FreeCADGui.Selection.getSelection() if hasattr(o, "Shape") and not o.Shape.isNull()]
+    if not objs:
+        body = FreeCADGui.ActiveDocument.ActiveView.getActiveObject("pdbody") if FreeCADGui.ActiveDocument else None
+        objs = [body] if body is not None else []
+    if not objs:
+        FreeCAD.Console.PrintError("NovaSolver Studio: select a part (or activate a body) first\n")
+        return
+    name = re.sub(r"[^A-Za-z0-9_-]+", "_", objs[0].Label).strip("_") or "part"
+    folder = Path(tempfile.gettempdir()) / "novasolver_freecad"
+    folder.mkdir(exist_ok=True)
+    step = folder / f"{name}.step"
+    Import.export(objs, str(step))                    # FreeCAD works in millimetres; Studio is told units=mm
+    lang = "ja" if FreeCAD.ParamGet("User parameter:BaseApp/Preferences/General").GetString("Language", "").startswith("Japan") else "en"
+    cid = send_step(step, PHYSICS, lang)
+    FreeCAD.Console.PrintMessage(f"NovaSolver Studio: opened as {cid}\n")
+
+
+if __name__ == "__main__":
+    main()
