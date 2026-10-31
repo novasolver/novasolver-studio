@@ -1,14 +1,18 @@
 """3D-print strength check for a solved structural case in PLA, PETG or ABS.
 
-FDM parts are weakest between layers: tension across the layers opens them long before the filament itself breaks.
-For each of the three possible print directions (layers normal to x, y or z) the check compares
-  - the tension across the layers (the normal stress along the build direction) with the layer-bond strength, and
+FDM parts are weakest between layers: tension and shear across the layers open them long before the filament itself
+breaks. For each of the three possible print directions (layers normal to x, y or z) the check compares
+  - the stress on the layer plane (tension across it and shear along it) with the layer-bond strength, combined as
+    (tension / Z)^2 + (shear / Z)^2 = 1 (the bond is taken to be as strong in shear as in tension), and
   - the von Mises stress with the strength along the filament,
-and reports the safety factor of each orientation and the best one. The part is assumed printed solid (100 % infill,
-enough walls); the strengths are conservative typical values, replaceable by the filament's datasheet values.
-Linear-elastic results only: the check is a screening tool, not a certification.
+and reports the safety factor of each orientation and the best one. Stresses within about two elements of a fixed
+face are left out: a rigid support is a singularity there, and its peak would otherwise pick the orientation.
+The part is assumed printed solid (100 % infill, enough walls); the strengths are conservative typical values,
+replaceable by the filament's datasheet values. Linear static results only: a screening tool, not a certification.
 """
 from __future__ import annotations
+
+import math
 
 import numpy as np
 
@@ -18,22 +22,58 @@ from .store import StudioError
 # typical FDM strengths at 100 % infill [Pa]: along the filament (XY), across layers (Z). Conservative ends of
 # published datasheet ranges; the person can replace them with their filament's values.
 PRINT_MATERIALS = {"pla": (50e6, 25e6), "petg": (45e6, 25e6), "abs": (35e6, 20e6)}
-FIXED_ROLES = ("fixed", "beam-clamp")
+FIXED_ROLES = ("fixed",)        # a beam clamp lets the section contract freely: no singularity, keep its stresses
 AXES = ("x", "y", "z")
+SHEAR = {"x": (3, 5), "y": (3, 4), "z": (4, 5)}     # s columns: sxx syy szz sxy syz szx
+
+
+def _preset(m: dict) -> str | None:
+    key = m.get("preset")
+    return m.get("base_preset") if key == "custom" else key
 
 
 def _material(case: dict) -> str | None:
-    m = case.get("materials", {}).get("solid", {})
-    key = m.get("preset")
-    if key == "custom":
-        key = m.get("base_preset")
-    return key if key in PRINT_MATERIALS else None
+    mat = _preset(case.get("materials", {}).get("solid", {}))
+    if mat not in PRINT_MATERIALS or any(m != mat for m in case.get("body_materials", {}).values()):
+        return None                 # an assembly with other materials: the print strengths would not apply
+    from .templates import solid_props
+    bodies = list(case.get("body_materials", {})) or [None]
+    if any(solid_props(case, b).get("model", "linear") != "linear" for b in bodies):
+        return None
+    return mat
+
+
+def _strength(value, default: float) -> float:
+    if value is None:
+        return default
+    v = float(value) * 1e6
+    if not (math.isfinite(v) and v > 0):
+        raise StudioError("err.print_check_strength", 400)
+    return v
+
+
+def _von_mises(s: np.ndarray) -> np.ndarray:
+    d = (s[:, 0] - s[:, 1]) ** 2 + (s[:, 1] - s[:, 2]) ** 2 + (s[:, 2] - s[:, 0]) ** 2
+    return np.sqrt(0.5 * d + 3.0 * (s[:, 3] ** 2 + s[:, 4] ** 2 + s[:, 5] ** 2))
+
+
+def _near_support(nodes: np.ndarray, tris: list[np.ndarray]) -> np.ndarray:
+    """Nodes within about two elements of a fixed face (as run_worker.support_peak)."""
+    near = np.zeros(len(nodes), bool)
+    if not tris:
+        return near
+    from scipy.spatial import cKDTree
+    tri = np.concatenate([t[:, :3] for t in tris])
+    edge = np.linalg.norm(nodes[tri[:, 0]] - nodes[tri[:, 1]], axis=1)
+    dist, _ = cKDTree(nodes[np.unique(tri)]).query(nodes)
+    return dist <= 2.0 * float(np.median(edge))
 
 
 def check(case: dict, run_id: str | None = None, strength_xy_mpa: float | None = None,
           strength_z_mpa: float | None = None) -> dict:
     mat = _material(case)
-    if case.get("physics", {}).get("kind") != "linear-static" or mat is None:
+    ph = case.get("physics", {})
+    if ph.get("kind") != "linear-static" or ph.get("analysis") in ("modal", "buckling", "nonlinear") or mat is None:
         raise StudioError("err.print_check_scope", 400)
     jd, r = results.load(case["case_id"], run_id)
     npz = jd / "results.npz"
@@ -42,40 +82,38 @@ def check(case: dict, run_id: str | None = None, strength_xy_mpa: float | None =
     with np.load(npz) as d:
         if "s" not in d.files:
             raise StudioError("err.print_check_scope", 400)
-        s, vm = d["s"], d["vm"]
+        s = d["s"]
     with np.load(jd / "mesh.npz") as mesh:
         nodes = mesh["nodes"]
-        support = np.zeros(len(nodes), bool)
-        for key, b in case.get("boundaries", {}).items():
-            if b.get("role") in FIXED_ROLES and f"face_{key}" in mesh.files:
-                support[np.unique(mesh[f"face_{key}"])] = True
+        tris = [np.asarray(mesh[f"face_{key}"]) for key, b in case.get("boundaries", {}).items()
+                if b.get("role") in FIXED_ROLES and f"face_{key}" in mesh.files]
     sxy, sz = PRINT_MATERIALS[mat]
-    if strength_xy_mpa:
-        sxy = float(strength_xy_mpa) * 1e6
-    if strength_z_mpa:
-        sz = float(strength_z_mpa) * 1e6
-    if not (sxy > 0 and sz > 0):
-        raise StudioError("err.print_check_strength", 400)
-    away = ~support if (~support).any() else np.ones(len(nodes), bool)
+    sxy, sz = _strength(strength_xy_mpa, sxy), _strength(strength_z_mpa, sz)
+    near = _near_support(nodes, tris)
+    away = ~near if (~near).any() else np.ones(len(nodes), bool)
+    vm = _von_mises(s)                  # from the same nodal tensor as the layer stresses, so the two agree
 
-    def peak(values, mask):
-        i = int(np.argmax(np.where(mask, values, -np.inf)))
-        return float(values[i]), (nodes[i] * 1e3).round(2).tolist()
+    def at(i: int) -> list[float]:
+        return (nodes[i] * 1e3).round(2).tolist()
 
-    vm_peak, vm_at = peak(vm, away)
+    i_vm = int(np.argmax(np.where(away, vm, -np.inf)))
+    vm_peak = float(vm[i_vm])
     sf_filament = sxy / vm_peak if vm_peak > 0 else float("inf")
     axes = []
     for i, ax in enumerate(AXES):
-        tension, at = peak(s[:, i], away)
-        tension = max(tension, 0.0)
-        sf_layers = sz / tension if tension > 0 else float("inf")
-        axes.append({"axis": ax, "layer_tension_mpa": tension / 1e6, "at_mm": at, "sf_layers": sf_layers,
+        tension = np.maximum(s[:, i], 0.0)
+        shear = np.hypot(s[:, SHEAR[ax][0]], s[:, SHEAR[ax][1]])
+        index = np.hypot(tension / sz, shear / sz)
+        j = int(np.argmax(np.where(away, index, -np.inf)))
+        sf_layers = 1.0 / float(index[j]) if index[j] > 0 else float("inf")
+        axes.append({"axis": ax, "layer_tension_mpa": float(tension[j]) / 1e6,
+                     "layer_shear_mpa": float(shear[j]) / 1e6, "at_mm": at(j), "sf_layers": sf_layers,
                      "sf": min(sf_layers, sf_filament)})
     best = max(axes, key=lambda a: a["sf"])
-    support_peak = float(vm[support].max()) if support.any() else 0.0
+    support_peak = float(vm[near].max()) if near.any() else 0.0
     return {"case_id": case["case_id"], "run_id": jd.name, "material": mat,
             "strength_xy_mpa": sxy / 1e6, "strength_z_mpa": sz / 1e6,
-            "vm_max_mpa": vm_peak / 1e6, "vm_at_mm": vm_at, "sf_filament": sf_filament,
+            "vm_max_mpa": vm_peak / 1e6, "vm_at_mm": at(i_vm), "sf_filament": sf_filament,
             "axes": axes, "best_axis": best["axis"], "best_sf": best["sf"],
             "worst_sf": min(a["sf"] for a in axes),
             "support_peak_mpa": support_peak / 1e6,

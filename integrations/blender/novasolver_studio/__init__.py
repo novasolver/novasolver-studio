@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -27,7 +28,7 @@ from bpy.props import EnumProperty, StringProperty
 
 DOWNLOAD_PAGE = "https://novasolver.jp/studio/"
 CASE_ID = re.compile(r"c_\d{8}_\d{6}_[0-9a-f]{4}")
-MATERIALS = [("pla", "PLA", ""), ("petg", "PETG", ""), ("abs", "ABS", ""), ("tpu", "TPU", ""), ("steel", "Steel", ""),
+MATERIALS = [("pla", "PLA", ""), ("petg", "PETG", ""), ("abs", "ABS", ""), ("steel", "Steel", ""),
              ("aluminium", "Aluminium", ""), ("titanium", "Titanium", ""), ("copper", "Copper", "")]
 PHYSICS = [("structural", "Strength (stress, deflection)", ""), ("thermal", "Heat (temperature)", "")]
 
@@ -52,7 +53,13 @@ def running_port() -> int | None:
         port = int(json.loads((data_dir() / "running.json").read_text(encoding="utf-8"))["port"])
     except (OSError, ValueError, KeyError, TypeError):
         return None
-    return port if 1024 <= port <= 65535 else None
+    if not 1024 <= port <= 65535:
+        return None
+    try:                                    # a Studio that crashed leaves running.json behind: is anyone there?
+        socket.create_connection(("127.0.0.1", port), timeout=1).close()
+    except OSError:
+        return None
+    return port
 
 
 def studio_program(prefs) -> list[str] | None:

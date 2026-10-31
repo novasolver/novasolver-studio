@@ -45,6 +45,15 @@ class Instance:
     def publish(self, port: int) -> None:
         (data_dir() / "running.json").write_text(json.dumps({"port": port, "pid": os.getpid()}), encoding="utf-8")
 
+    def unpublish(self) -> None:
+        """Removes running.json when it is still ours, so nothing finds the port of a Studio that has closed."""
+        p = data_dir() / "running.json"
+        try:
+            if json.loads(p.read_text(encoding="utf-8")).get("pid") == os.getpid():
+                p.unlink()
+        except (OSError, ValueError, AttributeError):
+            pass
+
 
 def running_port() -> int | None:
     """Port of the Studio that holds the lock, or None when none is running (or its port is not written yet)."""
@@ -53,6 +62,20 @@ def running_port() -> int | None:
     except (OSError, ValueError, KeyError, TypeError):
         return None
     return port if 1024 <= port <= 65535 else None
+
+
+def window_started(proc: subprocess.Popen, timeout_s: float = 20.0) -> bool:
+    """Did the app window come up? The browser creates <profile>/lockfile once it runs; a browser that exits first
+    (blocked by policy, broken install) never does, and the caller falls back to the default browser."""
+    lock = window_profile() / "lockfile"
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < timeout_s:
+        if lock.exists():
+            return True
+        if proc.poll() is not None:
+            return lock.exists()
+        time.sleep(0.2)
+    return proc.poll() is None
 
 
 def case_file(argv: list[str]) -> Path | None:
@@ -95,6 +118,10 @@ def open_window(url: str) -> subprocess.Popen | None:
     exe = next(iter(_browsers()), None)
     if exe is None:
         return None
+    try:                                     # left by a browser that crashed: it would read as "window open"
+        os.remove(window_profile() / "lockfile")
+    except OSError:
+        pass                                 # absent, or held by a Studio window that is open right now
     args = [str(exe), f"--app={url}", f"--user-data-dir={window_profile()}", "--no-first-run",
             "--no-default-browser-check", "--disable-background-mode", "--disable-sync", "--disable-extensions",
             "--disable-features=Translate,msEdgeSidebarV2,msImplicitSignin", "--start-maximized"]

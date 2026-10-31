@@ -27,7 +27,8 @@ def offline() -> bool:
 
 def mcp_numbers_only() -> bool:
     """The AI assistant gets numbers and text only, never a picture of the model: render_view and other images are
-    withheld from MCP replies, so a cloud AI never sees the shape. Set NOVASTUDIO_MCP_NO_IMAGES=1, or put an empty
+    withheld from MCP replies. Sizes, face centres and probe coordinates are still sent (the AI needs them to set up
+    and read a case), so the outline of the part can be inferred from them. Set NOVASTUDIO_MCP_NO_IMAGES=1, or put an empty
     file named "mcp_no_images" next to the app or in the data folder (an IT department can deploy it)."""
     if os.environ.get("NOVASTUDIO_MCP_NO_IMAGES", "").strip() not in ("", "0"):
         return True
@@ -47,6 +48,25 @@ def worker_argv(module: str, *args: str) -> list[str]:
     return [sys.executable, "-m", module, *args]
 
 
+def _windows_scratch_roots() -> list[Path]:
+    """Candidates for the OpenFOAM scratch root on Windows, private first. A Japanese or Chinese user name makes the
+    data folder non-ASCII; its 8.3 short name (C:\\Users\\5B8F~1\\...) is ASCII and still the user's own folder.
+    Where short names are off, the all-users Public folder is the ASCII fallback."""
+    d = data_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    roots = [d]
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.kernel32.GetShortPathNameW(str(d), buf, len(buf)):
+            roots.append(Path(buf.value))
+    except (AttributeError, OSError):
+        pass
+    if os.environ.get("PUBLIC"):
+        roots.append(Path(os.environ["PUBLIC"]) / "NovaSolverStudio")
+    return roots
+
+
 def foam_workdir(jd: Path) -> Path:
     """Empty OpenFOAM case folder for the job folder jd. MinGW OpenFOAM is fragile with non-ASCII paths, so such jobs
     solve in an ASCII scratch folder (pointer in of_location.txt), named uniquely per job: convergence levels are all
@@ -60,7 +80,7 @@ def foam_workdir(jd: Path) -> Path:
     wd = jd / "of"
     if not safe(wd):
         tag = hashlib.sha1(str(jd.resolve()).encode("utf-8")).hexdigest()[:10]
-        roots = [data_dir()] if sys.platform == "win32" else [Path.home() / ".novasolver-studio", Path(tempfile.gettempdir()) / "novasolver-studio"]
+        roots = _windows_scratch_roots() if sys.platform == "win32" else [Path.home() / ".novasolver-studio", Path(tempfile.gettempdir()) / "novasolver-studio"]
         root = next((r for r in roots if safe(r)), roots[-1])
         wd = root / "runs" / f"{jd.name}_{tag}" / "of"
         (jd / "of_location.txt").write_text(str(wd), encoding="utf-8")

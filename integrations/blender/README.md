@@ -15,7 +15,7 @@ Check whether a model will hold before you print or make it. The add-on sends th
 
 1. Select the object. Modifiers are applied; the object's world position and scale are used.
 2. Units: Scene Properties > Units. For printing work in millimetres, set Unit Scale to 0.001.
-3. Choose the analysis (strength or heat) and the material (PLA, PETG, ABS, TPU, metals).
+3. Choose the analysis (strength or heat) and the material (PLA, PETG, ABS, metals).
 4. **Analyze in NovaSolver Studio**. Studio starts if needed and opens the part as a new case. Pick the faces that
    are fixed and loaded, and run. An AI assistant connected to Studio (MCP) can also do these steps.
 

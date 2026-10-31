@@ -60,7 +60,7 @@ mesh-convergence column is published with each release as `docs/VALIDATION.md`):
 | Flow around a body | import | — | OpenFOAM® (snappyHexMesh + wall layers) | sphere drag vs Schiller–Naumann (+0.3%) |
 | Water cooling (conjugate heat transfer) | import (2+ bodies) | — | OpenFOAM® (chtMultiRegionSimpleFoam) | heat balance (0.03%) |
 
-Also: a [Blender add-on](integrations/blender/) (send the active object to Studio, PLA/PETG/ABS/TPU or metals),
+Also: a [Blender add-on](integrations/blender/) (send the active object to Studio, PLA/PETG/ABS or metals),
 a [FreeCAD macro](integrations/freecad/) (send the selected part as STEP),
 a 3D-print strength check (safety factor for each print direction in PLA/PETG/ABS, layer lines included), ParaView VTU / CSV / printable HTML report export, and a Windows installer with `.nscase`
 file association.

@@ -36,7 +36,8 @@ def main(ccx_dir: Path, mpi_dir: Path) -> None:
     ccx_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(io.BytesIO(get(*CCX_ZIP))) as z:
         exe = z.read("calculix_2.23_4win/ccx_static.exe")
-    assert hashlib.sha256(exe).hexdigest() == CCX_EXE
+    if hashlib.sha256(exe).hexdigest() != CCX_EXE:          # not assert: python -O would skip it
+        sys.exit("ccx_static.exe differs")
     (ccx_dir / "ccx_static.exe").write_bytes(exe)
 
     import zstandard
@@ -52,7 +53,8 @@ def main(ccx_dir: Path, mpi_dir: Path) -> None:
         lic = next((m for n, m in members.items() if n.lower().startswith("license")), None)
         if lic:
             (mpi_dir / "LICENSE-msmpi.txt").write_bytes(t.extractfile(lic).read())
-    assert hashlib.sha256((mpi_dir / "msmpi.dll").read_bytes()).hexdigest() == MSMPI_DLL, "msmpi.dll differs"
+    if hashlib.sha256((mpi_dir / "msmpi.dll").read_bytes()).hexdigest() != MSMPI_DLL:
+        sys.exit("msmpi.dll differs")
     (mpi_dir / "SOURCE.txt").write_text(f"conda-forge {MSMPI_CONDA[0].rsplit('/', 1)[1]} (sha256 {MSMPI_CONDA[1]}), "
                                         "built from github.com/microsoft/Microsoft-MPI, MIT\n", encoding="utf-8")
     print("ok", sorted(p.name for p in mpi_dir.iterdir()))

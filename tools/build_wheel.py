@@ -20,7 +20,7 @@ def stage_resources() -> None:
             shutil.rmtree(target)
         if name == "samples":
             target.mkdir()
-            for sample in source.glob("*.step"):
+            for sample in [*source.glob("*.step"), *source.glob("*.stl")]:
                 shutil.copy2(sample, target / sample.name)
         else:
             shutil.copytree(source, target)

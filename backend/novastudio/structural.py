@@ -137,7 +137,7 @@ def temperatures(case, mesh, progress):
         from .templates import element_prop
         fixed, flux, conv, _ = thermal_groups(case, mesh, nested=True)
         if not fixed and not conv:
-            raise StudioError('err.no_temperature', 400)
+            raise StudioError('check.no_temperature', 400)
         return solve_thermal(mesh['nodes'], mesh['tets'], element_prop(case, mesh, 'k'), fixed, flux, conv,
                              progress=progress)['T']
     return None
@@ -414,7 +414,9 @@ def nonlinear_reference(case,mesh,r,metrics):
             return na
         if pair.get('type') != ('bonded' if tid == 'tied-parts' else 'frictionless'):
             return na
-        d = abs(units.to_si(top['uz'])); h = units.to_si(p['height']); g = units.to_si(p['gap'])
+        uz = units.to_si(top['uz'])
+        d = max(-uz, 0.0) if tid == 'gap-blocks' else abs(uz)     # only pressing down closes the gap
+        h = units.to_si(p['height']); g = units.to_si(p['gap'])
         area = units.to_si(p['length'])*units.to_si(p['width'])
         force = E*max(d-g,0)/(2*h)*area
         metrics['contact_force_n'] = abs(contact['normal_force_n'])

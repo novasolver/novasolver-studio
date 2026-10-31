@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -38,7 +39,13 @@ def running_port():
         port = int(json.loads((data_dir() / "running.json").read_text(encoding="utf-8"))["port"])
     except (OSError, ValueError, KeyError, TypeError):
         return None
-    return port if 1024 <= port <= 65535 else None
+    if not 1024 <= port <= 65535:
+        return None
+    try:                                    # a Studio that crashed leaves running.json behind: is anyone there?
+        socket.create_connection(("127.0.0.1", port), timeout=1).close()
+    except OSError:
+        return None
+    return port
 
 
 def studio_program():

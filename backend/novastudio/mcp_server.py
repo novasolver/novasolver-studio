@@ -457,17 +457,21 @@ async def verify_case(case_id: str, language: Lang = "ja") -> CallToolResult:
 async def print_check(case_id: str, strength_xy_mpa: float | None = None, strength_z_mpa: float | None = None,
                       run_id: str | None = None, language: Lang = "ja") -> CallToolResult:
     """3D-print strength check of a solved linear static case in PLA, PETG or ABS. FDM parts are weakest between
-    layers, so for each print direction (layers normal to x, y or z) it compares the tension across the layers with
-    the layer-bond strength and the von Mises stress with the filament strength, and names the best orientation.
-    Strengths default to conservative typical values (100 % infill); pass the filament datasheet values if known.
-    Peaks on fully fixed faces are reported separately (support artefacts). Screening only: say so to the person."""
+    layers, so for each print direction (layers normal to x, y or z) it compares the tension and shear on the layer
+    plane with the layer-bond strength and the von Mises stress with the filament strength, and names the best
+    orientation. Strengths default to conservative typical values (100 % infill); pass the filament datasheet values
+    if known. Stresses within about two elements of fully fixed faces are left out and their peak is reported
+    separately (support artefacts). Screening only: say so to the person."""
     r, e = await _call(C.print_check, language, case_id, run_id, strength_xy_mpa, strength_z_mpa, language)
     if e:
         return e
-    lines = [f"{a['axis']}: layer tension {a['layer_tension_mpa']:.3g} MPa, safety factor {a['sf']:.2f}" for a in r["axes"]]
+    lines = [f"{a['axis']}: layer tension {a['layer_tension_mpa']:.3g} MPa, layer shear {a['layer_shear_mpa']:.3g} MPa, "
+             f"safety factor {a['sf']:.2f}" for a in r["axes"]]
     s = (f"{r['material'].upper()} (filament {r['strength_xy_mpa']:.0f} MPa, layer bond {r['strength_z_mpa']:.0f} MPa). "
          f"Best print direction: layers normal to {r['best_axis']} (safety factor {r['best_sf']:.2f}); worst {r['worst_sf']:.2f}.\n"
-         + "\n".join(lines))
+         + "\n".join(lines)
+         + f"\nPeak von Mises next to fixed faces (support artefact, not used): {r['support_peak_mpa']:.3g} MPa."
+         + "\nScreening estimate for a solid print (100 % infill), not a certification.")
     return _ok(s, r)
 
 

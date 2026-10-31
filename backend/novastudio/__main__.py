@@ -90,8 +90,10 @@ def _app(case_path: str | None, query: str = "") -> None:
     case = desktop.case_file([case_path]) if case_path else None
     no_ui = bool(os.environ.get("NOVASTUDIO_NO_BROWSER"))     # set by the update tests
 
+    shown = {}
+
     def show(port: int) -> object:
-        url = f"http://127.0.0.1:{port}/{desktop.open_case(case) if case else query}"
+        url = shown["url"] = f"http://127.0.0.1:{port}/{desktop.open_case(case) if case else query}"
         if no_ui:
             return None
         proc = desktop.open_window(url)
@@ -101,12 +103,14 @@ def _app(case_path: str | None, query: str = "") -> None:
 
     inst = desktop.Instance()
     if not inst.acquire():
-        for _ in range(100):                                   # the first start may still be starting its server
+        for _ in range(1200):                                  # the first start may still be starting its server
             port = desktop.running_port()
             if port:
                 show(port)
                 return
             time.sleep(0.1)
+        # never start a second server next to one that holds the lock: two would share one workspace
+        raise SystemExit("NovaSolver Studio is already starting; try again in a moment")
     (desktop.data_dir() / "running.json").unlink(missing_ok=True)   # left by a crashed start; we own the lock now
 
     import uvicorn
@@ -122,6 +126,9 @@ def _app(case_path: str | None, query: str = "") -> None:
         raise SystemExit("the local server could not start")
     inst.publish(port)
     proc = show(port)
+    if proc is not None and not desktop.window_started(proc):   # Edge/Chrome blocked or broken: use the browser
+        webbrowser.open(shown["url"])
+        proc = None
     try:
         if proc is not None:                                   # own window: the program ends with its last window
             desktop.hide_console()
@@ -132,6 +139,8 @@ def _app(case_path: str | None, query: str = "") -> None:
                 thread.join(0.5)
     except KeyboardInterrupt:
         pass
+    finally:
+        inst.unpublish()                                       # Blender/FreeCAD must not find a closed Studio
     server.should_exit = True
     thread.join(10)
 

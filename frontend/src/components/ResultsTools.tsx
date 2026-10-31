@@ -74,6 +74,9 @@ const PRINT_MATERIALS = ['pla', 'petg', 'abs'];
 
 /** 3D-print strength check for PLA/PETG/ABS: printed parts are weakest between layers, so the safety factor depends
  * on which way the part is printed. One row per build direction, the best one marked. */
+/** A typed strength [MPa], or undefined (the default value) while the field is empty or not a positive number. */
+const strength = (v: string) => { const n = Number(v); return v.trim() && Number.isFinite(n) && n > 0 ? n : undefined; };
+
 function PrintCheckSection({ cid }: { cid: string }) {
   const t = useT();
   const r = useStore(s => s.results);
@@ -86,9 +89,9 @@ function PrintCheckSection({ cid }: { cid: string }) {
   useEffect(() => {
     if (!applicable) { setData(null); return; }
     let live = true;
-    api.printCheck(cid, Number(xy) || undefined, Number(z) || undefined).then(d => { if (live) setData(d); }).catch(() => { if (live) setData(null); });
+    api.printCheck(cid, strength(xy), strength(z)).then(d => { if (live) setData(d); }).catch(() => { if (live) setData(null); });
     return () => { live = false; };
-  }, [cid, r, applicable, xy, z]);
+  }, [cid, r, applicable, preset, xy, z]);
   if (!applicable || !data) return null;
   const sf = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : '∞');
   return <section className="px-4 pt-6"><SectionLabel>{t('print.title')}</SectionLabel>
@@ -96,10 +99,11 @@ function PrintCheckSection({ cid }: { cid: string }) {
     <div className="tnum mt-2 overflow-x-auto rounded-[8px] bg-raised px-2 py-1 text-label">
       <table className="w-full text-right"><thead className="text-fg-2"><tr>
         <th className="h-8 text-left font-medium">{t('print.direction')}</th><th className="font-medium">{t('print.layerTension')}</th>
-        <th className="font-medium">{t('print.sf')}</th></tr></thead>
+        <th className="font-medium">{t('print.layerShear')}</th><th className="font-medium">{t('print.sf')}</th></tr></thead>
         <tbody>{data.axes.map(a => <tr key={a.axis} className="border-t border-line text-fg">
           <td className="h-8 text-left">{a.axis.toUpperCase()}{a.axis === data.best_axis && <span className="ml-2 text-fg-2">{t('print.bestTag')}</span>}</td>
           <td>{fmt(a.layer_tension_mpa, 3)} <span className="text-fg-3">MPa</span></td>
+          <td>{fmt(a.layer_shear_mpa, 3)} <span className="text-fg-3">MPa</span></td>
           <td className={a.sf < 1 ? 'text-red' : a.sf < 2 ? 'text-orange' : ''}>{sf(a.sf)}</td></tr>)}</tbody></table>
     </div>
     <p className="prose-ui mt-2 text-label text-fg-2">{t('print.basis', { material: data.material.toUpperCase(), xy: fmt(data.strength_xy_mpa, 3), z: fmt(data.strength_z_mpa, 3) })}</p>
@@ -107,9 +111,9 @@ function PrintCheckSection({ cid }: { cid: string }) {
     <details className="mt-2"><summary className="cursor-pointer text-label text-fg-2">{t('print.datasheet')}</summary>
       <div className="mt-2 grid grid-cols-2 gap-3">
         <Field label={t('print.strengthXy')}><input className="h-8 w-full rounded-[6px] border border-line-strong bg-field px-2 text-right text-body text-fg tnum" inputMode="decimal"
-          placeholder={String(data.strength_xy_mpa)} value={xy} onChange={e => setXy(e.target.value)} /></Field>
+          placeholder={String(data.strength_xy_mpa)} value={xy} aria-invalid={!!xy.trim() && !strength(xy)} onChange={e => setXy(e.target.value)} /></Field>
         <Field label={t('print.strengthZ')}><input className="h-8 w-full rounded-[6px] border border-line-strong bg-field px-2 text-right text-body text-fg tnum" inputMode="decimal"
-          placeholder={String(data.strength_z_mpa)} value={z} onChange={e => setZ(e.target.value)} /></Field>
+          placeholder={String(data.strength_z_mpa)} value={z} aria-invalid={!!z.trim() && !strength(z)} onChange={e => setZ(e.target.value)} /></Field>
       </div></details>
   </section>;
 }

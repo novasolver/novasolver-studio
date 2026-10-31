@@ -27,7 +27,7 @@ DefaultDirName={autopf}\NovaSolverStudio
 DefaultGroupName=NovaSolver Studio
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+; per-user only: Studio updates itself in place, which needs a folder the user can write
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutDir}

@@ -344,7 +344,7 @@ export interface PrintCheck {
   strength_z_mpa: number;
   vm_max_mpa: number;
   sf_filament: number;
-  axes: { axis: "x" | "y" | "z"; layer_tension_mpa: number; sf_layers: number; sf: number; at_mm: number[] }[];
+  axes: { axis: "x" | "y" | "z"; layer_tension_mpa: number; layer_shear_mpa: number; sf_layers: number; sf: number; at_mm: number[] }[];
   best_axis: "x" | "y" | "z";
   best_sf: number;
   worst_sf: number;

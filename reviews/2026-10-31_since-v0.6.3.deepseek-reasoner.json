@@ -1,0 +1,406 @@
+{
+ "model": "deepseek-reasoner",
+ "usage": {
+  "prompt_tokens": 236709,
+  "completion_tokens": 909565,
+  "prompt_cache_hit_tokens": 56448
+ },
+ "problems": [
+  "backend/novastudio/mcp_server.py, backend/novastudio/mesh_worker.py, backend/novastudio/printcheck.py, backend/novastudio/probe.py: answer cut off",
+  "backend/novastudio/external.py, backend/novastudio/fatigue.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/fem_tet10.py, backend/novastudio/geometry.py: answer cut off",
+  "backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/examples.py, backend/novastudio/exports.py: answer cut off",
+  "backend/novastudio/sections.py, backend/novastudio/store.py, backend/novastudio/structural.py: answer cut off"
+ ],
+ "findings": [
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/templates.py",
+   "line": 714,
+   "summary": "hertz face descriptor marks the cylinder surface cyl_surface as type 'Plane', losing its curvature and geometry.",
+   "scenario": "Selecting or rendering cyl_surface in the hertz template shows a planar face; any area/normal/contact logic using the descriptor is wrong.",
+   "fix": "Emit a Cylinder descriptor with radius, axis, centroid and area (or let the generic cylinder branch run).",
+   "confidence": "high",
+   "chunk": "backend/novastudio/templates.py, backend/novastudio/updates.py, backend/tests/test_desktop.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_mcp_numbers_only.py, backend/tests/test_network_audit.py, backend/tests/test_printcheck.py, backend/tests/test_v05.py"
+  },
+  {
+   "severity": "medium",
+   "file": "tools/ds_review.py",
+   "line": 38,
+   "summary": "The home-path scrub regex only matches the literal string '/home/USER/' and its body (\\s\\\"']+) is malformed, so real home/CI paths are never redacted before upload.",
+   "scenario": "Reviewing a diff that contains /home/runner/work/... or /home/alice/project sends the full path verbatim to api.deepseek.com, contradicting the documented 'inputs are scrubbed of home paths'; macOS /Users/<name> is not handled at all.",
+   "fix": "Use r\"/(?:home|Users)/[^/\\s\\\"']+\" -> \"/home/USER\" and add an APPLEDEV-style /Users/ case; verify with a sample string in a unit test.",
+   "confidence": "high",
+   "chunk": "tools/ds_review.py, tools/fetch_build_deps.py, tools/make_icon.py, tools/make_msix.py, tools/second_opinion.ps1"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/app/case.py",
+   "line": 30,
+   "summary": "Default for contact-pair `search` is provided to units.normalize but `cfg['search']` is indexed directly, so a pair without an explicit search key raises uncaught KeyError (500) instead of defaulting to 1 mm.",
+   "scenario": "POST change contact_pairs.foo={type:'tied',mu:0} -> cfg['search'] raises KeyError, not caught by (UnitError,ValueError,TypeError) -> HTTP 500 instead of 1 mm default.",
+   "fix": "Use cfg.get('search') (or cfg.setdefault('search', None)) so the normalize default applies.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/sections.py, backend/novastudio/store.py, backend/novastudio/structural.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/app/fem/reference.py",
+   "line": 416,
+   "summary": "tied-parts reads p['gap'] unconditionally, but that template has no gap, so verification raises KeyError.",
+   "scenario": "Run verification on a tied-parts case -> nonlinear_reference reaches line 416 -> KeyError: 'gap' (500).",
+   "fix": "Use g = units.to_si(p['gap']) only for gap-blocks; set g = 0 for tied-parts.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/sections.py, backend/novastudio/store.py, backend/novastudio/structural.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/app/fem/reference.py",
+   "line": 416,
+   "summary": "gap-blocks uses abs(uz), so a displacement that opens the gap is treated as gap-closing compression.",
+   "scenario": "gap-blocks with gap=0.1 mm and top uz=+0.5 mm (opening) -> expected F=E*0.4mm/(2h)A even though no contact; reference wrongly rejects a zero-force solver result.",
+   "fix": "Use the signed compression displacement (e.g. d=max(0,-uz)) before subtracting the gap.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/sections.py, backend/novastudio/store.py, backend/novastudio/structural.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/__main__.py",
+   "line": 110,
+   "summary": "When the instance lock cannot be acquired but no port is published within 10 s, the code falls through, deletes the live instance's running.json and starts a second server without owning the lock.",
+   "scenario": "First app start takes >10 s to call publish(); user double-clicks a second .nscase -> acquire() fails, poll times out, running.json is deleted and a second uvicorn starts on port 8766, overwriting the port file.",
+   "fix": "On lock failure, raise SystemExit (or keep retrying) instead of continuing; only unlink running.json on the path where acquire() succeeded.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/box_mesh.py, backend/novastudio/checks.py, backend/novastudio/commands.py, backend/novastudio/config.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/__main__.py",
+   "line": 126,
+   "summary": "The server lifetime is tied to the first instance's own window only; a second-start window (opened by a process that returns immediately) is not tracked, so the comment 'ends with its last window' is false.",
+   "scenario": "App running with window A; user double-clicks another .nscase -> window B opens on the same server; closing window A terminates the process and daemon server, breaking window B (its requests/imports fail).",
+   "fix": "Track open windows (e.g. window count / idle refcount published alongside the port) and keep the server until the last window closes, or make the second instance own a window and the first wait on all.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/box_mesh.py, backend/novastudio/checks.py, backend/novastudio/commands.py, backend/novastudio/config.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/config.py",
+   "line": 63,
+   "summary": "On Windows the only candidate scratch root is data_dir(), so when that path is non-ASCII or contains a space the fallback (roots[-1]) returns the same unsafe path and the MinGW OpenFOAM case still runs from an invalid location.",
+   "scenario": "Windows user '田中' -> data dir 'C:\\Users\\田中\\AppData\\...' -> safe() false -> root = data_dir -> wd = C:\\Users\\田中\\...\\of -> OpenFOAM mesh/solve fails despite the of_location indirection.",
+   "fix": "Add an ASCII candidate on Windows (e.g. Path(os.environ['PROGRAMDATA']) or Path(tempfile.gettempdir())) to roots instead of only data_dir().",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/box_mesh.py, backend/novastudio/checks.py, backend/novastudio/commands.py, backend/novastudio/config.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/desktop.py",
+   "line": 119,
+   "summary": "wait_closed treats removing any pre-existing window/lockfile as proof the window closed, so a stale lock from a crashed browser makes it return immediately after launch.",
+   "scenario": "A previous browser crashes and leaves data/window/lockfile; the user starts Studio again, wait_closed deletes the stale file and breaks before the new browser creates its lock, then the server exits and the new window loads a dead 127.0.0.1 port.",
+   "fix": "Remove/ignore stale locks only before launching, or wait until the newly started browser has created its own lock (or the process exits) before returning.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/examples.py, backend/novastudio/exports.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/fatigue.py",
+   "line": 65,
+   "summary": "evaluate can return np.inf safety factors (zero-stress nodes / R=1), which serialize to invalid JSON 'Infinity' and can break the API/frontend response.",
+   "scenario": "Node with vm=0 (unloaded region, R=-1): amp=0 -> se/amp=inf -> sf=inf; JSONResponse emits Infinity, JS JSON.parse throws.",
+   "fix": "Replace non-finite sf/life with a large finite sentinel before returning/serializing.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/external.py, backend/novastudio/fatigue.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/fem_tet10.py, backend/novastudio/geometry.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/fem_nonlinear.py",
+   "line": 204,
+   "summary": "Large contact direct solve catches only MemoryError, but MatrixRankWarning is promoted to error inside the same warnings context and escapes, crashing instead of falling back to GMRES.",
+   "scenario": "Contact saddle system with size in (DIRECT_LIMIT, CONTACT_DIRECT_LIMIT]; SuperLU flags near-singular -> MatrixRankWarning raised as error -> uncaught (only MemoryError caught) -> solve crashes with MatrixRankWarning rather than using the iterative path.",
+   "fix": "Also catch spla.MatrixRankWarning (and SuperLU RuntimeError) and set x=None to fall through to the GMRES branch.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/external.py, backend/novastudio/fatigue.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/fem_tet10.py, backend/novastudio/geometry.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/printcheck.py",
+   "line": 66,
+   "summary": "Safety factors ignore fixed-support nodes, so a peak stress at a constraint does not reduce the reported print safety factor.",
+   "scenario": "Cantilever fixed face has vm=80 MPa at support but only 30 MPa away; code reports sf_filament=50/30=1.67 despite 80 MPa exceeding 50 MPa.",
+   "fix": "Include support nodes in the peak used for SFs, or report a support-limited SF when support_peak_exceeds is true.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/mcp_server.py, backend/novastudio/mesh_worker.py, backend/novastudio/printcheck.py, backend/novastudio/probe.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/results.py",
+   "line": 148,
+   "summary": "Fatigue safety-factor card uses the 'away from support' value while the life card uses the global minimum (which sits at the rigid-support singularity), so the two cards describe different locations.",
+   "scenario": "fatigue_on_support true, away sf=5.0 but sf_min at support gives life_min=1e3 -> card shows 'sf 5' next to 'life 1e3 cycles' (contradictory/misleading).",
+   "fix": "Track and display a matching fatigue_life_min_away when the min safety factor is on a support, or use the raw global values for both cards.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/results.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/templates.py",
+   "line": 479,
+   "summary": "New template IDs and labels have no i18n entries in ja/en/zh, so summary/UI can render raw keys or raise KeyError.",
+   "scenario": "User opens template list in Japanese; summary() looks up template.hertz-cylinder.title / param.block_gap / face.cyl_surface and the key is absent.",
+   "fix": "Add template.<id>.title/description and param/face label keys to all three i18n JSON files.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/templates.py, backend/novastudio/updates.py, backend/tests/test_desktop.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_mcp_numbers_only.py, backend/tests/test_network_audit.py, backend/tests/test_printcheck.py, backend/tests/test_v05.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/updates.py",
+   "line": 158,
+   "summary": "Offline check returns a reduced dict missing latest/notes/date/page/size/pip/checked_at keys used by the update dialog.",
+   "scenario": "User enables offline mode and opens Check for updates; frontend reads result.notes[lang] or result.latest and gets undefined/KeyError.",
+   "fix": "Return the same complete shape as the normal path, with empty/default values for unavailable fields.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/templates.py, backend/novastudio/updates.py, backend/tests/test_desktop.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_mcp_numbers_only.py, backend/tests/test_network_audit.py, backend/tests/test_printcheck.py, backend/tests/test_v05.py"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/components/HelpDialog.tsx",
+   "line": 108,
+   "summary": "The offline notice is gated on `u.offline`, so a response that only sets `offline_mode` shows no offline message.",
+   "scenario": "Starting with NOVASTUDIO_OFFLINE=1, updates.check can return {offline_mode:true, available:false}; opening Help then shows only the Check button with no explanation.",
+   "fix": "Gate the block with `u?.offline_mode || u?.offline` and select the message from that combined state.",
+   "confidence": "medium",
+   "chunk": "backend/tests/test_v06.py, backend/tests/test_v07_buckling.py, backend/tests/test_v07_contact.py, backend/tests/test_v07_fatigue.py, backend/tests/test_v07_offline.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/components/HelpDialog.tsx",
+   "line": 29,
+   "summary": "New UI strings `update.store`, `update.offlineMode`, `help.privacy`, and `help.privacyLink` are referenced but no i18n JSON additions are shown.",
+   "scenario": "Open Help in en/ja/zh; the dialog renders raw keys such as `help.privacy` instead of translated text.",
+   "fix": "Add these keys to all three i18n JSON files; the existing set-equality test does not verify that a key exists.",
+   "confidence": "medium",
+   "chunk": "backend/tests/test_v06.py, backend/tests/test_v07_buckling.py, backend/tests/test_v07_contact.py, backend/tests/test_v07_fatigue.py, backend/tests/test_v07_offline.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/HelpDialog.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/components/ResultsTools.tsx",
+   "line": 113,
+   "summary": "PrintCheckSection's effect deps omit the material preset/solid, so switching between printable materials keeps stale print-check data.",
+   "scenario": "PLA case results shown; user changes materials.solid.preset to 'petg' (applicable stays true, r unchanged) -> no refetch, table still shows PLA strengths and safety factors.",
+   "fix": "Add preset (or solid) to the useEffect dependency array, or key the section by preset.",
+   "confidence": "medium",
+   "chunk": "frontend/src/components/PropertiesPanel.tsx, frontend/src/components/ResultsTools.tsx, frontend/src/components/StructuralSettings.tsx, frontend/src/components/ViewerPane.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/geometry.py",
+   "line": 27,
+   "summary": "Hertz bbox height uses h+min(h,r), which is only the true total height (block h + cylinder protrusion r) while r<=h; for r>h the cylinder top lies outside the returned dims.",
+   "scenario": "hertz with height=2mm, radius=5mm: dims z-extent = 2+min(2,5)=4mm, but the half-cylinder built from radius 5 reaches 2+5=7mm, so camera framing and any bbox-derived mesh sizing/clipping are wrong.",
+   "fix": "Use h+r (cylinder centred on the block top) or clamp per the actual mesher construction, and keep dims consistent with job['radius']/job['block_height'].",
+   "confidence": "low",
+   "chunk": "backend/novastudio/external.py, backend/novastudio/fatigue.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/fem_tet10.py, backend/novastudio/geometry.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/mcp_server.py",
+   "line": 418,
+   "summary": "Buckling result formatting assumes critical_load_n exists whenever load_factor is present, so get_results can raise KeyError instead of reporting results.",
+   "scenario": "A buckling run returns modes=[{mode:1, load_factor:2.1}] without critical_load_n -> KeyError -> get_results tool fails.",
+   "fix": "Check for both keys or use .get with a fallback before formatting.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/mcp_server.py, backend/novastudio/mesh_worker.py, backend/novastudio/printcheck.py, backend/novastudio/probe.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/sections.py",
+   "line": 30,
+   "summary": "Buckling sections are now routed through the modal branch and read data['mode_shapes'][mode-1]; if buckling results are stored under a different key/shape this raises an unhandled KeyError.",
+   "scenario": "Run a buckling analysis, then request a section view for mode 1 -> KeyError('mode_shapes') -> 500 instead of a StudioError, section unavailable.",
+   "fix": "Confirm the buckling result key/shape; otherwise raise StudioError('err.path', 400, path='section interpolation').",
+   "confidence": "low",
+   "chunk": "backend/novastudio/sections.py, backend/novastudio/store.py, backend/novastudio/structural.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/store.py",
+   "line": 219,
+   "summary": "Contact-pair fields are stored without validating 'type' (PAIR_TYPES is imported but never used) and without numeric coercion of 'mu'/'search', so arbitrary values reach the case file and the solver.",
+   "scenario": "PUT contact_pairs.a.type='glued' or contact_pairs.a.mu='0.2' -> invalid pair persisted; solver silently treats it as another contact model or pair_settings float() raises -> wrong contact stiffness or HTTP 500.",
+   "fix": "Reject type not in PAIR_TYPES (or pass PAIR_TYPES to pair_settings) and coerce/validate mu, search as finite floats before saving.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/sections.py, backend/novastudio/store.py, backend/novastudio/structural.py"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/components/StructuralSettings.tsx",
+   "line": 138,
+   "summary": "ContactPairsSettings calls p.case.template.startsWith without a guard; a missing/null template throws and crashes the Boundaries panel.",
+   "scenario": "A case payload whose case.template is null/undefined (legacy case or some imported assembly) -> TypeError in render -> BoundariesStep fails, properties panel blank.",
+   "fix": "Use (p.case.template ?? '').startsWith('import-') or optional-chain the check.",
+   "confidence": "low",
+   "chunk": "frontend/src/components/PropertiesPanel.tsx, frontend/src/components/ResultsTools.tsx, frontend/src/components/StructuralSettings.tsx, frontend/src/components/ViewerPane.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/mcp_server.py",
+   "line": 60,
+   "summary": "New user-facing messages (numbers-only notice, detect_contacts, print_check) are hardcoded English and ignore the language parameter.",
+   "scenario": "language=\"ja\" or \"zh\" with render_view/detect_contacts/print_check -> summary text is English, unlike localized UI.",
+   "fix": "Add i18n keys and use t(...) with the provided language.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/mcp_server.py, backend/novastudio/mesh_worker.py, backend/novastudio/printcheck.py, backend/novastudio/probe.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/printcheck.py",
+   "line": 54,
+   "summary": "Zero strength overrides are silently ignored because the code tests truthiness instead of None, so invalid input falls back to defaults.",
+   "scenario": "API caller passes strength_xy_mpa=0; `if strength_xy_mpa:` is false, PLA default 50 MPa is used and a plausible result is returned instead of err.print_check_strength.",
+   "fix": "Use `is not None` for both overrides, then validate that the resulting strengths are positive.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/mcp_server.py, backend/novastudio/mesh_worker.py, backend/novastudio/printcheck.py, backend/novastudio/probe.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/templates.py",
+   "line": 491,
+   "summary": "Buckling/contact load parameters allow zero, but zero preload makes linear buckling and Hertz contact singular.",
+   "scenario": "User sets column-buckling x1.force or hertz-cylinder load.force to 0; the solver divides by zero or fails to converge.",
+   "fix": "Set the lower bound above zero for load fields in these templates and validate zero preload.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/templates.py, backend/novastudio/updates.py, backend/tests/test_desktop.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_mcp_numbers_only.py, backend/tests/test_network_audit.py, backend/tests/test_printcheck.py, backend/tests/test_v05.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/app/case.py",
+   "line": 26,
+   "summary": "_set_contact_pair subscripts cfg['type']/cfg['mu'] assuming value is a full dict; a per-field path like contact_pairs.foo.mu (float) or a missing key raises uncaught TypeError/KeyError -> 500.",
+   "scenario": "contact_pairs.foo.mu=0.3 -> cfg is a float, cfg['type'] raises TypeError: 'float' object is not subscriptable, uncaught -> 500.",
+   "fix": "Require/validate that value is a dict with the needed keys (merge with existing pair) before subscripting, raising StudioError('err.path',400).",
+   "confidence": "low",
+   "chunk": "backend/novastudio/sections.py, backend/novastudio/store.py, backend/novastudio/structural.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/commands.py",
+   "line": 697,
+   "summary": "print_check accepts lang but never passes it to printcheck.check, so the print-strength verdict text cannot be localized.",
+   "scenario": "English or Chinese UI -> print check result messages come back in the default (ja) language.",
+   "fix": "Pass lang to printcheck.check (or localize the returned messages in print_check).",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/box_mesh.py, backend/novastudio/checks.py, backend/novastudio/commands.py, backend/novastudio/config.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/commands.py",
+   "line": 386,
+   "summary": "open_sample indexes pl['case']['physics']['kind'] directly and only applies the sample material when it equals 'linear-static'; a missing/different field either raises or silently leaves the default material.",
+   "scenario": "wall_hook.stl loaded -> physics has no 'kind' -> KeyError (sample fails), or kind != 'linear-static' -> PLA preset not applied -> hook analyzed with the default material, wrong stress/margin.",
+   "fix": "Use pl['case']['physics'].get('kind') and verify the preset key, or apply the material unconditionally for that template.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/box_mesh.py, backend/novastudio/checks.py, backend/novastudio/commands.py, backend/novastudio/config.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/config.py",
+   "line": 64,
+   "summary": "Scratch case folders created under root/'runs'/<job>_<tag> live outside the job folder, so deleting the job folder never removes them.",
+   "scenario": "Many runs from a non-ASCII workspace path -> each leaves root/runs/<id>_<tag>/of behind -> unbounded disk growth in the data/temp folder.",
+   "fix": "Record the scratch path for cleanup with the job (or delete it when the job finishes/fails).",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__main__.py, backend/novastudio/api.py, backend/novastudio/box_mesh.py, backend/novastudio/checks.py, backend/novastudio/commands.py, backend/novastudio/config.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/contact.py",
+   "line": 92,
+   "summary": "Averaged master normal is normalized by its length without guarding against a zero-length vector, producing NaN contact normals.",
+   "scenario": "A master node whose incident outward normals cancel (sharp/concave interface feature) gives nv[master]==0 -> n/0 = NaN -> NaN in contact residual/matrix, silently corrupting the solve.",
+   "fix": "mask = norm>eps; n[mask] /= norm[mask,None]; leave/zero the rest or skip such nodes.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/examples.py, backend/novastudio/exports.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/contact.py",
+   "line": 185,
+   "summary": "_project only considers the k=8 nearest master-element centroids and has no fallback expansion when none of them yield a hit.",
+   "scenario": "Slave point over a large or anisotropic master element whose centroid is not among the 8 nearest -> Newton never converges inside an element -> returns element -1 (no contact) -> contact gap falsely treated as open.",
+   "fix": "If no candidate hits, expand the KDTree query (e.g. k*=4 or radius=search) and retry before returning -1.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/examples.py, backend/novastudio/exports.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/desktop.py",
+   "line": 52,
+   "summary": "running_port returns the port from running.json without verifying it belongs to the process holding app.lock, so a second start can open a stale port before the lock holder publishes its new one.",
+   "scenario": "The app crashes leaving running.json port 5000; instance A starts and acquires the lock but has not yet published; instance B starts, fails to acquire, reads stale 5000, and opens a browser window against a dead port.",
+   "fix": "Publish running.json before serving/handling launches, or retry until the file's pid/mtime matches the lock holder; validate the lock before trusting the port.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/examples.py, backend/novastudio/exports.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/fatigue.py",
+   "line": 42,
+   "summary": "Per-body material() returns None (fatigue silently skipped) when body_materials/body_props lack entries, even though the global solid material is a valid metal preset.",
+   "scenario": "Multi-body model, single global material 'steel', evaluate called with body id -> preset None, base None, own {} -> su/se None -> return None -> no fatigue results.",
+   "fix": "Fall back to the case-level material/base_preset when per-body data is absent.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/external.py, backend/novastudio/fatigue.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/fem_tet10.py, backend/novastudio/geometry.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/printcheck.py",
+   "line": 46,
+   "summary": "Only `s` is checked in results.npz before directly reading `vm`, so a missing von Mises array raises KeyError instead of a handled StudioError.",
+   "scenario": "A results.npz containing `s` but lacking `vm` causes an uncaught KeyError/HTTP 500 during print checking.",
+   "fix": "Check `\"vm\" in d.files` alongside `\"s\"` and raise err.print_check_scope if either is missing.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/mcp_server.py, backend/novastudio/mesh_worker.py, backend/novastudio/printcheck.py, backend/novastudio/probe.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/results.py",
+   "line": 225,
+   "summary": "Many new i18n keys (result.fatigue_*, result.buckles_below_load, result.buckling_imperfection, card.critical_load/load_factor/applied_load/fatigue_*, err.contact_pair_none/buckling_failed/buckling_none, job.contact_search) are referenced but not shown added to en/ja/zh catalogs.",
+   "scenario": "ja/zh UI run with fatigue/buckling -> t() returns the raw key, showing 'result.fatigue_fail' instead of a message.",
+   "fix": "Add all new keys to every language catalog.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/results.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/run_worker.py",
+   "line": 700,
+   "summary": "primary_quantity for template 'fatigue-bar' returns fatigue_sf_min, a quantity that is singular at fully fixed supports, so the mesh-convergence study cannot converge.",
+   "scenario": "fatigue-bar with a gripped end: refining the mesh keeps lowering fatigue_sf_min toward 0 -> GCI monotonicity/pass fails on a correct model.",
+   "fix": "Track a support-removed quantity such as fatigue_sf_min_away (or max_disp) for the study instead of the singular minimum.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/results.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/run_worker.py",
+   "line": 78,
+   "summary": "mortar_pairs records are appended to m['_contact_pairs'] alongside split_mesh pairs that have a different key schema, so the incremental contact solver may misread or crash.",
+   "scenario": "case with contact_pairs + bonded contacts -> run_incremental receives records missing 'master'/'slave'/'normal' keys -> KeyError or wrong contact.",
+   "fix": "Keep mortar records separate or normalize both to one schema before handing to run_incremental.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/results.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "low",
+   "file": "frontend/src/api/client.ts",
+   "line": 214,
+   "summary": "The print-check query uses truthiness, so an explicit `xy=0` or `z=0` is dropped from the request.",
+   "scenario": "`printCheck(id, 0, 5)` sends only `?z=5`; `printCheck(id, 0, 0)` sends no query params, so the server cannot distinguish explicit zero from omitted.",
+   "fix": "Build the query with `xy !== undefined || z !== undefined` and append each parameter when its value is not `undefined`.",
+   "confidence": "low",
+   "chunk": "backend/tests/test_v06.py, backend/tests/test_v07_buckling.py, backend/tests/test_v07_contact.py, backend/tests/test_v07_fatigue.py, backend/tests/test_v07_offline.py, frontend/src/App.tsx, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/HelpDialog.tsx"
+  }
+ ]
+}
