@@ -79,7 +79,7 @@ def check_mcp(command: str, env: dict) -> None:
                                    "clientInfo": {"name": "novastudio-wheel-smoke", "version": "1.0"}})
             send({"method": "notifications/initialized"})
             tools = request("tools/list")["tools"]
-            assert len(tools) == 28, len(tools)
+            assert len(tools) == 30, len(tools)
             cid = tool("create_case", template="cantilever", changes={"mesh.size": "coarse"}, language="en")["case_id"]
             result = tool("run_simulation", case_id=cid, mode="preview", language="en")
             while not result.get("done"):
