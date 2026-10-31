@@ -544,6 +544,8 @@
   "check.contact_large_deformation": "Contact supports small sliding and small rotation only. Turn off large deformation or bond every interface.",
   "err.final_body_temperatures": "CalculiX cannot represent per-element body temperatures. Use the built-in solver for this thermal load.",
   "err.archive_zip": "This file cannot be read as a .nscase (zip) archive.",
+  "err.print_check_scope": "The 3D-print check works on a solved linear static case in PLA, PETG or ABS. Choose one of these materials, run the analysis, then check again.",
+  "err.print_check_strength": "Strengths must be positive numbers in MPa.",
   "err.archive_path": "The archive contains a path that is not allowed: {path}. It was not opened, for safety.",
   "err.archive_ratio": "The archive entry {path} is compressed suspiciously well, so it was not opened.",
   "err.archive_size": "The archive is too large (at most 1 GB uncompressed).",

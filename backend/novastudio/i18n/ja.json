@@ -544,6 +544,8 @@
   "check.contact_large_deformation": "接触は微小すべり・微小回転にのみ対応しています。大変形をオフにするか、すべての接合面を接着にしてください。",
   "err.final_body_temperatures": "CalculiXは要素ごとの物体温度に対応していません。この熱荷重には内蔵ソルバーを使用してください。",
   "err.archive_zip": "このファイルは .nscase（zip）として読めません。",
+  "err.print_check_scope": "3Dプリントの強度チェックは、PLA・PETG・ABS の線形静解析を解いた後に使えます。材料を選び、解析してから、もう一度チェックしてください。",
+  "err.print_check_strength": "強度は正の数（MPa）で入力してください。",
   "err.archive_path": "アーカイブに許可されていないパスがあります: {path}。安全のため開きません。",
   "err.archive_ratio": "アーカイブの {path} の圧縮率が異常に高いため開きません。",
   "err.archive_size": "アーカイブが大きすぎます（展開後 1 GB まで）。",

@@ -26,7 +26,7 @@ with a hand calculation. Real app, real numbers.*
   away from the AI. See [docs/PRIVACY.md](docs/PRIVACY.md).
 - **Real solvers, no licence fee.** CalculiX for structural/thermal, OpenFOAM® for flow and water cooling, a built-in
   tet10 FEM for answers in seconds. Japanese, English and Chinese UI.
-- **Typed MCP tools, no shell.** 29 tools (create/import, set conditions, mesh, run, convergence, verify, probe,
+- **Typed MCP tools, no shell.** 30 tools (create/import, set conditions, mesh, run, convergence, verify, probe,
   sweep, render). The AI fills a case schema; Studio writes the solver input. Your AI's edits appear live in the
   window, and you can undo them.
 
@@ -62,7 +62,7 @@ mesh-convergence column is published with each release as `docs/VALIDATION.md`):
 
 Also: a [Blender add-on](integrations/blender/) (send the active object to Studio, PLA/PETG/ABS/TPU or metals),
 a [FreeCAD macro](integrations/freecad/) (send the selected part as STEP),
-3D-printing examples, ParaView VTU / CSV / printable HTML report export, and a Windows installer with `.nscase`
+a 3D-print strength check (safety factor for each print direction in PLA/PETG/ABS, layer lines included), ParaView VTU / CSV / printable HTML report export, and a Windows installer with `.nscase`
 file association.
 
 ## Install with Python (macOS / Linux / Windows)

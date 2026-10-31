@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download, Play, Pause } from 'lucide-react';
 import { api, archiveUrl, exportUrl } from '../api/client';
-import type { ProbeLine } from '../api/types';
+import type { PrintCheck, ProbeLine } from '../api/types';
 import { getState, getViewer, selectMode, selectStep, setSection, setState, toast, useStore, useT } from '../state/store';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
@@ -29,6 +29,7 @@ export function ResultsTools() {
   const buckling = r.kind === 'buckling';
   const plane = (a: string, p: number) => ({ normal:a === 'camera' ? getViewer()?.cameraDirection() ?? [1,0,0] : ['x','y','z'].map(v => v === a ? 1:0), position:p });
   return <>
+    {!offline && r.kind === 'structural' && !r.curve?.length && <PrintCheckSection key={cid} cid={cid} />}
     {!!r.curve?.length && <NonlinearResults />}
     {r.modes && <section className="px-4 pt-6"><SectionLabel>{t(buckling ? 'buckling.modes':'modal.modes')}</SectionLabel>
       <div className="tnum overflow-x-auto rounded-[8px] bg-raised px-2 py-1 text-label">
@@ -67,6 +68,50 @@ export function ResultsTools() {
       </details>
     </section>}
   </>;
+}
+
+const PRINT_MATERIALS = ['pla', 'petg', 'abs'];
+
+/** 3D-print strength check for PLA/PETG/ABS: printed parts are weakest between layers, so the safety factor depends
+ * on which way the part is printed. One row per build direction, the best one marked. */
+function PrintCheckSection({ cid }: { cid: string }) {
+  const t = useT();
+  const r = useStore(s => s.results);
+  const solid = useStore(s => s.payload?.case.materials?.solid);
+  const preset = solid?.preset === 'custom' ? (solid?.base_preset as string | undefined) : solid?.preset;
+  const [data, setData] = useState<PrintCheck | null>(null);
+  const [xy, setXy] = useState('');
+  const [z, setZ] = useState('');
+  const applicable = !!preset && PRINT_MATERIALS.includes(preset);
+  useEffect(() => {
+    if (!applicable) { setData(null); return; }
+    let live = true;
+    api.printCheck(cid, Number(xy) || undefined, Number(z) || undefined).then(d => { if (live) setData(d); }).catch(() => { if (live) setData(null); });
+    return () => { live = false; };
+  }, [cid, r, applicable, xy, z]);
+  if (!applicable || !data) return null;
+  const sf = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : '∞');
+  return <section className="px-4 pt-6"><SectionLabel>{t('print.title')}</SectionLabel>
+    <p className="prose-ui text-body text-fg">{t('print.best', { axis: data.best_axis.toUpperCase(), sf: sf(data.best_sf) })}</p>
+    <div className="tnum mt-2 overflow-x-auto rounded-[8px] bg-raised px-2 py-1 text-label">
+      <table className="w-full text-right"><thead className="text-fg-2"><tr>
+        <th className="h-8 text-left font-medium">{t('print.direction')}</th><th className="font-medium">{t('print.layerTension')}</th>
+        <th className="font-medium">{t('print.sf')}</th></tr></thead>
+        <tbody>{data.axes.map(a => <tr key={a.axis} className="border-t border-line text-fg">
+          <td className="h-8 text-left">{a.axis.toUpperCase()}{a.axis === data.best_axis && <span className="ml-2 text-fg-2">{t('print.bestTag')}</span>}</td>
+          <td>{fmt(a.layer_tension_mpa, 3)} <span className="text-fg-3">MPa</span></td>
+          <td className={a.sf < 1 ? 'text-red' : a.sf < 2 ? 'text-orange' : ''}>{sf(a.sf)}</td></tr>)}</tbody></table>
+    </div>
+    <p className="prose-ui mt-2 text-label text-fg-2">{t('print.basis', { material: data.material.toUpperCase(), xy: fmt(data.strength_xy_mpa, 3), z: fmt(data.strength_z_mpa, 3) })}</p>
+    {data.support_peak_exceeds && <p className="prose-ui mt-1 text-label text-orange">{t('print.supportPeak', { mpa: fmt(data.support_peak_mpa, 3) })}</p>}
+    <details className="mt-2"><summary className="cursor-pointer text-label text-fg-2">{t('print.datasheet')}</summary>
+      <div className="mt-2 grid grid-cols-2 gap-3">
+        <Field label={t('print.strengthXy')}><input className="h-8 w-full rounded-[6px] border border-line-strong bg-field px-2 text-right text-body text-fg tnum" inputMode="decimal"
+          placeholder={String(data.strength_xy_mpa)} value={xy} onChange={e => setXy(e.target.value)} /></Field>
+        <Field label={t('print.strengthZ')}><input className="h-8 w-full rounded-[6px] border border-line-strong bg-field px-2 text-right text-body text-fg tnum" inputMode="decimal"
+          placeholder={String(data.strength_z_mpa)} value={z} onChange={e => setZ(e.target.value)} /></Field>
+      </div></details>
+  </section>;
 }
 
 function NonlinearResults() {

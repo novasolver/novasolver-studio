@@ -27,7 +27,8 @@ Workflow: list_templates -> create_case (or import_geometry for the user's CAD f
 -> run_simulation(mode="preview") -> job_status until done -> get_results / verify_case -> render_view.
 To show a verified result at once, list_examples -> open_example (solved cases, no run needed).
 Read values at a point, along a line or over a face with probe_results. Design variants: clone_case, or run_sweep
-over one parameter, then compare_runs.
+over one parameter, then compare_runs. For a 3D-printed part (PLA, PETG, ABS), print_check after a linear static run
+gives the safety factor for each print direction and the best one.
 Rules:
 1. Never claim a result is correct unless verify_case reports gates.verified = true. Report 'ran', 'converged' and
    'verified' separately. If verification is not applicable, say so and explain what reference is missing.
@@ -450,6 +451,24 @@ async def verify_case(case_id: str, language: Lang = "ja") -> CallToolResult:
     else:
         s = f"Verification not applicable: {r['gates_detail'].get('verified')}"
     return _ok(s + f"\n{_gates_line(r['gates'])}", r)
+
+
+@mcp.tool(annotations=RO)
+async def print_check(case_id: str, strength_xy_mpa: float | None = None, strength_z_mpa: float | None = None,
+                      run_id: str | None = None, language: Lang = "ja") -> CallToolResult:
+    """3D-print strength check of a solved linear static case in PLA, PETG or ABS. FDM parts are weakest between
+    layers, so for each print direction (layers normal to x, y or z) it compares the tension across the layers with
+    the layer-bond strength and the von Mises stress with the filament strength, and names the best orientation.
+    Strengths default to conservative typical values (100 % infill); pass the filament datasheet values if known.
+    Peaks on fully fixed faces are reported separately (support artefacts). Screening only: say so to the person."""
+    r, e = await _call(C.print_check, language, case_id, run_id, strength_xy_mpa, strength_z_mpa, language)
+    if e:
+        return e
+    lines = [f"{a['axis']}: layer tension {a['layer_tension_mpa']:.3g} MPa, safety factor {a['sf']:.2f}" for a in r["axes"]]
+    s = (f"{r['material'].upper()} (filament {r['strength_xy_mpa']:.0f} MPa, layer bond {r['strength_z_mpa']:.0f} MPa). "
+         f"Best print direction: layers normal to {r['best_axis']} (safety factor {r['best_sf']:.2f}); worst {r['worst_sf']:.2f}.\n"
+         + "\n".join(lines))
+    return _ok(s, r)
 
 
 @mcp.tool(annotations=RO)

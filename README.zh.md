@@ -20,7 +20,7 @@
 - **模型不出本机。** 无账户、无上传、无遥测。仅有可选的更新检查和示例下载，离线模式下也会停止；若其他代码开始联网，公开测试会失败。
   与云端 AI 处理机密零件时，可用 **“仅数值模式”**，连零件图片也不交给 AI。→ [docs/PRIVACY.md](docs/PRIVACY.md)
 - **免费使用正规求解器。** 结构和传热用 CalculiX，流动和水冷用 OpenFOAM®，内置 FEM 数秒出结果。界面支持中文、日文、英文。
-- **29 个类型化的 MCP 工具，不执行 shell。** AI 只填写算例表，求解器输入由 Studio 生成；AI 的修改实时显示在界面中，可以撤销。
+- **30 个类型化的 MCP 工具，不执行 shell。** AI 只填写算例表，求解器输入由 Studio 生成；AI 的修改实时显示在界面中，可以撤销。
 
 ## 验证示例
 
@@ -37,7 +37,7 @@
 
 结构（线性静力、模态、塑性和大变形非线性、屈曲、接触、疲劳）、热传导与热应力、静电场、直流电流与焦耳热，
 内部流动、外部流动、水冷（共轭传热）。可导入 STEP / IGES / BREP / STL。另有 [Blender 插件](integrations/blender/)、
-3D 打印示例、ParaView VTU / CSV / 可打印 HTML 报告导出，以及带 `.nscase` 文件关联的安装程序。
+3D 打印强度检查（PLA/PETG/ABS，按打印方向计算考虑层间薄弱的安全系数并给出最佳方向）、ParaView VTU / CSV / 可打印 HTML 报告导出，以及带 `.nscase` 文件关联的安装程序。
 
 安装与 MCP 客户端设置见 [README（英文）](README.md#use-it-from-an-ai-assistant-mcp--ai-アシスタントから使う)。
 

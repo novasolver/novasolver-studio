@@ -544,6 +544,8 @@
   "check.contact_large_deformation": "接触仅支持小滑移和小转动。请关闭大变形，或将所有界面设为粘结。",
   "err.final_body_temperatures": "CalculiX无法表示按单元指定的实体温度。此热载荷请使用内置求解器。",
   "err.archive_zip": "无法将此文件作为 .nscase（zip）读取。",
+  "err.print_check_scope": "3D 打印强度检查适用于已求解的 PLA、PETG 或 ABS 线性静力算例。请选择这些材料之一并完成分析后再检查。",
+  "err.print_check_strength": "强度必须是以 MPa 为单位的正数。",
   "err.archive_path": "归档中包含不允许的路径：{path}。为安全起见未打开。",
   "err.archive_ratio": "归档条目 {path} 的压缩率异常高，未打开。",
   "err.archive_size": "归档过大（解压后最多 1 GB）。",

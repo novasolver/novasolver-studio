@@ -19,6 +19,7 @@ import type {
   SectionPlane,
   ProbeLine,
   ProbePoint,
+  PrintCheck,
 } from "./types";
 
 type MockModule = typeof import("./mock");
@@ -209,6 +210,8 @@ export const api = {
     request<ProbeLine>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { line, mode, run_id,step }),
   probePoint: (id: string, at: number[], mode = 1, run_id?: string,step?: number | null) =>
     request<ProbePoint>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { points: [at], mode, run_id,step }),
+  printCheck: (id: string, xy?: number, z?: number) =>
+    request<PrintCheck>('GET', `/api/cases/${encodeURIComponent(id)}/print-check${xy || z ? `?${xy ? 'xy=' + xy : ''}${xy && z ? '&' : ''}${z ? 'z=' + z : ''}` : ''}`),
 };
 
 /** Subscribe to server push (WS /ws). Reconnects with backoff. Returns an unsubscribe. */

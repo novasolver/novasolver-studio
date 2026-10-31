@@ -695,6 +695,13 @@ def render_view(case_id: str, quantity: str = "", lang: str = "ja", view: str = 
     return results.render_png(store.load(case_id), quantity, lang_of(lang), mode=mode,step=step)
 
 
+def print_check(case_id: str, run_id: str | None = None, strength_xy_mpa: float | None = None,
+                strength_z_mpa: float | None = None, lang: str = "ja") -> dict:
+    """3D-print strength check (PLA/PETG/ABS): safety factor for each print direction and the best one."""
+    from . import printcheck
+    return printcheck.check(store.load(case_id), run_id, strength_xy_mpa, strength_z_mpa)
+
+
 def export_results(case_id: str, format: str, lang: str = 'ja') -> dict:
     from .exports import export
     path = export(store.load(case_id), format, lang_of(lang))

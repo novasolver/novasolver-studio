@@ -336,6 +336,22 @@ export interface ContactSettings { type: string; mu: number; offset: Quantity }
 export interface ProbeLine { quantities: Record<string,string>; line: { samples: { at_mm: number[]; distance_mm?: number; inside: boolean; values: Record<string,number> }[]; from_mm: number[]; to_mm: number[] } }
 export interface ProbePoint { quantities: Record<string,string>; points: { inside: boolean; values: Record<string,number> }[] }
 
+/** 3D-print strength check: safety factor per build direction (layers normal to that axis). */
+export interface PrintCheck {
+  run_id: string;
+  material: string;
+  strength_xy_mpa: number;
+  strength_z_mpa: number;
+  vm_max_mpa: number;
+  sf_filament: number;
+  axes: { axis: "x" | "y" | "z"; layer_tension_mpa: number; sf_layers: number; sf: number; at_mm: number[] }[];
+  best_axis: "x" | "y" | "z";
+  best_sf: number;
+  worst_sf: number;
+  support_peak_mpa: number;
+  support_peak_exceeds: boolean;
+}
+
 export interface RunResponse {
   job_id: string;
   job?: Job;

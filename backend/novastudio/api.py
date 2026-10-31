@@ -285,6 +285,12 @@ async def results_(case_id: str, run_id: str | None = None, lang: str = "ja"):
     return await call(C.get_results, case_id, run_id, lang)
 
 
+@app.get("/api/cases/{case_id}/print-check")
+async def print_check(case_id: str, run_id: str | None = None, xy: float | None = None, z: float | None = None,
+                      lang: str = "ja"):
+    return await call(C.print_check, case_id, run_id, xy, z, lang)
+
+
 @app.get("/api/cases/{case_id}/verify")
 async def verify(case_id: str, lang: str = "ja"):
     return await call(C.verify_case, case_id, lang)
