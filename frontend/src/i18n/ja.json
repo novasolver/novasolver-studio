@@ -546,5 +546,6 @@
   "fatigue.surface.machined": "機械加工",
   "fatigue.surface.hot-rolled": "熱間圧延のまま",
   "fatigue.surface.as-forged": "鍛造のまま",
-  "fatigue.note": "加えた荷重を最大値とし、R × 荷重との間で一定振幅で繰り返すとして、グッドマン線図で安全率を、S-N 線で寿命を推定します。R = −1 は両振り、R = 0 は片振りです。"
+  "fatigue.note": "加えた荷重を最大値とし、R × 荷重との間で一定振幅で繰り返すとして、グッドマン線図で安全率を、S-N 線で寿命を推定します。R = −1 は両振り、R = 0 は片振りです。",
+  "update.offlineMode": "オフラインモードです。Studio はインターネットに接続しません（更新の確認と例題のダウンロードを行いません）。"
 }

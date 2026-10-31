@@ -40,6 +40,9 @@ def cache_dir() -> Path:
 
 
 def _fetch(name: str, progress=None) -> bytes:
+    from .config import offline
+    if offline():                                  # the cache still serves examples downloaded before
+        raise ConnectionRefusedError("offline mode")
     req = urllib.request.Request(base_url() + name, headers={'User-Agent': f'NovaSolverStudio/{__version__}'})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         total = int(r.headers.get('Content-Length') or 0)

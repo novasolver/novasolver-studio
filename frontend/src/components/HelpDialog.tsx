@@ -103,7 +103,7 @@ export function HelpDialog() {
             </Button>
           </div>
           {u?.offline ? (
-            <p className="prose-ui text-body text-fg-2">{u.message ?? t("update.offline")}</p>
+            <p className="prose-ui text-body text-fg-2">{u.offline_mode ? t("update.offlineMode") : u.message ?? t("update.offline")}</p>
           ) : u?.available && u.latest ? (
             <div className="space-y-3 rounded-[8px] border border-line bg-surface p-3">
               <p className="text-body font-medium text-fg">{t("update.available", { version: u.latest })}</p>

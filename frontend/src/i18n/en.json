@@ -546,5 +546,6 @@
   "fatigue.surface.machined": "Machined",
   "fatigue.surface.hot-rolled": "Hot-rolled",
   "fatigue.surface.as-forged": "As forged",
-  "fatigue.note": "The applied load is the peak of a constant-amplitude cycle between R × load and load. The safety factor comes from the Goodman diagram and the life from an S-N line. R = −1 is fully reversed, R = 0 is zero to peak."
+  "fatigue.note": "The applied load is the peak of a constant-amplitude cycle between R × load and load. The safety factor comes from the Goodman diagram and the life from an S-N line. R = −1 is fully reversed, R = 0 is zero to peak.",
+  "update.offlineMode": "Offline mode: Studio does not connect to the internet (no update check, no example downloads)."
 }

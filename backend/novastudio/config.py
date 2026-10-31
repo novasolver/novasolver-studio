@@ -17,6 +17,14 @@ INSTALLED = not FROZEN and PACKAGE_ROOT != STUDIO_ROOT / "backend" / "novastudio
 RESOURCES = Path(getattr(sys, "_MEIPASS", STUDIO_ROOT)) if FROZEN else PACKAGE_ROOT if INSTALLED else STUDIO_ROOT
 
 
+def offline() -> bool:
+    """No network access at all (update check, update download, solved examples). Set NOVASTUDIO_OFFLINE=1, or put an
+    empty file named "offline" next to the app (an IT department can deploy it with the zip) or in the data folder."""
+    if os.environ.get("NOVASTUDIO_OFFLINE", "").strip() not in ("", "0"):
+        return True
+    return (STUDIO_ROOT / "offline").exists() or (data_dir() / "offline").exists()
+
+
 def default_workspace() -> Path:
     if FROZEN or INSTALLED:
         return user_workspace()

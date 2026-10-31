@@ -117,6 +117,9 @@ def _urls() -> list[str]:
 
 
 def _get(url: str, progress=None, limit: int = 1 << 31) -> bytes:
+    from .config import offline
+    if offline():
+        raise ConnectionRefusedError("offline mode")
     req = urllib.request.Request(url, headers={"User-Agent": f"NovaSolverStudio/{__version__}"})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         total = int(r.headers.get("Content-Length") or 0)
@@ -156,6 +159,10 @@ def check(force: bool = False, passive: bool = False) -> dict:
     last_result()                                  # an update that just finished reports here once
     st = load_state()
     latest = st.get("latest")
+    from .config import offline
+    if offline():                                  # offline mode: never ask, never offer
+        return {"current": __version__, "available": False, "kind": install_kind(), "auto": False, "offline": True, "offline_mode": True,
+                "last_result": st.get("last_result")}
     if passive and not st.get("auto_check", True):
         return {"current": __version__, "available": False, "kind": install_kind(), "auto": False,
                 "last_result": st.get("last_result")}

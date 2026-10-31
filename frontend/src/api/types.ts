@@ -128,6 +128,8 @@ export interface UpdateInfo {
   size?: number;
   auto?: boolean;
   offline?: boolean;
+  /** offline mode (NOVASTUDIO_OFFLINE or an "offline" file): Studio never connects */
+  offline_mode?: boolean;
   message?: string;
   last_result?: { ok: boolean; from: string; to: string; message: string; at: string } | null;
 }
