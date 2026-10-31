@@ -57,6 +57,11 @@ DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idemp
 
 
 def _ok(summary: str, data: dict, images: list[bytes] | None = None) -> CallToolResult:
+    from .config import mcp_numbers_only
+    if images and mcp_numbers_only():
+        # numbers-only mode: the picture stays on this computer (the person sees it in the Studio window)
+        images = None
+        summary += "\n(Image withheld: Studio is in numbers-only mode for AI assistants. The person can see it in the Studio window.)"
     content: list = [TextContent(type="text", text=summary)]
     for png in images or []:
         import base64

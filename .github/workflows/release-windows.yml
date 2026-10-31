@@ -5,7 +5,7 @@ name: Windows release build
 # itself once the repository variables below are set; until then the build is unsigned, exactly like before.
 #
 #   repository variables : SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG (e.g. novasolver-studio),
-#                          SIGNPATH_POLICY_SLUG (release-signing), BUILD_DEPS_URL (optional mirror for CalculiX/MS-MPI),
+#                          SIGNPATH_POLICY_SLUG (release-signing),
 #                          MSIX_IDENTITY_NAME, MSIX_PUBLISHER, MSIX_PUBLISHER_NAME (Partner Center > Product identity)
 #   repository secret    : SIGNPATH_API_TOKEN
 #
@@ -19,12 +19,6 @@ on:
 
 permissions:
   contents: read
-
-env:
-  # Redistributable solver binaries bundled with the app, pinned by hash (licences in THIRD_PARTY_NOTICES.md).
-  CCX_SHA256: e18360eb32a5cd48f91a212c57069212cd8e27d2f798a599a78106bd0b3ecc1f
-  MSMPI_DLL_SHA256: 534f869ea0f1f7e81ebd2343351c8eff1fb47026e35e54460fdae148bddee5b8
-  DEPS_URL: ${{ vars.BUILD_DEPS_URL || 'https://novasolver.jp/dl/studio/build-deps' }}
 
 jobs:
   build:
@@ -57,18 +51,11 @@ jobs:
           $v = (.venv\Scripts\python.exe -c "import sys; sys.path.insert(0, 'backend'); import novastudio; print(novastudio.__version__)").Trim()
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$v") { throw "tag $env:GITHUB_REF_NAME does not match version $v" }
           "version=$v" >> $env:GITHUB_OUTPUT
-      - name: Bundled solvers (hash-checked)
+      - name: Bundled solvers (from the original publishers, hash-checked)
         shell: pwsh
         run: |
-          $ProgressPreference = 'SilentlyContinue'
-          New-Item -ItemType Directory -Force solvers\calculix | Out-Null
-          Invoke-WebRequest "$env:DEPS_URL/ccx_static.exe" -OutFile solvers\calculix\ccx_static.exe
-          if ((Get-FileHash solvers\calculix\ccx_static.exe).Hash -ne $env:CCX_SHA256) { throw "ccx_static.exe hash mismatch" }
-          $mpi = Join-Path $env:LOCALAPPDATA "NovaSolverStudio\solvers\msmpi"
-          New-Item -ItemType Directory -Force $mpi | Out-Null
-          Invoke-WebRequest "$env:DEPS_URL/msmpi.zip" -OutFile "$env:RUNNER_TEMP\msmpi.zip"
-          Expand-Archive "$env:RUNNER_TEMP\msmpi.zip" -DestinationPath $mpi -Force
-          if ((Get-FileHash "$mpi\msmpi.dll").Hash -ne $env:MSMPI_DLL_SHA256) { throw "msmpi.dll hash mismatch" }
+          .venv\Scripts\python.exe -m pip install zstandard
+          .venv\Scripts\python.exe -I tools/fetch_build_deps.py solvers\calculix (Join-Path $env:LOCALAPPDATA "NovaSolverStudio\solvers\msmpi")
       - name: Program folder
         run: powershell -ExecutionPolicy Bypass -File build_release.ps1 -Stage app
       - name: Smoke test (engines and MCP tool list)

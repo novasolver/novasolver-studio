@@ -29,13 +29,13 @@ sign-and-package     （A が有効なら）exe を SignPath で署名
 - 成果物はワークフローの実行結果に添付されるだけで、**自動では公開しません**。中身を確認してからリリースへ載せます。
 - 自動更新用の署名（ed25519、`tools/sign_latest.py`）は従来どおり手元で行います（鍵を GitHub に置かないため）。
 
-### 最初に 1 回だけ必要なこと（Claude が作業、公開前に確認をお願いします）
+### 同梱するソルバの取得
 
-CI が CalculiX と MS-MPI を取得する置き場所として、`https://novasolver.jp/dl/studio/build-deps/` に
-次の 2 ファイルを置きます（どちらも今の配布 zip に同梱しているものと同一。ハッシュはワークフローに固定）。
+CI は CalculiX と MS-MPI を**元の配布元から**取得し、SHA-256 を照合します（`tools/fetch_build_deps.py`）。
+今の配布 zip に同梱しているものとバイト単位で同一であることを確認済みです（2026-10-31）。
 
-- `ccx_static.exe`（CalculiX 2.23、GPL-2.0。ソースの所在は THIRD_PARTY_NOTICES に記載済み）
-- `msmpi.zip`（MS-MPI 10.1 ランタイム、MIT。`msmpi.dll` ほか）
+- CalculiX 2.23 Windows 版（dhondt.de、GPL-2.0）の `ccx_static.exe`
+- MS-MPI 10.1 ランタイム（conda-forge のビルド、元は github.com/microsoft/Microsoft-MPI、MIT）
 
 ---
 

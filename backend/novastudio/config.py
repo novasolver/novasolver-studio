@@ -25,6 +25,15 @@ def offline() -> bool:
     return (STUDIO_ROOT / "offline").exists() or (data_dir() / "offline").exists()
 
 
+def mcp_numbers_only() -> bool:
+    """The AI assistant gets numbers and text only, never a picture of the model: render_view and other images are
+    withheld from MCP replies, so a cloud AI never sees the shape. Set NOVASTUDIO_MCP_NO_IMAGES=1, or put an empty
+    file named "mcp_no_images" next to the app or in the data folder (an IT department can deploy it)."""
+    if os.environ.get("NOVASTUDIO_MCP_NO_IMAGES", "").strip() not in ("", "0"):
+        return True
+    return (STUDIO_ROOT / "mcp_no_images").exists() or (data_dir() / "mcp_no_images").exists()
+
+
 def default_workspace() -> Path:
     if FROZEN or INSTALLED:
         return user_workspace()
