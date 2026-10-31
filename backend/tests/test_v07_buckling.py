@@ -67,3 +67,9 @@ def test_geometric_stiffness_is_symmetric_and_matches_uniform_stress():
     u[:, 1] = x ** 2
     Lx, A = 0.02, 1e-4
     assert u.ravel() @ (Kg @ u.ravel()) == pytest.approx(-1e6 * A * 4 * Lx ** 3 / 3, rel=1e-9)
+
+
+def test_zero_load_has_no_buckling(column):
+    """review M1: no load means no stress and no load factor (was lambda ~ 1e30 from round-off)."""
+    r = fem.solve_buckling(column["nodes"], column["tets"], E, NU, [column["face_x0"]], tip(column, 0.0), modes=2)
+    assert r["load_factors"] == []

@@ -70,3 +70,13 @@ def test_contact_pair_validation(ws):
             C.update_case(cid, rev, {"contact_pairs.p": bad}, "en")
     C.update_case(cid, rev, {"physics.analysis": "modal"}, "en")
     assert any(i["code"] == "contact_pairs_analysis" for i in C.validate_case(cid, "en")["items"])
+
+
+def test_contact_fields_render_for_separate_surfaces(ws):
+    """review H1: the contact quantities of a mortar pair are drawn on its faces (was a 500)."""
+    cid = C.create_case("gap-blocks", {}, "en")["case"]["case_id"]
+    run(cid)
+    f = C.get_field(cid, "p_contact", "en") if hasattr(C, "get_field") else None
+    from novastudio import results as R
+    out = R.field(store.load(cid), "p_contact", "en")
+    assert out["quantity"] == "p_contact" and max(out["scalars"]) > 0

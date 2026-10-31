@@ -72,6 +72,11 @@ def _mesh_for_run(case: dict, jd: Path, prog):
             r = missing[0]
             raise StudioError('err.contact_pair_none', 400, pair=r['face'],
                               distance='-' if r['closest_m'] is None else f"{r['closest_m']*1e3:.3g}")
+        # the contact fields are drawn on these faces (results.field looks for contact_master_/contact_slave_ arrays)
+        for name, pair in case['contact_pairs'].items():
+            m['contact_master_' + name] = np.concatenate([m['face_' + f] for f in pair['master']])
+            m['contact_slave_' + name] = np.concatenate([m['face_' + f] for f in pair['slave']])
+        np.savez_compressed(jd/'mesh.npz', **{k: v for k, v in m.items() if not k.startswith('_')})
         m['_contact_pairs'] = list(m.get('_contact_pairs', [])) + records
     return m
 
@@ -247,6 +252,7 @@ def fatigue_fields(case, nodes, fixed, stress):
          'fatigue_se_pa': f['se_pa'], 'fatigue_su_pa': f['su_pa'], 'fatigue_ka': f['ka'], 'fatigue_ratio': f['ratio'],
          'fatigue_at_m': nodes[int(np.argmin(sf))].tolist()}
     away = support_peak(nodes, fixed, -sf)                       # the same "a couple of elements away" rule
+    m['fatigue_on_support'] = bool(away.get('peak_on_support'))  # where the fatigue minimum is, not the vm peak
     if away.get('max_vm_away_pa') is not None:
         m['fatigue_sf_min_away'] = float(-away['max_vm_away_pa'])
     return {'fatigue_sf': sf, 'fatigue_life': f['life']}, m

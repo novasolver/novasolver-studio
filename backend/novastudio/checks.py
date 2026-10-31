@@ -84,8 +84,9 @@ def run(case: dict, lang: str) -> list[dict]:
             from .fatigue import material
             if case['physics'].get('analysis') in ('modal', 'buckling', 'nonlinear') or case.get('contact_pairs') or \
                     any(c.get('type','bonded') != 'bonded' for c in case.get('contacts',{}).values()) or \
+                    any(v['role'] in ('displacement','spring') for v in b.values()) or \
                     case['run'].get('mode') == 'final':
-                add('warn','fatigue_scope','physics')
+                add('warn','fatigue_scope','physics')       # these run the incremental solver, which has no fatigue step
             elif case.get('body_materials') or material(case) is None:
                 add('warn','fatigue_material','physics')
         if case.get('contact_pairs'):

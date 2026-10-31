@@ -62,7 +62,9 @@ def solve(cid, study=True):
     if not res:
         raise RuntimeError(f"no results: {r.get('job')}")
     cards = {c["key"]: c.get("value") for c in res["cards"]}
-    return {"gates": res["gates"], "elements": cards.get("elements") or cards.get("cells"), "study": bool(study)}
+    conv = res.get("convergence") or {}
+    return {"gates": res["gates"], "elements": cards.get("elements") or cards.get("cells"), "study": bool(conv),
+            "gci_pass": bool(conv.get("pass")), "gci_pct": conv.get("gci_pct")}
 
 
 def probe(cid, pts, key):

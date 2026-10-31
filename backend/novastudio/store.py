@@ -433,7 +433,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: custom, {', '.join(presets)})")
             nv = value
             if value != "custom":
-                for k in ('model','H','sy'):
+                for k in ('model','H','sy','su','se','base_preset'):
                     parent.pop(k,None)
                 if parts[1] == 'solid':
                     parent['model'] = presets[value].get('model','linear')
@@ -477,7 +477,10 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 if not ok:
                     raise StudioError("err.range", 400, path=path, lo="1" if key == "eps_r" else "0", hi="0.5" if poisson else "-")
             if path.startswith("materials.") and parts[1] in new["materials"]:
-                new["materials"][parts[1]]["preset"] = "custom"
+                m_ = new["materials"][parts[1]]
+                if m_.get("preset") not in (None, "custom"):
+                    m_["base_preset"] = m_["preset"]   # fatigue data (and endurance behaviour) follow the original metal
+                m_["preset"] = "custom"
         parent[key] = nv
         diff.append({"path": path, "old": old, "new": nv})
     normalize_boundaries(new)
@@ -605,6 +608,8 @@ def _default_quantity(path: str) -> dict:
         return {"value": 50, "unit": "W/mK"}
     if path.endswith(".sy"):
         return {"value": 235, "unit": "MPa"}
+    if path.endswith((".su", ".se")):
+        return {"value": 400 if path.endswith(".su") else 200, "unit": "MPa"}
     if path.endswith(".eps_r"):
         return {"value": 1, "unit": "-"}
     if path.endswith(".sigma"):

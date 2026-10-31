@@ -686,6 +686,9 @@ def solve_buckling(nodes, tets, E, nu, fixed_faces=(), tractions=(), rollers=(),
         strain = np.einsum("eij,ej->ei", _bmatrix(dNdx), u[dofs])
         max_strain = max(max_strain, float(np.abs(strain).max()))
         stress[:, g] = np.einsum("ekl,el->ek", Ds[mat], strain)
+    if max_strain == 0:                                # no load: K_sigma = 0 and nothing can buckle
+        return {"load_factors": [], "negative_factors": [], "mode_shapes": np.zeros((0, n, 3)), "u": u.reshape(-1, 3),
+                "applied_load": 0.0, "residual": float("nan"), "converged": False}
     progress("job.buckling_eigen", 0.55)
     A = -geometric_stiffness(nodes, tets, stress)[free][:, free]
     count = min(int(modes), len(free) - 2)
@@ -704,14 +707,15 @@ def solve_buckling(nodes, tets, E, nu, fixed_faces=(), tractions=(), rollers=(),
     rel = np.linalg.norm(residual, axis=0) / np.maximum(np.linalg.norm(Kff @ vectors, axis=0) * np.abs(theta), 1e-300)
     # A factor that would strain the part by more than 5 % is not buckling within linear elasticity: a pulled bar has
     # such roots from the small compressive stresses next to its supports (lambda ~ 6e5 for a steel column in tension).
-    positive = (theta > 0) & (theta * BUCKLING_STRAIN_LIMIT > max_strain)
+    positive = (theta > 0) & (theta * BUCKLING_STRAIN_LIMIT > max_strain) & (max_strain > 0)   # no load, no stress
     phi = np.zeros((ndof, len(theta)))
     phi[free] = vectors
     shapes = phi.T.reshape(-1, n, 3)
     shapes = shapes / np.maximum(np.linalg.norm(shapes, axis=2).max(axis=1), 1e-300)[:, None, None]
-    applied = f.reshape(-1, 3).sum(axis=0)
     # P0: the applied force, or (displacement-driven) the reaction it takes to impose the displacement
-    p0 = float(np.linalg.norm(applied))
+    # the sum of the nodal force magnitudes: a column load gives the load itself, and a self-balanced loading (a
+    # couple, external pressure on a closed pipe) still gives its size, where the resultant would be zero
+    p0 = float(np.linalg.norm(f.reshape(-1, 3), axis=1).sum())
     if p0 == 0 and len(prescribed):
         pidx = np.unique(np.concatenate([3 * np.unique(tri) + c for tri, c, _ in prescribed]))
         r = np.zeros(3)

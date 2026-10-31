@@ -33,6 +33,8 @@ def material(case, body=None):
     from . import units
     mat = case['materials']['solid']
     preset = case.get('body_materials', {}).get(body) if body else mat.get('preset')
+    if preset == 'custom':                     # an edited preset keeps the metal it started from
+        preset = mat.get('base_preset')
     base = METALS.get(preset)
     own = case.get('body_props', {}).get(body, {}) if body else mat
     su = units.to_si(own['su']) / 1e6 if own.get('su') else (base or {}).get('su')

@@ -24,7 +24,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-os.environ.setdefault("NOVASTUDIO_WORKSPACE", tempfile.mkdtemp(prefix="nsval_ws_"))
+os.environ["NOVASTUDIO_WORKSPACE"] = tempfile.mkdtemp(prefix="nsval_ws_")    # never the user's own workspace
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(HERE))
 
@@ -60,8 +60,9 @@ def template_cases(study: bool):
                 raise RuntimeError(f"no results: {r.get('job')}")
             v = res.get("verification")
             cards = {c["key"]: c.get("value") for c in res["cards"]}
+            conv = res.get("convergence") or {}
             info = {"gates": res["gates"], "elements": cards.get("elements") or cards.get("cells"),
-                    "study": bool(res.get("convergence"))}
+                    "study": bool(conv), "gci_pass": bool(conv.get("pass")), "gci_pct": conv.get("gci_pct")}
             if not v or v.get("reference") is None:
                 return info, []
             return info, [{"quantity": v.get("label"), "computed": v.get("computed"), "reference": v.get("reference"),

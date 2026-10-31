@@ -57,3 +57,14 @@ def test_fatigue_bar_template(tmp_path, monkeypatch):
     res = C.run_simulation(cid, "preview", wait_s=600, lang="en")["results"]
     assert res["gates"]["verified"] and abs(res["verification"]["error_pct"]) < 0.1
     assert any(w["code"] == "fatigue_infinite" for w in res["warnings"])
+
+
+def test_strength_overrides_keep_the_metal(tmp_path, monkeypatch):
+    """review H2: su/se take MPa, and an edited steel keeps its fatigue data and endurance behaviour."""
+    monkeypatch.setenv("NOVASTUDIO_WORKSPACE", str(tmp_path))
+    from novastudio import store
+    cid = C.create_case("fatigue-bar", {}, "en")["case"]["case_id"]
+    C.update_case(cid, store.load(cid)["revision"], {"materials.solid.su": {"value": 500, "unit": "MPa"},
+                                                     "materials.solid.E": {"value": 200, "unit": "GPa"}}, "en")
+    mat = fatigue.material(store.load(cid))
+    assert mat["su"] == pytest.approx(500) and mat["se"] == pytest.approx(200) and mat["endurance"]

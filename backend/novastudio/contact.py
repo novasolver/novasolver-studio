@@ -106,6 +106,7 @@ def split_mesh(case, mesh):
 # ---------------------------------------------------------------- separate surfaces (contact_pairs): averaged-gap mortar
 
 PAIR_TYPES = ('bonded', 'frictionless', 'frictional', 'no-separation')
+MORTAR_CHUNK = 500        # slave elements per block (72k projection points, about 100 MB of temporaries)
 
 
 def pair_settings(pair):
@@ -200,43 +201,51 @@ def mortar_pairs(case, mesh):
         if np.intersect1d(np.unique(tri_m), np.unique(tri_s)).size:
             raise StudioError('err.contact_pair_shared_nodes', 400, pair=name)
         search = units.to_si(cfg['search'])
-        Xs = nodes[tri_s]                                   # (S,6,3)
-        pts = np.einsum('qi,sij->sqj', Ns, Xs)              # (S,Q,3)
-        t1 = np.einsum('qi,sij->sqj', d1s, Xs); t2 = np.einsum('qi,sij->sqj', d2s, Xs)
-        cr = np.cross(t1, t2)
-        jac = np.linalg.norm(cr, axis=2)
-        ns = cr / jac[..., None]
-        out = fem.outward_normals(nodes, tets, tri_s)       # orient the parametric normal outward
-        ns *= np.sign(np.einsum('sqj,sj->sq', ns, out))[..., None]
-        w = W[None, :] * jac                                # (S,Q) area weights
-        e, xi, t = _project(pts.reshape(-1, 3), ns.reshape(-1, 3), nodes[tri_m], search)
-        hit = (e >= 0).reshape(w.shape)
         slave = np.unique(tri_s)
-        local = {int(n): i for i, n in enumerate(slave)}
+        lookup = np.full(len(nodes), -1); lookup[slave] = np.arange(len(slave))
         A = np.zeros(len(slave)); nsum = np.zeros((len(slave), 3)); gsum = np.zeros(len(slave))
-        rows, cols, vals = [], [], []
-        Nm = np.zeros((len(e), 6))
-        if hit.any():
+        S = sp.csr_matrix((len(slave), len(nodes)))
+        out = fem.outward_normals(nodes, tets, tri_s)       # orient the parametric normal outward
+        closest = np.inf
+        # in blocks of slave elements: 144 projection points each would need gigabytes at once on a large face
+        for c0 in range(0, len(tri_s), MORTAR_CHUNK):
+            ts = tri_s[c0:c0 + MORTAR_CHUNK]
+            Xs = nodes[ts]                                  # (S,6,3)
+            pts = np.einsum('qi,sij->sqj', Ns, Xs)          # (S,Q,3)
+            t1 = np.einsum('qi,sij->sqj', d1s, Xs); t2 = np.einsum('qi,sij->sqj', d2s, Xs)
+            cr = np.cross(t1, t2)
+            jac = np.linalg.norm(cr, axis=2)
+            ns = cr / jac[..., None]
+            ns *= np.sign(np.einsum('sqj,sj->sq', ns, out[c0:c0 + MORTAR_CHUNK]))[..., None]
+            w = W[None, :] * jac                            # (S,Q) area weights
+            e, xi, t = _project(pts.reshape(-1, 3), ns.reshape(-1, 3), nodes[tri_m], search)
+            if np.isfinite(t).any():
+                closest = min(closest, float(np.abs(t[np.isfinite(t)]).min()))
+            hit = (e >= 0).reshape(w.shape)
+            if not hit.any():
+                continue
+            Nm = np.zeros((len(e), 6))
             Nm[e >= 0] = _tri6(xi[e >= 0, 0], xi[e >= 0, 1])[0]
-        Nm = Nm.reshape(len(tri_s), len(Q), 6)
-        em = e.reshape(w.shape); tq = np.where(e >= 0, t, 0.).reshape(w.shape)   # a miss has t = inf (0 * inf = nan)
-        for a in range(6):                                  # weight node a of each slave element with psi_a
-            ia = np.array([local[int(n)] for n in tri_s[:, a]])
-            wa = w * H[None, :, a] * hit                    # (S,Q)
-            np.add.at(A, ia, wa.sum(1))
-            np.add.at(nsum, ia, np.einsum('sq,sqj->sj', wa, ns))
-            np.add.at(gsum, ia, (wa * tq).sum(1))
-            for b in range(6):                              # slave side
-                rows.append(ia); cols.append(tri_s[:, b]); vals.append((wa * Ns[None, :, b]).sum(1))
-            for b in range(6):                              # master side, at the projected points
-                mnode = np.where(em >= 0, tri_m[np.maximum(em, 0), b], 0)
-                rows.append(np.repeat(ia, len(Q))); cols.append(mnode.ravel()); vals.append(-(wa * Nm[:, :, b]).ravel())
+            Nm = Nm.reshape(len(ts), len(Q), 6)
+            em = e.reshape(w.shape); tq = np.where(e >= 0, t, 0.).reshape(w.shape)   # a miss has t = inf (0*inf = nan)
+            rows, cols, vals = [], [], []
+            for a in range(6):                              # weight node a of each slave element with psi_a
+                ia = lookup[ts[:, a]]
+                wa = w * H[None, :, a] * hit                # (S,Q)
+                np.add.at(A, ia, wa.sum(1))
+                np.add.at(nsum, ia, np.einsum('sq,sqj->sj', wa, ns))
+                np.add.at(gsum, ia, (wa * tq).sum(1))
+                for b in range(6):                          # slave side
+                    rows.append(ia); cols.append(ts[:, b]); vals.append((wa * Ns[None, :, b]).sum(1))
+                for b in range(6):                          # master side, at the projected points
+                    mnode = np.where(em >= 0, tri_m[np.maximum(em, 0), b], 0)
+                    rows.append(np.repeat(ia, len(Q))); cols.append(mnode.ravel()); vals.append(-(wa * Nm[:, :, b]).ravel())
+            S = S + sp.csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
+                                  shape=(len(slave), len(nodes)))
         keep = A > 1e-12 * max(A.max(initial=0), 1e-300)
         if not keep.any():
-            records.append({'face': name, 'no_contact': True, 'closest_m': float(np.abs(t[np.isfinite(t)]).min()) if np.isfinite(t).any() else None})
+            records.append({'face': name, 'no_contact': True, 'closest_m': closest if np.isfinite(closest) else None})
             continue
-        r = np.concatenate(rows); c = np.concatenate(cols); v = np.concatenate(vals)
-        S = sp.csr_matrix((v, (r, c)), shape=(len(slave), len(nodes)))
         S = sp.diags(np.where(keep, 1 / np.where(keep, A, 1), 0)) @ S
         S = S[keep]
         n = -nsum[keep] / np.linalg.norm(nsum[keep], axis=1)[:, None]   # master-side normal: slave moving along -n closes

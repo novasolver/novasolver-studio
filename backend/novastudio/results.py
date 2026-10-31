@@ -125,7 +125,7 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
             cards.append(_card("kt", m["kt"], "-", lang))
         if 'fatigue_sf_min' in m:
             # the minimum next to a rigid support is a singularity: lead with the value away from the supports
-            sf = m.get('fatigue_sf_min_away', m['fatigue_sf_min']) if m.get('peak_on_support') else m['fatigue_sf_min']
+            sf = m.get('fatigue_sf_min_away', m['fatigue_sf_min']) if m.get('fatigue_on_support') else m['fatigue_sf_min']
             cards.append(_card('fatigue_sf', min(sf, 1e6), '-', lang, 3))
             cards.append(_card('fatigue_life', min(m['fatigue_life_min'], m['fatigue_infinite']), 'cycles', lang, 3))
         cards += [_card("max_vm", m["max_vm_pa"] / 1e6, "MPa", lang), _card("max_disp", m["max_disp_m"] * 1e3, "mm", lang)]
@@ -204,7 +204,7 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     if m.get('fatigue_unavailable'):
         warnings.append({'code':'fatigue_unavailable','message':t('result.fatigue_unavailable',lang)})
     if 'fatigue_sf_min' in m:
-        sf = m.get('fatigue_sf_min_away', m['fatigue_sf_min']) if m.get('peak_on_support') else m['fatigue_sf_min']
+        sf = m.get('fatigue_sf_min_away', m['fatigue_sf_min']) if m.get('fatigue_on_support') else m['fatigue_sf_min']
         if sf < 1:
             warnings.append({'code':'fatigue_fail','message':t('result.fatigue_fail',lang,sf=sf)})
         if m['fatigue_life_min'] >= m['fatigue_infinite']:

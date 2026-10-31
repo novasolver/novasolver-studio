@@ -210,9 +210,19 @@ def linear_solve(A,b,contact=False,nprimal=None,near_null=None):
         return np.empty(0)
     with warnings.catch_warnings():
         warnings.simplefilter('error',spla.MatrixRankWarning)
-        if (len(b) if nprimal is None else nprimal) <= (CONTACT_DIRECT_LIMIT if contact else fem.DIRECT_LIMIT):
+        size = len(b) if nprimal is None else nprimal
+        x = None
+        if contact and fem.DIRECT_LIMIT < size <= CONTACT_DIRECT_LIMIT:
             # contact saddle systems: the GMRES/AMG path below needed over 10 minutes per Newton step on a 100k-dof
-            # Hertz model with a mortar pair; a direct factorisation of that size takes well under a minute
+            # Hertz model with a mortar pair; a direct factorisation of that size takes well under a minute, if the
+            # memory is there (otherwise fall through to the iterative path)
+            try:
+                x = spla.spsolve(A.tocsc(),b,permc_spec='MMD_AT_PLUS_A')
+            except MemoryError:
+                x = None
+        if x is not None:
+            pass
+        elif size <= fem.DIRECT_LIMIT:
             x = spla.spsolve(A.tocsc(),b,permc_spec='MMD_AT_PLUS_A')
         elif not contact:
             try:
@@ -303,7 +313,7 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
     initial_slope = None; previous_response = 0.
     limit_reached = False
     force_reference = max(np.linalg.norm(dead),np.linalg.norm(initial_internal))
-    if prescribed and contact.count:
+    if prescribed and contact.count and (~contact.ramped).any():      # mortar pairs only: conformal cases as in 0.6
         # A displaced part that only moves until a gap closes carries no force at all; without a scale of its own
         # the relative residual is round-off over nothing. The force to impose the displacement on its face is one.
         force_reference = max(force_reference,np.linalg.norm(K0[:,fixed]@values))
@@ -332,11 +342,14 @@ def solve(nodes,tets,groups,fixed_faces,tractions,rollers=(),prescribed=(),*,lar
             trial_lam.reshape(-1,3)[:,0] = load_scale*contact.area/max(contact.area.sum(),1e-30)
             # A curved part resting on another (Hertz) touches at no node exactly: every gap is a little open and
             # the first tangent would leave it unheld. Start with the closest points of each body pair in contact.
-            g0 = contact.g0*np.where(contact.ramped,fraction,1.)
+            # Only the mortar rows: conformal pairs keep the iteration path of 0.6.
+            mortar = ~contact.ramped
+            g0 = contact.g0[mortar]
             if len(g0) and g0.min() > 0:
-                band = g0 <= g0.min()+1e-3*max(float(np.ptp(g0)),1e-30)
+                band = np.zeros(len(mortar),bool)
+                band[np.flatnonzero(mortar)[g0 <= g0.min()+1e-3*max(float(np.ptp(g0)),1e-30)]] = True
                 lam_n = trial_lam.reshape(-1,3)[:,0]
-                lam_n[band] = np.maximum(lam_n[band],contact.rho*g0[band]*(1+1e-6))
+                lam_n[band] = np.maximum(lam_n[band],contact.rho*contact.g0[band]*(1+1e-6))
         residual_history = []; converged = False; du_relative = np.inf
         for it in range(max_iterations):
             iterations += 1

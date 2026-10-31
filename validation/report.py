@@ -31,7 +31,7 @@ TXT = {
             "乱流の壁摩擦（円管の摩擦係数）は、壁の近くのメッシュに強く左右されます。表の Blasius の結果を確認してから使ってください。",
             "固定面の角や鋭い入隅の応力は理論上無限大（特異点）です。Studio は警告を出し、比べる値には使いません。",
             "NAFEMS LE10 の細かいメッシュは 16 GB のメモリでは解けないため、標準メッシュ1段階の値です。",
-            "接触・座屈・疲労・陽解法の衝突は、この版の検証範囲に含まれていません（実装予定）。",
+            "接触・座屈・疲労は上の表の基本問題（直列ブロック・ヘルツ接触・オイラー座屈・グッドマン）で確かめています。陽解法の衝突・シェル要素は、この版の検証範囲に含まれていません。",
         ],
         "repro": "Windows の zip 版または `pip install novasolver-studio` の環境で、リポジトリを取得して次を実行します。",
     },
@@ -56,7 +56,7 @@ TXT = {
             "Turbulent wall friction (pipe friction factor) depends strongly on the mesh next to the wall. Check the Blasius row before relying on it.",
             "Stress at the corner of a fixed face or a sharp re-entrant corner is infinite in theory (a singularity). Studio warns and does not use it for comparison.",
             "NAFEMS LE10 on the fine mesh needs more than 16 GB, so its value comes from the normal mesh only.",
-            "Contact, buckling, fatigue and explicit crash are not part of this version's validation (planned).",
+            "Contact, buckling and fatigue are checked by the basic problems in the tables (blocks in series, Hertz contact, Euler buckling, Goodman). Explicit crash and shell elements are not part of this version's validation.",
         ],
         "repro": "With the Windows zip or `pip install novasolver-studio`, clone the repository and run:",
     },
@@ -79,7 +79,7 @@ TXT = {
             "湍流壁面摩擦（圆管摩擦系数）强烈依赖壁面附近的网格。使用前请先查看表中 Blasius 的结果。",
             "固定面的角点或尖锐内角处的应力在理论上为无穷大（奇异点）。Studio 会给出警告，不用于比较。",
             "NAFEMS LE10 的细网格需要 16 GB 以上内存，因此采用标准网格的结果。",
-            "接触、屈曲、疲劳和显式碰撞不在本版本的验证范围内（计划中）。",
+            "接触、屈曲和疲劳通过上表中的基本问题（串联块、赫兹接触、欧拉屈曲、古德曼）进行验证。显式碰撞和壳单元不在本版本的验证范围内。",
         ],
         "repro": "使用 Windows zip 版或 `pip install novasolver-studio`，获取仓库后运行：",
     },
@@ -121,8 +121,9 @@ def write(doc, lang):
             continue
         L += [f"## {t['phys'].get(ph, ph)}", "", "| " + " | ".join(t["cols"]) + " |", "|" + "---|" * len(t["cols"])]
         for c in group:
-            g = (c.get("info") or {}).get("gates") or {}
-            mesh = t["conv"] if g.get("verified") else t["one"] if not (c.get("info") or {}).get("study") else t["notconv"]
+            info = c.get("info") or {}
+            # the GCI study's own verdict, not the "verified" gate (which also needs the reference to pass)
+            mesh = t["one"] if not info.get("study") else t["conv"] if info.get("gci_pass") else t["notconv"]
             title, tests = c["title"].get(lang, c["id"]), (c.get("tests") or {}).get(lang, "").replace("|", "/")
             if c["status"] == "error" or not c.get("rows"):
                 res = t["err"] if c["status"] == "error" else t["noref"]
