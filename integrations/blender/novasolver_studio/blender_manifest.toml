@@ -1,0 +1,17 @@
+schema_version = "1.0.0"
+
+id = "novasolver_studio"
+version = "0.1.0"
+name = "NovaSolver Studio"
+tagline = "Check strength and heat before you print, with free local FEA"
+maintainer = "NovaSolver <info@novasolver.jp>"
+type = "add-on"
+website = "https://novasolver.jp/studio/"
+tags = ["Mesh", "3D View", "Import-Export"]
+
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Writes the active object to a temporary STL file"
+network = "Talks to NovaSolver Studio on this computer (127.0.0.1 only)"

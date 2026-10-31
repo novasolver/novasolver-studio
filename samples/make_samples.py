@@ -64,6 +64,24 @@ def cold_plate():
     gmsh.write(str(OUT / "cold_plate.step"))
 
 
+def wall_hook():
+    """3D-printed wall hook as STL (what slicers and printables sites use): back plate with two screw holes, an arm
+    and an upturned tip. The sharp inside corner at the arm root is where prints break: the sample shows it."""
+    gmsh.model.add("wall_hook")
+    occ = gmsh.model.occ
+    plate = occ.addBox(0, 0, 0, 4, 30, 60)             # screwed to the wall at x = 0
+    arm = occ.addBox(4, 7.5, 0, 36, 15, 6)
+    tip = occ.addBox(34, 7.5, 6, 6, 15, 12)
+    occ.fuse([(3, plate)], [(3, arm), (3, tip)])
+    holes = [(3, occ.addCylinder(-1, 15, z, 6, 0, 0, 2.25)) for z in (20, 48)]
+    occ.cut(occ.getEntities(3), holes)
+    occ.synchronize()
+    gmsh.option.setNumber("Mesh.MeshSizeMax", 2.0)
+    gmsh.model.mesh.generate(2)
+    gmsh.option.setNumber("Mesh.Binary", 1)
+    gmsh.write(str(OUT / "wall_hook.stl"))
+
+
 if __name__ == "__main__":
     gmsh.initialize(["", "-nopopup"])
     gmsh.option.setNumber("General.Terminal", 0)
@@ -73,6 +91,7 @@ if __name__ == "__main__":
         pipe_elbow()
         sphere()
         cold_plate()
+        wall_hook()
     finally:
         gmsh.finalize()
     print([p.name for p in OUT.glob("*.step")])

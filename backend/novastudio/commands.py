@@ -359,6 +359,11 @@ SAMPLES = {
                  "description": ("フィンつき放熱器。底面から熱を入れ、フィンから空気へ逃がす練習用。",
                                  "A finned heat sink. Put heat into the base and let the fins shed it to the air.",
                                  "带翅片的散热器。从底面输入热量，经翅片散到空气中。")},
+    "wall_hook": {"file": "wall_hook.stl", "physics": "structural", "material": "pla",
+                  "title": ("3Dプリントの壁掛けフック（PLA）", "3D-printed wall hook (PLA)", "3D 打印挂钩（PLA）"),
+                  "description": ("STL のまま読み込む例。背板を壁に固定し、先端に荷重をかけて、折れやすい付け根の応力を見る。",
+                                  "Opened straight from STL. Fix the back plate to the wall, load the tip and see the stress at the root, where prints break.",
+                                  "直接读取 STL 的示例。固定背板，在钩尖加载，查看最容易断裂的根部应力。")},
 }
 
 
@@ -377,7 +382,10 @@ def open_sample(name: str, physics: str | None = None, lang: str = "ja") -> dict
     if name not in SAMPLES:
         raise StudioError("err.cad_missing", 404, path=name)
     s = SAMPLES[name]
-    return import_geometry(physics or s["physics"], s["file"], path=str(_samples_dir() / s["file"]), lang=lang)
+    pl = import_geometry(physics or s["physics"], s["file"], path=str(_samples_dir() / s["file"]), lang=lang)
+    if s.get("material") and pl["case"]["physics"]["kind"] == "linear-static" and "solid" in pl["case"].get("materials", {}):
+        pl = update_case(pl["case"]["case_id"], pl["case"]["revision"], {"materials.solid.preset": s["material"]}, lang)
+    return pl
 
 
 MAX_ARCHIVE_BYTES = 1024 ** 3

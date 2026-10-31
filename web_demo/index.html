@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NovaSolver Studio ブラウザ体験版 — 片持ち梁を FEM で解く</title>
+<meta name="description" content="インストール不要。NovaSolver Studio と同じ有限要素ソルバ（2次四面体）がブラウザの中で動き、片持ち梁のたわみと応力を計算して梁理論と照合します。計算はすべてこの端末の中で行われます。">
+<link rel="canonical" href="https://novasolver.jp/studio/demo/">
+<style>
+:root{--bg:#0b1220;--surface:#111a2c;--line:#22304a;--fg:#e6edf6;--fg2:#a9b6c8;--fg3:#8494aa;--accent:#22d3ee;--ok:#4ade80;--warn:#fb923c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 system-ui,-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP","Microsoft YaHei",sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+header a{color:var(--fg);text-decoration:none;font-weight:600}
+header .sp{flex:1}
+header select{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+main{display:grid;grid-template-columns:320px 1fr;min-height:calc(100dvh - 53px)}
+aside{padding:16px;border-right:1px solid var(--line);overflow:auto}
+h1{font-size:20px;margin:0 0 4px}
+p.lead{color:var(--fg2);margin:0 0 16px}
+label{display:block;margin:12px 0 4px;color:var(--fg2);font-size:12px}
+.row{display:flex;gap:8px;align-items:center}
+input[type=range]{flex:1;accent-color:var(--accent)}
+.val{width:72px;text-align:right;font-variant-numeric:tabular-nums}
+select.mat{width:100%;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px}
+button.run{margin-top:16px;width:100%;height:36px;border:0;border-radius:6px;background:var(--fg);color:var(--bg);font-weight:600;cursor:pointer}
+button.run:disabled{opacity:.5;cursor:default}
+.status{margin-top:8px;color:var(--fg3);font-size:12px;min-height:18px}
+table{width:100%;border-collapse:collapse;margin-top:16px;font-variant-numeric:tabular-nums}
+td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right;font-weight:400}
+td:first-child,th:first-child{text-align:left;color:var(--fg2)}
+th{color:var(--fg3);font-size:12px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}
+.note{color:var(--fg3);font-size:12px;margin-top:12px}
+.cta{display:block;margin-top:20px;padding:12px;border:1px solid var(--line);border-radius:8px;color:var(--fg);text-decoration:none}
+.cta b{color:var(--accent)}
+#view{position:relative;min-height:360px}
+#view canvas{display:block;width:100%;height:100%}
+.legend{position:absolute;left:16px;bottom:16px;background:rgba(11,18,32,.85);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px}
+.bar{width:200px;height:8px;border-radius:2px;background:linear-gradient(90deg,#3b4cc0,#6f92f3,#aac7fd,#dddcdc,#f7b89c,#e7745b,#b40426)}
+.ticks{display:flex;justify-content:space-between;color:var(--fg2);font-variant-numeric:tabular-nums}
+@media (max-width:760px){main{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--line)}#view{height:60vh}}
+</style>
+</head>
+<body>
+<header><a href="/studio/">NovaSolver Studio</a><span class="sp"></span>
+<select id="lang" aria-label="Language"><option value="ja">日本語</option><option value="en">English</option><option value="zh">中文</option></select></header>
+<main>
+<aside>
+  <h1 data-t="title"></h1>
+  <p class="lead" data-t="lead"></p>
+  <label data-t="L"></label><div class="row"><input id="L" type="range" min="50" max="500" step="10" value="200"><span class="val" id="Lv"></span></div>
+  <label data-t="b"></label><div class="row"><input id="b" type="range" min="5" max="60" step="1" value="20"><span class="val" id="bv"></span></div>
+  <label data-t="h"></label><div class="row"><input id="h" type="range" min="2" max="60" step="1" value="20"><span class="val" id="hv"></span></div>
+  <label data-t="F"></label><div class="row"><input id="F" type="range" min="1" max="2000" step="1" value="500"><span class="val" id="Fv"></span></div>
+  <label data-t="mat"></label>
+  <select id="mat" class="mat"><option value="steel" data-t="steel"></option><option value="aluminium" data-t="aluminium"></option><option value="pla" data-t="pla"></option></select>
+  <button id="run" class="run" disabled data-t="run"></button>
+  <div class="status" id="status"></div>
+  <table id="res" hidden>
+    <tr><th></th><th data-t="fem"></th><th data-t="theory"></th><th data-t="diff"></th></tr>
+    <tr><td data-t="tip"></td><td id="tip"></td><td id="rtip"></td><td id="dtip"></td></tr>
+    <tr><td data-t="mid"></td><td id="mid"></td><td id="rmid"></td><td id="dmid"></td></tr>
+    <tr><td data-t="peak"></td><td id="peak"></td><td colspan="2" id="peaknote"></td></tr>
+  </table>
+  <p class="note" id="meshnote"></p>
+  <p class="note" data-t="privacy"></p>
+  <a class="cta" href="/studio/"><b data-t="cta1"></b><br><span data-t="cta2"></span></a>
+</aside>
+<div id="view"><div class="legend" id="legend" hidden><div data-t="legend"></div><div class="bar"></div><div class="ticks"><span>0</span><span id="lmid"></span><span id="lmax"></span></div></div></div>
+</main>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="demo.js"></script>
+</body>
+</html>

@@ -2,6 +2,7 @@
 
   novastudio                 start the app: local server + the UI in its own window (what the packaged exe does)
   novastudio FILE.nscase     open a case file in the running app (or start it)
+  novastudio --case ID       open a saved case in the app window (used by the Blender add-on)
   novastudio serve [--port]  server only (127.0.0.1)
   novastudio mcp             MCP server on stdio
   novastudio env             print available engines
@@ -42,6 +43,12 @@ def main() -> None:
     if len(argv) == 1 and argv[0].lower().endswith(".nscase"):  # a double-clicked case file (file association)
         _app(argv[0])
         return
+    if len(argv) == 2 and argv[0] == "--case":                 # open a case by id (the Blender add-on sends one)
+        import re
+        if not re.fullmatch(r"c_\d{8}_\d{6}_[0-9a-f]{4}", argv[1]):
+            raise SystemExit("--case expects a case id such as c_20261031_120000_ab12")
+        _app(None, f"?case={argv[1]}")
+        return
     ap =argparse.ArgumentParser(prog="novastudio")
     sub = ap.add_subparsers(dest="cmd")
     s = sub.add_parser("serve", help="run the local UI server (127.0.0.1 only)")
@@ -71,7 +78,7 @@ def main() -> None:
         _app(None)
 
 
-def _app(case_path: str | None) -> None:
+def _app(case_path: str | None, query: str = "") -> None:
     """App mode (double-click, Start menu, a double-clicked .nscase): one server per user, the UI in its own window.
     A second start only opens another window on the running server (and imports the file it was given)."""
     import os
@@ -84,7 +91,7 @@ def _app(case_path: str | None) -> None:
     no_ui = bool(os.environ.get("NOVASTUDIO_NO_BROWSER"))     # set by the update tests
 
     def show(port: int) -> object:
-        url = f"http://127.0.0.1:{port}/{desktop.open_case(case) if case else ''}"
+        url = f"http://127.0.0.1:{port}/{desktop.open_case(case) if case else query}"
         if no_ui:
             return None
         proc = desktop.open_window(url)
