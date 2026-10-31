@@ -26,6 +26,7 @@ function UpdateAction({ u }: { u: UpdateInfo }) {
   const job = useStore((s) => s.updateJob);
   const [applying, setApplying] = useState(false);       // one click starts one swap
   if (u.kind === "mcpb") return <p className="prose-ui text-body text-fg-2">{t("update.mcpb")}</p>;
+  if (u.kind === "store") return <p className="prose-ui text-body text-fg-2">{t("update.store")}</p>;
   if (u.kind === "dev") return <p className="prose-ui text-body text-fg-2">{t("update.dev")}</p>;
   if (u.kind !== "portable")
     return (

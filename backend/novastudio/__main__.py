@@ -1,6 +1,7 @@
 """CLI / app entry.
 
-  novastudio                 start the app: local server + open the browser (what the packaged exe does)
+  novastudio                 start the app: local server + the UI in its own window (what the packaged exe does)
+  novastudio FILE.nscase     open a case file in the running app (or start it)
   novastudio serve [--port]  server only (127.0.0.1)
   novastudio mcp             MCP server on stdio
   novastudio env             print available engines
@@ -38,7 +39,10 @@ def main() -> None:
         from .mesh_worker import main as mesh_main
         mesh_main(argv[1])
         return
-    ap = argparse.ArgumentParser(prog="novastudio")
+    if len(argv) == 1 and argv[0].lower().endswith(".nscase"):  # a double-clicked case file (file association)
+        _app(argv[0])
+        return
+    ap =argparse.ArgumentParser(prog="novastudio")
     sub = ap.add_subparsers(dest="cmd")
     s = sub.add_parser("serve", help="run the local UI server (127.0.0.1 only)")
     s.add_argument("--port", type=int, default=8765)
@@ -58,20 +62,71 @@ def main() -> None:
     elif a.cmd == 'export-results':
         from .commands import export_results
         print(json.dumps(export_results(a.case_id,a.format,a.lang),ensure_ascii=False))
-    else:
-        import threading
-        import webbrowser
-
+    elif a.cmd == "serve":
         import uvicorn
 
         from .api import app
-        port = a.port if a.cmd == "serve" else _free_port(8765)
-        if a.cmd is None:                                      # app mode: open the UI once the server is up
-            import os
-            if not os.environ.get("NOVASTUDIO_NO_BROWSER"):    # set by the update tests
-                threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{port}/")).start()
+        uvicorn.run(app, host="127.0.0.1", port=a.port, log_level="warning")
+    else:
+        _app(None)
+
+
+def _app(case_path: str | None) -> None:
+    """App mode (double-click, Start menu, a double-clicked .nscase): one server per user, the UI in its own window.
+    A second start only opens another window on the running server (and imports the file it was given)."""
+    import os
+    import threading
+    import time
+    import webbrowser
+
+    from . import desktop
+    case = desktop.case_file([case_path]) if case_path else None
+    no_ui = bool(os.environ.get("NOVASTUDIO_NO_BROWSER"))     # set by the update tests
+
+    def show(port: int) -> object:
+        url = f"http://127.0.0.1:{port}/{desktop.open_case(case) if case else ''}"
+        if no_ui:
+            return None
+        proc = desktop.open_window(url)
+        if proc is None:
+            webbrowser.open(url)
+        return proc
+
+    inst = desktop.Instance()
+    if not inst.acquire():
+        for _ in range(100):                                   # the first start may still be starting its server
+            port = desktop.running_port()
+            if port:
+                show(port)
+                return
+            time.sleep(0.1)
+    (desktop.data_dir() / "running.json").unlink(missing_ok=True)   # left by a crashed start; we own the lock now
+
+    import uvicorn
+
+    from .api import app
+    port = _free_port(8765)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    while not server.started and thread.is_alive():
+        time.sleep(0.05)
+    if not thread.is_alive():
+        raise SystemExit("the local server could not start")
+    inst.publish(port)
+    proc = show(port)
+    try:
+        if proc is not None:                                   # own window: the program ends with its last window
+            desktop.hide_console()
+            desktop.wait_closed(proc)
+        else:
             print(f"NovaSolver Studio is running at http://127.0.0.1:{port}/  (close this window to quit)")
-        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+            while thread.is_alive():
+                thread.join(0.5)
+    except KeyboardInterrupt:
+        pass
+    server.should_exit = True
+    thread.join(10)
 
 
 if __name__ == "__main__":

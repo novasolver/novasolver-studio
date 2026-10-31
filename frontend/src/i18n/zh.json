@@ -518,6 +518,7 @@
   "update.auto": "每天启动时检查一次",
   "update.privacy": "检查时只获取版本号，不发送任何可识别您的信息。",
   "update.mcpb": "请在 Claude Desktop 的扩展页面中更新。",
+  "update.store": "Microsoft Store 会自动安装更新。如需立即更新，请在 Microsoft Store 中打开“库”。",
   "update.python": "使用以下命令更新：",
   "update.dev": "开发版本：请使用 git pull 更新。",
   "update.page": "打开下载页面",

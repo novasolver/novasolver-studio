@@ -518,6 +518,7 @@
   "update.auto": "Check once a day at start-up",
   "update.privacy": "Checking only fetches the latest version number; nothing that identifies you is sent.",
   "update.mcpb": "Update it from the extensions page of Claude Desktop.",
+  "update.store": "Microsoft Store installs updates automatically. To update now, open Library in Microsoft Store.",
   "update.python": "Update with this command:",
   "update.dev": "Development checkout: update with git pull.",
   "update.page": "Open the download page",

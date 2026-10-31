@@ -102,11 +102,14 @@ def save_state(**kw) -> dict:
 
 def install_kind() -> str:
     """portable: the Windows zip (can update itself); mcpb: inside Claude Desktop's extension folder (Claude updates
-    it); python: pip/uvx; dev: a source checkout."""
+    it); store: the Microsoft Store package (read-only folder, the Store updates it); python: pip/uvx; dev: a source
+    checkout."""
     if FROZEN:
         root = str(STUDIO_ROOT).lower()
         if "claude extensions" in root or "claude\\extensions" in root:
             return "mcpb"
+        if "\\windowsapps\\" in root:
+            return "store"
         return "portable" if sys.platform == "win32" else "other"
     return "python" if INSTALLED else "dev"
 

@@ -518,6 +518,7 @@
   "update.auto": "起動時に毎日1回確認する",
   "update.privacy": "確認では版番号の取得だけを行い、利用者を識別する情報は送りません。",
   "update.mcpb": "Claude Desktop の拡張機能の画面から更新してください。",
+  "update.store": "Microsoft Store が自動で更新します。すぐに更新するには Microsoft Store の「ライブラリ」を開いてください。",
   "update.python": "次のコマンドで更新できます：",
   "update.dev": "開発版です。git pull で更新してください。",
   "update.page": "配布ページを開く",

@@ -62,3 +62,14 @@ The solvers run as separate processes on the user's computer; models are never s
 
 The release zip is not yet signed with an Authenticode certificate, so Windows SmartScreen may warn on first start.
 Every release publishes the SHA-256 of the zip next to it on GitHub and novasolver.jp for verification.
+Release binaries are built on GitHub Actions from this repository (`.github/workflows/release-windows.yml`, public
+build log). Signing through SignPath Foundation and a Microsoft Store (MSIX) package are in preparation; see
+`docs/RELEASE_SIGNING.md`.
+
+## Installer
+
+`NovaSolverStudio-<version>-win64-setup.exe` installs per user without administrator rights (to
+`%LOCALAPPDATA%\Programs\NovaSolverStudio`), adds a Start menu entry, optionally a desktop icon and the `.nscase`
+association, and registers an uninstaller. An administrator can choose "install for all users" in the first dialog,
+or run it silently: `setup.exe /VERYSILENT /ALLUSERS /TASKS="assoc"`. Uninstalling never removes cases in
+`Documents\NovaSolverStudio`.

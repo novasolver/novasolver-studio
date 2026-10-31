@@ -1,0 +1,154 @@
+name: Windows release build
+
+# Builds the portable zip and the installer on a GitHub-hosted runner, so that every release binary comes from this
+# public source and a public build log. Code signing through SignPath Foundation (free for open source) switches on by
+# itself once the repository variables below are set; until then the build is unsigned, exactly like before.
+#
+#   repository variables : SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG (e.g. novasolver-studio),
+#                          SIGNPATH_POLICY_SLUG (release-signing), BUILD_DEPS_URL (optional mirror for CalculiX/MS-MPI),
+#                          MSIX_IDENTITY_NAME, MSIX_PUBLISHER, MSIX_PUBLISHER_NAME (Partner Center > Product identity)
+#   repository secret    : SIGNPATH_API_TOKEN
+#
+# The release itself is not published from here: the zip and installer are attached to the workflow run, checked,
+# and uploaded to the GitHub release by hand (docs/RELEASE_SIGNING.md).
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  # Redistributable solver binaries bundled with the app, pinned by hash (licences in THIRD_PARTY_NOTICES.md).
+  CCX_SHA256: e18360eb32a5cd48f91a212c57069212cd8e27d2f798a599a78106bd0b3ecc1f
+  MSMPI_DLL_SHA256: 534f869ea0f1f7e81ebd2343351c8eff1fb47026e35e54460fdae148bddee5b8
+  DEPS_URL: ${{ vars.BUILD_DEPS_URL || 'https://novasolver.jp/dl/studio/build-deps' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      unsigned-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Python packages
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python.exe -m pip install --upgrade pip
+          .venv\Scripts\python.exe -m pip install -e . "pyinstaller==6.22.3"
+      - name: Frontend packages
+        run: npm ci
+        working-directory: frontend
+      - id: version
+        shell: pwsh
+        run: |
+          $v = (.venv\Scripts\python.exe -c "import sys; sys.path.insert(0, 'backend'); import novastudio; print(novastudio.__version__)").Trim()
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$v") { throw "tag $env:GITHUB_REF_NAME does not match version $v" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+      - name: Bundled solvers (hash-checked)
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          New-Item -ItemType Directory -Force solvers\calculix | Out-Null
+          Invoke-WebRequest "$env:DEPS_URL/ccx_static.exe" -OutFile solvers\calculix\ccx_static.exe
+          if ((Get-FileHash solvers\calculix\ccx_static.exe).Hash -ne $env:CCX_SHA256) { throw "ccx_static.exe hash mismatch" }
+          $mpi = Join-Path $env:LOCALAPPDATA "NovaSolverStudio\solvers\msmpi"
+          New-Item -ItemType Directory -Force $mpi | Out-Null
+          Invoke-WebRequest "$env:DEPS_URL/msmpi.zip" -OutFile "$env:RUNNER_TEMP\msmpi.zip"
+          Expand-Archive "$env:RUNNER_TEMP\msmpi.zip" -DestinationPath $mpi -Force
+          if ((Get-FileHash "$mpi\msmpi.dll").Hash -ne $env:MSMPI_DLL_SHA256) { throw "msmpi.dll hash mismatch" }
+      - name: Program folder
+        run: powershell -ExecutionPolicy Bypass -File build_release.ps1 -Stage app
+      - name: Smoke test (engines and MCP tool list)
+        shell: pwsh
+        run: |
+          build\dist\NovaSolverStudio\NovaSolverStudio.exe env | Tee-Object -Variable envout
+          if (-not ($envout -match '"calculix"')) { throw "env check failed" }
+      - uses: actions/upload-artifact@v4
+        id: unsigned
+        with:
+          name: app-unsigned
+          path: build/dist/NovaSolverStudio/
+          retention-days: 7
+
+  sign-and-package:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python (version lookup only)
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python.exe -m pip install -e . --no-deps
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-unsigned
+          path: build/dist/NovaSolverStudio
+      - name: Sign the program (SignPath)
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: program-folder
+          github-artifact-id: ${{ needs.build.outputs.unsigned-artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: build/dist/NovaSolverStudio
+      - name: Zip and installer
+        run: powershell -ExecutionPolicy Bypass -File build_release.ps1 -Stage package
+      - name: Microsoft Store package (MSIX, signed by the Store on submission)
+        if: ${{ vars.MSIX_IDENTITY_NAME != '' }}
+        run: >
+          .venv\Scripts\python.exe tools/make_msix.py --app build/dist/NovaSolverStudio
+          --version ${{ needs.build.outputs.version }} --identity "${{ vars.MSIX_IDENTITY_NAME }}"
+          --publisher "${{ vars.MSIX_PUBLISHER }}" --publisher-name "${{ vars.MSIX_PUBLISHER_NAME || 'NovaSolver' }}"
+      - uses: actions/upload-artifact@v4
+        id: packaged
+        with:
+          name: release-${{ needs.build.outputs.version }}
+          path: |
+            release/*.zip
+            release/*.sha256
+            release/*-setup.exe
+            release/*.msix
+      - name: Sign the installer (SignPath)
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.packaged.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: release-signed
+      - name: Hashes of the signed files
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        shell: pwsh
+        run: |
+          Get-ChildItem release-signed -File -Exclude *.sha256 | ForEach-Object {
+            "$((Get-FileHash $_.FullName).Hash.ToLower())  $($_.Name)" | Set-Content -Encoding ascii "$($_.FullName).sha256" }
+      - uses: actions/upload-artifact@v4
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        with:
+          name: release-${{ needs.build.outputs.version }}-signed
+          path: release-signed/

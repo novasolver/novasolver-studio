@@ -121,7 +121,7 @@ export interface UpdateInfo {
   latest?: string;
   available: boolean;
   /** portable: the Windows zip updates itself; mcpb, python, dev: show how to update instead */
-  kind: "portable" | "mcpb" | "python" | "dev" | "other";
+  kind: "portable" | "mcpb" | "store" | "python" | "dev" | "other";
   notes?: Partial<Record<Lang, string>>;
   page?: Partial<Record<Lang, string>>;
   pip?: string;
