@@ -23,6 +23,12 @@
 
 Studio を Claude などの AI アプリから操作する場合（MCP 連携）、AI に伝えた内容や AI が読み取った解析条件・結果は、**その AI アプリの提供元**へ送られます。これは Studio ではなく AI アプリ側の通信です。機密のモデルを扱うときは、社内の規程で認められた AI サービスだけを使うか、AI 連携を使わずに Studio の画面だけで操作してください。
 
+AI が受け取るのは、ツールの返す**文章と数値**（寸法、面の一覧と位置、材料、境界条件、結果の数値、判定）と、
+`render_view` などが返す**画像**（部品の形が写ります）です。CAD ファイルそのものは AI に渡しません。
+
+**数値のみモード**：環境変数 `NOVASTUDIO_MCP_NO_IMAGES=1` を設定するか、`NovaSolverStudio.exe` と同じフォルダ（またはデータフォルダ）に
+`mcp_no_images` という空のファイルを置くと、AI への返答から画像をすべて外します。部品の形は Studio の画面でだけ確認できます。
+
 ---
 
 ## English
@@ -48,6 +54,14 @@ Studio を Claude などの AI アプリから操作する場合（MCP 連携）
 
 When Studio is driven from an AI app such as Claude (MCP), whatever you tell the AI, and the case settings and results it reads, are sent to **that AI app's provider**. That traffic belongs to the AI app, not to Studio. For confidential models, use only AI services your company has approved, or work in the Studio window without the AI connection.
 
+What the AI receives is the **text and numbers** the tools return (dimensions, the face list with positions,
+materials, boundary conditions, result values, gates) and the **pictures** returned by `render_view` and similar
+tools, which show the part's shape. The CAD file itself is never handed to the AI.
+
+**Numbers-only mode:** set `NOVASTUDIO_MCP_NO_IMAGES=1`, or put an empty file named `mcp_no_images` next to
+`NovaSolverStudio.exe` (or in the data folder), and every picture is removed from the replies to the AI. The shape is
+then visible only in the Studio window.
+
 ---
 
 ## 中文
@@ -72,3 +86,7 @@ When Studio is driven from an AI app such as Claude (MCP), whatever you tell the
 ### 与 AI 助手一起使用时
 
 通过 Claude 等 AI 应用操作 Studio（MCP 连接）时，您告诉 AI 的内容以及 AI 读取的分析条件和结果，会被发送到**该 AI 应用的提供方**。这是 AI 应用的通信，而不是 Studio 的。处理机密模型时，请只使用公司批准的 AI 服务，或不使用 AI 连接，直接在 Studio 界面中操作。
+
+AI 收到的是工具返回的**文字和数值**（尺寸、面列表及位置、材料、边界条件、结果数值、判定）以及 `render_view` 等返回的**图片**（会显示零件形状）。CAD 文件本身不会交给 AI。
+
+**仅数值模式**：设置环境变量 `NOVASTUDIO_MCP_NO_IMAGES=1`，或在 `NovaSolverStudio.exe` 所在文件夹（或数据文件夹）放一个名为 `mcp_no_images` 的空文件，发给 AI 的回复中将不包含任何图片，零件形状只在 Studio 界面中可见。

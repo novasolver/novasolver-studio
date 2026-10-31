@@ -1,45 +1,70 @@
 # NovaSolver Studio
 
-Studio 0.5 adds structural modal analysis, uniform or solved-temperature thermal stress, gravity and centrifugal
-loads, and moment, bearing and remote-force face conditions. Six examples compare the computed answer with a
-closed-form reference: `cantilever-modal`, `thermal-bar-fixed`, `thermal-bar-free`, `hanging-bar`, `rotating-disk`
-and `shaft-torsion`. Structural studies track maximum displacement; modal studies track the first elastic frequency.
-Results include section caps, click probing, mode animation and a line chart with CSV download. The results Export
-menu and MCP `export_results` tool write ParaView VTU, CSV or a self-contained printable HTML report into the case's
-`exports` folder. From the CLI: `python -m novastudio export-results CASE_ID vtu` (also `csv` or `report`).
+**Free, local engineering simulation that your AI assistant can drive — and every answer is checked.**
+Structural FEM, heat and CFD (CalculiX, OpenFOAM® and a built-in quadratic-tet solver) on your own PC, with an MCP
+server so Claude or any MCP client can import your STEP/STL, set the loads, run, refine the mesh and verify the result.
 
-**Open-source engineering simulation you can trust — structural, thermal and flow — operable by you or by your AI assistant.**
-**構造・熱・流れを解く、オープンソースの解析ソフト。画面からも、AI アシスタント（MCP）からも操作できます。**
+[日本語](README.ja.md) · [中文](README.zh.md) ·
+**[Try it in your browser (no install)](https://novasolver.jp/studio/demo/?lang=en)** ·
+[Download for Windows](https://github.com/novasolver/novasolver-studio/releases/latest) ·
+[novasolver.jp/studio](https://novasolver.jp/en/studio/)
 
-> Early preview (v0.x). Every result comes with a clear status: **ran → converged → verified**.
-> 開発中のプレビュー版です。結果には常に「実行できた → 収束した → 検証済み」の判定がつきます。
+![An AI assistant sets up a gear tooth in Studio, solves it, refines the mesh three times and compares with a hand calculation](assets/readme/studio-demo.gif)
 
-> **Your models never leave your computer.** No telemetry, no account, no upload; the only network use is the
-> optional update check and example download, and an offline mode turns even those off. The source is public, and an
-> automated test fails if any other code starts using the network. See [docs/PRIVACY.md](docs/PRIVACY.md).
-> **形状・解析条件・結果は、PC の外へ送りません。** 利用状況の収集・アカウント・アップロードはありません。通信は更新の確認と
-> 例題のダウンロードだけで、オフラインモードではそれも止まります。詳しくは [docs/PRIVACY.md](docs/PRIVACY.md)。
+*One sentence to the AI → Studio sets up and solves the case → mesh refined three times (GCI 1.5 %) → compared
+with a hand calculation. Real app, real numbers.*
+
+## Why Studio
+
+- **Ran ≠ right.** Every result carries three separate gates: **ran → converged → verified**. Templates are checked
+  against closed-form or literature answers, imported parts by an automatic mesh-convergence study (Roache GCI), and
+  the AI is told never to call a result correct unless the verify gate passes. Warnings that matter (stress above
+  yield, a stress singularity at a sharp corner) are passed on, not hidden.
+- **Your models stay on your computer.** No account, no upload, no telemetry. The only network use is the optional
+  update check and example download (offline mode turns those off), and a public test fails if any other code starts
+  using the network. For confidential work with a cloud AI, **numbers-only mode** keeps even pictures of the part
+  away from the AI. See [docs/PRIVACY.md](docs/PRIVACY.md).
+- **Real solvers, no licence fee.** CalculiX for structural/thermal, OpenFOAM® for flow and water cooling, a built-in
+  tet10 FEM for answers in seconds. Japanese, English and Chinese UI.
+- **Typed MCP tools, no shell.** 29 tools (create/import, set conditions, mesh, run, convergence, verify, probe,
+  sweep, render). The AI fills a case schema; Studio writes the solver input. Your AI's edits appear live in the
+  window, and you can undo them.
+
+| | |
+|---|---|
+| ![Flow through a pipe elbow, solved with OpenFOAM](assets/readme/elbow-flow.webp) | ![Cantilever stress and deflection compared with beam theory](assets/readme/results-cantilever-en.webp) |
+| Pipe elbow, OpenFOAM® (pressure drop) | Cantilever vs beam theory |
+
+## Checked against known answers
+
+A sample of the references Studio compares itself with (the full validation suite with every case, tolerance and
+mesh-convergence column is published with each release as `docs/VALIDATION.md`):
+
+| Case | Reference | Studio |
+|---|---|---|
+| Cantilever tip deflection | Euler–Bernoulli + shear | −0.9 % (built-in tet10, also in the [browser demo](https://novasolver.jp/studio/demo/?lang=en)) |
+| Cylinder on a flat block, contact pressure | Hertz line contact | −0.04 % (mortar contact, 0.7) |
+| Sphere drag, external flow | Schiller–Naumann | +0.3 % (OpenFOAM®, snappyHexMesh + wall layers) |
+| Water-cooled plate | heat balance | 0.03 % |
+| Lid-driven cavity | Ghia et al. | profile match (built-in and OpenFOAM®) |
 
 ## What it does / できること
 
 | Analysis | Geometry | Quick preview (built-in, seconds) | Final solve | Verification |
 |---|---|---|---|---|
-| Structural (linear static) | templates · import STEP / IGES / BREP | quadratic tetrahedral FEM | CalculiX | beam theory, Heywood Kt, mesh convergence (GCI) |
-| Thermal (steady conduction) | templates · import | quadratic tetrahedral FEM | CalculiX | Fourier's law, fin theory, GCI |
+| Structural: linear static, modal, nonlinear (plasticity, large deformation) | templates · import STEP / IGES / BREP / STL | quadratic tetrahedral FEM | CalculiX | beam theory, Heywood Kt, mesh convergence (GCI) |
+| Buckling, contact (mortar, tied), fatigue (Goodman, S-N) — 0.7 | templates · import | quadratic tetrahedral FEM | — | Euler columns, Hertz, Goodman |
+| Thermal (steady conduction), thermal stress | templates · import | quadratic tetrahedral FEM | CalculiX | Fourier's law, fin theory, GCI |
+| Electrostatics, DC current and Joule heating | templates · import | quadratic tetrahedral FEM | — | εA/d, 2πεL/ln(b/a), L/(σA) |
 | Internal flow | templates · import | 2D cavity (built-in) | OpenFOAM® | Ghia (cavity), Poiseuille, mass balance |
 | Flow around a body | import | — | OpenFOAM® (snappyHexMesh + wall layers) | sphere drag vs Schiller–Naumann (+0.3%) |
 | Water cooling (conjugate heat transfer) | import (2+ bodies) | — | OpenFOAM® (chtMultiRegionSimpleFoam) | heat balance (0.03%) |
 
-- **Verified, not just "it ran"** — every template is checked against an analytic or literature reference; imported
-  shapes are checked by an automatic mesh-convergence study (Roache GCI).
-- **Warnings that matter** — e.g. stress above yield: the linear result does not hold, even if "verified".
-- **Japanese / English / Chinese** UI, light & dark.
-- **MCP server** with typed tools: create or import a case, set conditions, run, check convergence, verify, render.
-  No shell or code-execution tool. Your AI's edits appear live in the GUI.
+Also: a [Blender add-on](integrations/blender/) (send the active object to Studio, PLA/PETG/ABS/TPU or metals),
+3D-printing examples, ParaView VTU / CSV / printable HTML report export, and a Windows installer with `.nscase`
+file association.
 
 ## Install with Python (macOS / Linux / Windows)
-
-macOS / Linux (preview, community-tested).
 
 After the first PyPI release, launch the GUI with `uvx novasolver-studio`, or install once with
 `pipx install novasolver-studio` and run `novasolver-studio`. Python 3.10+ is required; Python 3.12 is tested in CI.
