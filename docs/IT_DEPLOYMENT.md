@@ -12,7 +12,7 @@ the computer or the models. The only header is `User-Agent: NovaSolverStudio/<ve
 |---|---|---|---|
 | Update check | once a day at start-up, and when the user presses "Check for updates" | `https://novasolver.jp/studio/latest.json`, then `https://raw.githubusercontent.com/novasolver/novasolver-studio/main/latest.json` | yes: Help → "Check once a day", or offline mode |
 | Update download | only when the user presses "Update now" | `https://github.com/novasolver/novasolver-studio/releases/download/...` or `https://novasolver.jp/dl/studio/...` | yes: offline mode |
-| Solved examples | only when the user opens the examples list | `https://github.com/novasolver/novasolver-studio/releases/download/v<version>/examples.json` and `example-*.nscase` | yes: offline mode (examples already downloaded stay available) |
+| Solved examples | only when the user opens the examples list | `https://github.com/novasolver/novasolver-studio/releases/download/v<version>/`, or the same files at `https://novasolver.jp/dl/studio/examples/v<version>/` when GitHub cannot be reached (`examples.json` and `example-*.nscase`, checked by SHA-256) | yes: offline mode (examples already downloaded stay available) |
 
 The update notice is signed (Ed25519). Studio refuses a notice whose signature does not match the key built into
 it, downloads only from the two hosts above, and checks the SHA-256 of the download before installing it.

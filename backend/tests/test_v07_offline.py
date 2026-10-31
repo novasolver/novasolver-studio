@@ -32,3 +32,29 @@ def test_file_in_the_data_folder(monkeypatch, tmp_path, no_network):
     assert config.offline()
     assert updates.check(force=True)["offline_mode"]
     assert no_network == []
+
+
+def test_examples_fall_back_to_the_mirror(monkeypatch, tmp_path, no_network):
+    """GitHub unreachable (mainland China): the novasolver.jp mirror answers, and is asked first next time."""
+    import io
+    import urllib.error
+    monkeypatch.delenv("NOVASTUDIO_OFFLINE", raising=False)
+    monkeypatch.delenv("NOVASTUDIO_EXAMPLES_URL", raising=False)
+    asked = []
+
+    class Reply(io.BytesIO):
+        headers = {}
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake(req, timeout=None):
+        asked.append(req.full_url)
+        if "github.com" in req.full_url:
+            raise urllib.error.URLError("blocked")
+        return Reply(b'{"examples": []}')
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    assert examples._fetch("examples.json") == b'{"examples": []}'
+    assert "github.com" in asked[0] and asked[1].startswith("https://novasolver.jp/dl/studio/examples/v")
+    asked.clear()
+    examples._fetch("examples.json")
+    assert asked[0].startswith("https://novasolver.jp/")          # the host that answered goes first

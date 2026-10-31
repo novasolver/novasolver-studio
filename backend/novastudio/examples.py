@@ -18,15 +18,28 @@ from .config import data_dir
 from .store import StudioError
 
 EXAMPLES_BASE = 'https://github.com/novasolver/novasolver-studio/releases/download/v{version}/'
+# the same files on novasolver.jp: GitHub is slow or blocked in mainland China. The index's sha256 checks either copy.
+EXAMPLES_MIRROR = 'https://novasolver.jp/dl/studio/examples/v{version}/'
 RELEASE_PAGE = 'https://github.com/novasolver/novasolver-studio/releases/tag/v{version}'
 INDEX = 'examples.json'
 TIMEOUT = 10
 _NAME = re.compile(r'^[a-z0-9-]{1,60}$')
 
 
+def base_urls() -> list[str]:
+    """Where to fetch from, the host that answered last time first."""
+    env = os.environ.get('NOVASTUDIO_EXAMPLES_URL')
+    urls = [env] if env else [EXAMPLES_BASE.format(version=__version__), EXAMPLES_MIRROR.format(version=__version__)]
+    urls = [u if u.endswith('/') else u + '/' for u in urls]
+    try:
+        last = (data_dir() / 'examples' / 'last_host.txt').read_text(encoding='utf-8').strip()
+    except OSError:
+        last = ''
+    return sorted(urls, key=lambda u: u != last)
+
+
 def base_url() -> str:
-    url = os.environ.get('NOVASTUDIO_EXAMPLES_URL') or EXAMPLES_BASE.format(version=__version__)
-    return url if url.endswith('/') else url + '/'
+    return base_urls()[0]
 
 
 def release_page() -> str:
@@ -43,18 +56,30 @@ def _fetch(name: str, progress=None) -> bytes:
     from .config import offline
     if offline():                                  # the cache still serves examples downloaded before
         raise ConnectionRefusedError("offline mode")
-    req = urllib.request.Request(base_url() + name, headers={'User-Agent': f'NovaSolverStudio/{__version__}'})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        total = int(r.headers.get('Content-Length') or 0)
-        chunks, got = [], 0
-        while True:
-            b = r.read(1 << 16)
-            if not b:
-                break
-            chunks.append(b); got += len(b)
-            if progress and total > 1 << 20:
-                progress(got, total)
-    return b''.join(chunks)
+    error = None
+    for base in base_urls():
+        req = urllib.request.Request(base + name, headers={'User-Agent': f'NovaSolverStudio/{__version__}'})
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                total = int(r.headers.get('Content-Length') or 0)
+                chunks, got = [], 0
+                while True:
+                    b = r.read(1 << 16)
+                    if not b:
+                        break
+                    chunks.append(b); got += len(b)
+                    if progress and total > 1 << 20:
+                        progress(got, total)
+        except OSError as e:                       # unreachable or not there: try the next host
+            error = e
+            continue
+        try:
+            (data_dir() / 'examples').mkdir(parents=True, exist_ok=True)
+            (data_dir() / 'examples' / 'last_host.txt').write_text(base, encoding='utf-8')
+        except OSError:
+            pass
+        return b''.join(chunks)
+    raise error
 
 
 def _write(path: Path, data: bytes) -> None:
