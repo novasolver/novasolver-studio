@@ -1,6 +1,6 @@
-# NovaSolver Studio 検証マニュアル — 0.7.0
+# NovaSolver Studio 検証マニュアル — 0.7.1
 
-この文書は、Studio 0.7.0 が既知の答えのある問題をどれだけ正しく解くかの記録です。すべての問題は `validation/suite.py` で誰でも再計算できます。数値は 2026-10-31 に下記の環境で解いた結果で、手で書き写したものではありません。
+この文書は、Studio 0.7.1 が既知の答えのある問題をどれだけ正しく解くかの記録です。すべての問題は `validation/suite.py` で誰でも再計算できます。数値は 2026-11-01 に下記の環境で解いた結果で、手で書き写したものではありません。
 
 環境: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 
@@ -25,7 +25,7 @@
 | 自重で伸びる棒 | 自重による応力と伸びを一次元の解析解で検証します。 | Verify self-weight stress and displacement against the one-dimensional solution. | 1.878e-04 mm | 1.878e-04 mm | -0.00 % | ±2 % | 合格 | 収束確認済み |
 | 回転円板 | 対称な1/4・半厚さモデル。中心応力を平面応力の解析解と比較します。 | Quarter disk with half thickness; compare centre stress with the plane-stress solution. | 35.54 MPa | 35.51 MPa | +0.07 % | ±2 % | 合格 | 収束確認済み |
 | 丸棒のねじり | 鋼製丸棒のトルクによるせん断応力とねじれ角を検証します。 | Verify shear stress and twist of a steel shaft under torque. | 0.01615 rad | 0.01615 rad | +0.00 % | ±2 % | 合格 | 収束未確認 |
-| 大変形片持ちはり | 伸びを無視した Euler エラスティカ、PL²/EI = 1。線形解と比較します。 はり端拘束は横ひずみを許容します。 | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | 合格 | 収束確認済み |
+| 大変形片持ちはり | 伸びを無視した Euler エラスティカ、PL²/EI = 1。線形解と比較します。 はり端拘束は横ひずみを許容します。 | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | 合格 | 1メッシュ |
 | 弾塑性棒 | 一軸の二直線硬化。1% まで載荷し、力がゼロになる点を経て変位ゼロに戻します。 | Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement. | 268 MPa | 268 MPa | -0.00 % | ±1 % | 合格 | 収束確認済み |
 | はりの塑性崩壊 | 完全塑性の矩形片持ちはり。せん断を無視し P = σy b h²/(4L)。限界到達時は未収束で終了します。 はり端拘束は横ひずみを許容します。 | Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain. | 1280 N | 1250 N | +2.44 % | ±3 % | 合格 | 1メッシュ |
 | ゴムの引張り | 圧縮性 neo-Hookean 材料の一様引張り。λ = 2、側面応力ゼロの厳密解で検証します。 | Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress. | 29.54 MPa | 29.54 MPa | +0.00 % | ±2 % | 合格 | 収束確認済み |
@@ -34,7 +34,6 @@
 | 摩擦ブロック | 圧力とせん断を受ける Coulomb 摩擦。柔らかいばねで滑り後も支持します。 一様状態の検証にはポアソン比 0 を用います。 | Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0. | 400 N | 400 N | -0.00 % | ±1 % | 合格 | 収束確認済み |
 | すき間のある2つのブロック（接触） | すき間 0.05 mm で離れた2つのブロックを押しつけます。メッシュは上下で異なり、すき間が閉じた後の接触力を手計算と比べます。 | Uniform compression of two blocks in series: F = E (d − g) A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | 合格 | 収束確認済み |
 | 別々にメッシュした部品の固着 | 節点を共有しない2つのブロックを接着（固着）して引っ張り、1本の棒と同じ答えになることを確かめます。 | Uniform tension of one bar: F = E d A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | 合格 | 収束確認済み |
-| 円柱と平面の接触（ヘルツ） | 鋼の円柱を鋼のブロックに押しつけ、最大接触圧力と接触幅をヘルツの式と比べます（平面ひずみ・1/4モデル）。 | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | 合格 | 収束確認済み |
 | NAFEMS LE1 楕円膜 | 曲線境界・対称面・外向き圧力 | σyy at D | 92.8 MPa | 92.7 MPa | +0.11 % | ±2 % | 合格 | 収束確認済み |
 | NAFEMS LE10 厚板の曲げ | 3次元の曲げ・成分拘束・対称面 | σyy at D | -5.364 MPa | -5.38 MPa | -0.29 % | ±2 % | 合格 | 1メッシュ |
 | 閉じた厚肉円筒の内圧（Lamé） | 曲面への圧力・2次要素の曲面追従・1/8対称 | hoop stress, mid wall | 20 MPa | 19.99 MPa | +0.01 % | ±1 % | 合格 | 収束未確認 |
@@ -44,6 +43,7 @@
 | 鋼とアルミの直列棒 | 部品ごとの材料・成分拘束・部品間の接合面 | tip displacement | 0.1934 mm | 0.1937 mm | -0.17 % | ±1 % | 合格 | 収束確認済み |
 | 厚肉球の内圧 | 3方向の対称面・曲面の内圧 | inner displacement | 0.00195 mm | 0.001951 mm | -0.07 % | ±1 % | 合格 | 収束確認済み |
 |  |  | hoop stress at the bore | 7.136 MPa | 7.143 MPa | -0.10 % | ±3 % | 合格 |  |
+| 円柱と平面の接触（ヘルツ） | 鋼の円柱を鋼のブロックに押しつけ、最大接触圧力と接触幅をヘルツの式と比べます（平面ひずみ・1/4モデル）。 | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | 合格 | 収束確認済み |
 
 ## 伝熱
 

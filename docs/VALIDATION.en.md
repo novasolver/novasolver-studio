@@ -1,6 +1,6 @@
-# NovaSolver Studio validation manual — 0.7.0
+# NovaSolver Studio validation manual — 0.7.1
 
-This document records how accurately Studio 0.7.0 solves problems with known answers. Anyone can re-run every problem with `validation/suite.py`. The numbers were produced on 2026-10-31 on the machine below; none were typed in by hand.
+This document records how accurately Studio 0.7.1 solves problems with known answers. Anyone can re-run every problem with `validation/suite.py`. The numbers were produced on 2026-11-01 on the machine below; none were typed in by hand.
 
 Machine: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 
@@ -25,7 +25,7 @@ Machine: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 | Hanging bar under gravity | Verify self-weight stress and displacement against the one-dimensional solution. | Verify self-weight stress and displacement against the one-dimensional solution. | 1.878e-04 mm | 1.878e-04 mm | -0.00 % | ±2 % | pass | converged |
 | Rotating disk | Quarter disk with half thickness; compare centre stress with the plane-stress solution. | Quarter disk with half thickness; compare centre stress with the plane-stress solution. | 35.54 MPa | 35.51 MPa | +0.07 % | ±2 % | pass | converged |
 | Shaft torsion | Verify shear stress and twist of a steel shaft under torque. | Verify shear stress and twist of a steel shaft under torque. | 0.01615 rad | 0.01615 rad | +0.00 % | ±2 % | pass | not converged |
-| Large cantilever | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | pass | converged |
+| Large cantilever | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | pass | one mesh |
 | Plastic bar | Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement. | Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement. | 268 MPa | 268 MPa | -0.00 % | ±1 % | pass | converged |
 | Plastic beam collapse | Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain. | Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain. | 1280 N | 1250 N | +2.44 % | ±3 % | pass | one mesh |
 | Rubber tension | Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress. | Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress. | 29.54 MPa | 29.54 MPa | +0.00 % | ±2 % | pass | converged |
@@ -34,7 +34,6 @@ Machine: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 | Friction block | Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0. | Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0. | 400 N | 400 N | -0.00 % | ±1 % | pass | converged |
 | Two blocks with a gap (contact) | Two blocks 0.05 mm apart are pressed together. They are meshed differently, and the contact force after the gap closes is compared with a hand calculation. | Uniform compression of two blocks in series: F = E (d − g) A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | pass | converged |
 | Tying separately meshed parts | Two blocks that share no nodes are bonded (tied) and pulled; the answer must equal that of one bar. | Uniform tension of one bar: F = E d A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | pass | converged |
-| Cylinder on a flat (Hertz contact) | A steel cylinder pressed onto a steel block; peak contact pressure and contact width are compared with Hertz (plane strain, quarter model). | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | pass | converged |
 | NAFEMS LE1 elliptic membrane | curved boundary, symmetry planes, outward pressure | σyy at D | 92.8 MPa | 92.7 MPa | +0.11 % | ±2 % | pass | converged |
 | NAFEMS LE10 thick plate | 3D bending, component supports, symmetry planes | σyy at D | -5.364 MPa | -5.38 MPa | -0.29 % | ±2 % | pass | one mesh |
 | Closed thick cylinder under pressure (Lamé) | pressure on curved faces, curved quadratic elements, 1/8 symmetry | hoop stress, mid wall | 20 MPa | 19.99 MPa | +0.01 % | ±1 % | pass | not converged |
@@ -44,6 +43,7 @@ Machine: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 | Steel and aluminium bar in series | per-part materials, component supports, bonded interface | tip displacement | 0.1934 mm | 0.1937 mm | -0.17 % | ±1 % | pass | converged |
 | Thick sphere under internal pressure | three symmetry planes, pressure on a curved inner face | inner displacement | 0.00195 mm | 0.001951 mm | -0.07 % | ±1 % | pass | converged |
 |  |  | hoop stress at the bore | 7.136 MPa | 7.143 MPa | -0.10 % | ±3 % | pass |  |
+| Cylinder on a flat (Hertz contact) | A steel cylinder pressed onto a steel block; peak contact pressure and contact width are compared with Hertz (plane strain, quarter model). | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | pass | converged |
 
 ## Heat transfer
 

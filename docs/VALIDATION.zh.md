@@ -1,6 +1,6 @@
-# NovaSolver Studio 验证手册 — 0.7.0
+# NovaSolver Studio 验证手册 — 0.7.1
 
-本文档记录 Studio 0.7.0 求解已知答案问题的准确程度。所有问题都可以用 `validation/suite.py` 重新计算。数值是 2026-10-31 在下列环境中求解的结果，没有手工抄写。
+本文档记录 Studio 0.7.1 求解已知答案问题的准确程度。所有问题都可以用 `validation/suite.py` 重新计算。数值是 2026-11-01 在下列环境中求解的结果，没有手工抄写。
 
 环境: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 
@@ -25,7 +25,7 @@
 | 自重作用下的悬挂杆 | 用一维解析解验证自重引起的应力和位移。 | Verify self-weight stress and displacement against the one-dimensional solution. | 1.878e-04 mm | 1.878e-04 mm | -0.00 % | ±2 % | 合格 | 已收敛 |
 | 旋转圆盘 | 采用四分之一圆盘及半厚度模型，将中心应力与平面应力解析解比较。 | Quarter disk with half thickness; compare centre stress with the plane-stress solution. | 35.54 MPa | 35.51 MPa | +0.07 % | ±2 % | 合格 | 已收敛 |
 | 圆轴扭转 | 验证钢圆轴在扭矩作用下的剪应力和扭转角。 | Verify shear stress and twist of a steel shaft under torque. | 0.01615 rad | 0.01615 rad | +0.00 % | ±2 % | 合格 | 未确认收敛 |
-| 大变形悬臂梁 | 不可伸长 Euler 弹性线，PL²/EI = 1，与线性解比较。 梁端约束允许横向应变。 | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | 合格 | 已收敛 |
+| 大变形悬臂梁 | 不可伸长 Euler 弹性线，PL²/EI = 1，与线性解比较。 梁端约束允许横向应变。 | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | 合格 | 单一网格 |
 | 弹塑性杆 | 单轴双线性硬化：加载至 1%，卸载经过零力点，再回到零位移。 | Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement. | 268 MPa | 268 MPa | -0.00 % | ±1 % | 合格 | 已收敛 |
 | 梁的塑性极限 | 理想塑性矩形悬臂梁，忽略剪切，P = σy b h²/(4L)。达到极限后以未收敛结束。 梁端约束允许横向应变。 | Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain. | 1280 N | 1250 N | +2.44 % | ±3 % | 合格 | 单一网格 |
 | 橡胶拉伸 | 可压缩 neo-Hookean 材料的均匀拉伸，λ = 2，侧向应力为零。 | Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress. | 29.54 MPa | 29.54 MPa | +0.00 % | ±2 % | 合格 | 已收敛 |
@@ -34,7 +34,6 @@
 | 摩擦方块 | 法向压力及剪切下的 Coulomb 粘着与滑动，软弹簧保证稳定。 此验证模型的泊松比为 0。 | Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0. | 400 N | 400 N | -0.00 % | ±1 % | 合格 | 已收敛 |
 | 有间隙的两个块（接触） | 将相距 0.05 mm 的两个块压在一起。上下网格不同，比较间隙闭合后的接触力与手算结果。 | Uniform compression of two blocks in series: F = E (d − g) A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | 合格 | 已收敛 |
 | 分别划分网格的零件的绑定 | 将不共享节点的两个块粘接（绑定）后拉伸，确认结果与一根杆相同。 | Uniform tension of one bar: F = E d A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | 合格 | 已收敛 |
-| 圆柱与平面接触（赫兹） | 将钢圆柱压在钢块上，并将最大接触压力和接触宽度与赫兹公式比较（平面应变、1/4 模型）。 | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | 合格 | 已收敛 |
 | NAFEMS LE1 椭圆膜 | 曲线边界、对称面、向外压力 | σyy at D | 92.8 MPa | 92.7 MPa | +0.11 % | ±2 % | 合格 | 已收敛 |
 | NAFEMS LE10 厚板弯曲 | 三维弯曲、分量约束、对称面 | σyy at D | -5.364 MPa | -5.38 MPa | -0.29 % | ±2 % | 合格 | 单一网格 |
 | 封闭厚壁圆筒内压（Lamé） | 曲面压力、二次单元贴合曲面、1/8 对称 | hoop stress, mid wall | 20 MPa | 19.99 MPa | +0.01 % | ±1 % | 合格 | 未确认收敛 |
@@ -44,6 +43,7 @@
 | 钢铝串联杆 | 分部件材料、分量约束、粘接界面 | tip displacement | 0.1934 mm | 0.1937 mm | -0.17 % | ±1 % | 合格 | 已收敛 |
 | 厚壁球内压 | 三个对称面、曲面内压 | inner displacement | 0.00195 mm | 0.001951 mm | -0.07 % | ±1 % | 合格 | 已收敛 |
 |  |  | hoop stress at the bore | 7.136 MPa | 7.143 MPa | -0.10 % | ±3 % | 合格 |  |
+| 圆柱与平面接触（赫兹） | 将钢圆柱压在钢块上，并将最大接触压力和接触宽度与赫兹公式比较（平面应变、1/4 模型）。 | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | 合格 | 已收敛 |
 
 ## 传热
 

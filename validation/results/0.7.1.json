@@ -1,0 +1,2008 @@
+{
+ "version": "0.7.1",
+ "date": "2026-11-01",
+ "quick": false,
+ "machine": {
+  "os": "Windows-10-10.0.19045-SP0",
+  "python": "3.12.3",
+  "cpu_count": 8
+ },
+ "cases": [
+  {
+   "id": "template:cantilever",
+   "physics": "structural",
+   "title": {
+    "ja": "片持ち梁",
+    "en": "Cantilever beam",
+    "zh": "悬臂梁"
+   },
+   "source": "Tip deflection (beam theory with shear correction)",
+   "tests": {
+    "ja": "一端を固定した角棒の先端に荷重をかけ、たわみと応力を求めます。梁理論の手計算と自動で比較します。",
+    "en": "A square bar fixed at one end with a load at the tip. Finds deflection and stress and compares them automatically with beam theory.",
+    "zh": "一端固定的方形杆，在自由端施加载荷，求挠度和应力，并自动与梁理论的手算结果比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 6536.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.4028228543869427
+   },
+   "rows": [
+    {
+     "quantity": "Tip deflection (beam theory with shear correction)",
+     "computed": 0.9761594620208885,
+     "reference": 0.9830731707317073,
+     "unit": "mm",
+     "error_pct": -0.7032750884324146,
+     "error_abs": -0.006913708710818756,
+     "tol_pct": 3.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 31.3
+  },
+  {
+   "id": "template:cavity",
+   "physics": "cfd",
+   "title": {
+    "ja": "キャビティ流れ",
+    "en": "Lid-driven cavity",
+    "zh": "顶盖驱动方腔流"
+   },
+   "source": "Mean error of centreline u (Ghia et al. 1982, Re = 100)",
+   "tests": {
+    "ja": "ふたが動く正方形の箱の中の流れ。CFDの標準問題で、Ghia らの参照値（Re=100）と比較します。",
+    "en": "Flow inside a square box whose lid slides. The classic CFD benchmark, compared with Ghia et al. reference data (Re = 100).",
+    "zh": "顶盖滑动的方形腔内流动。CFD 的经典算例，与 Ghia 等人的参考值（Re=100）比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 16384.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.7480324726609439
+   },
+   "rows": [
+    {
+     "quantity": "Mean error of centreline u (Ghia et al. 1982, Re = 100)",
+     "computed": -0.21343043533007844,
+     "reference": -0.2109,
+     "unit": "m/s",
+     "error_pct": 0.15071996098450322,
+     "error_abs": -0.0025304353300784344,
+     "tol_pct": 3.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Reference"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 105.8
+  },
+  {
+   "id": "template:thermal-block",
+   "physics": "thermal",
+   "title": {
+    "ja": "熱伝導ブロック",
+    "en": "Heat conduction block",
+    "zh": "导热块"
+   },
+   "source": "Heat flow through the block (Fourier's law)",
+   "tests": {
+    "ja": "両端の温度を固定した直方体の中を伝わる熱。フーリエの法則（Q = kAΔT/L）と自動で比較します。",
+    "en": "Heat flowing through a block whose two ends are held at fixed temperatures. Compared automatically with Fourier's law (Q = kAΔT/L).",
+    "zh": "两端温度固定的长方体中的热传导。自动与傅里叶定律（Q = kAΔT/L）比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 8114.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 2.0673626333677573e-10
+   },
+   "rows": [
+    {
+     "quantity": "Heat flow through the block (Fourier's law)",
+     "computed": 40.00000000003234,
+     "reference": 40.0,
+     "unit": "W",
+     "error_pct": 8.08419997611054e-11,
+     "error_abs": 3.233679990444216e-11,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 14.9
+  },
+  {
+   "id": "template:plate-hole",
+   "physics": "structural",
+   "title": {
+    "ja": "穴あき板の引張",
+    "en": "Plate with a hole in tension",
+    "zh": "带孔板拉伸"
+   },
+   "source": "Stress concentration Kt (Heywood)",
+   "tests": {
+    "ja": "中央に穴のある板を引っ張り、穴の縁の応力集中係数を Heywood の式と比較します。",
+    "en": "Pulls a plate with a central hole and compares the stress concentration at the hole edge with Heywood's formula.",
+    "zh": "拉伸中心带孔的板，将孔边的应力集中系数与 Heywood 公式比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 31540.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.09325043385925598
+   },
+   "rows": [
+    {
+     "quantity": "Stress concentration Kt (Heywood)",
+     "computed": 2.541066154345957,
+     "reference": 2.512,
+     "unit": "-",
+     "error_pct": 1.157092131606575,
+     "error_abs": 0.029066154345957163,
+     "tol_pct": 5.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 156.4
+  },
+  {
+   "id": "template:fin",
+   "physics": "thermal",
+   "title": {
+    "ja": "冷却フィン",
+    "en": "Cooling fin",
+    "zh": "散热翅片"
+   },
+   "source": "Heat through the fin base (fin theory)",
+   "tests": {
+    "ja": "根元を加熱し、周りの空気で冷やされる棒状フィン。根元から逃げる熱量をフィン理論の解析解と比較します。",
+    "en": "A pin fin heated at its base and cooled by the surrounding air. The heat leaving the base is compared with the analytic fin solution.",
+    "zh": "根部受热、被周围空气冷却的翅片。将根部散出的热量与翅片理论解析解比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 6536.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 2.463217788224436e-07
+   },
+   "rows": [
+    {
+     "quantity": "Heat through the fin base (fin theory)",
+     "computed": 5.063663873907139,
+     "reference": 5.066338149131485,
+     "unit": "W",
+     "error_pct": -0.05278517038592686,
+     "error_abs": -0.0026742752243462675,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 13.0
+  },
+  {
+   "id": "template:capacitor",
+   "physics": "electric",
+   "title": {
+    "ja": "平行平板コンデンサ",
+    "en": "Parallel-plate capacitor",
+    "zh": "平行板电容器"
+   },
+   "source": "Capacitance (parallel-plate solution)",
+   "tests": {
+    "ja": "平板間の電位と静電容量を求め、C = εA/d と比較します。",
+    "en": "Finds potential and capacitance between plates; checked against C = εA/d.",
+    "zh": "计算平板间的电势和电容，并与 C = εA/d 对比。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 344219.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.0
+   },
+   "rows": [
+    {
+     "quantity": "Capacitance (parallel-plate solution)",
+     "computed": 23.2422430086,
+     "reference": 23.242243008600003,
+     "unit": "pF",
+     "error_pct": -1.1102230246251565e-14,
+     "error_abs": -3.552713678800501e-15,
+     "tol_pct": 1.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 332.3
+  },
+  {
+   "id": "template:coax",
+   "physics": "electric",
+   "title": {
+    "ja": "同軸ケーブル",
+    "en": "Coaxial cable",
+    "zh": "同轴电缆"
+   },
+   "source": "Capacitance (coaxial solution)",
+   "tests": {
+    "ja": "同軸導体間の静電容量と電界を求め、円筒の解析解と比較します。",
+    "en": "Finds coaxial capacitance and electric field; compared with the cylindrical analytic solution.",
+    "zh": "计算同轴导体间的电容和电场，并与圆柱解析解对比。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 27323.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.020611837936103168
+   },
+   "rows": [
+    {
+     "quantity": "Capacitance (coaxial solution)",
+     "computed": 0.9326081204750035,
+     "reference": 0.9325647290033089,
+     "unit": "pF",
+     "error_pct": 0.0046529179525078845,
+     "error_abs": 4.3391471694631534e-05,
+     "tol_pct": 1.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 92.8
+  },
+  {
+   "id": "template:busbar",
+   "physics": "electric",
+   "title": {
+    "ja": "母線のジュール発熱",
+    "en": "Busbar Joule heating",
+    "zh": "母排焦耳热"
+   },
+   "source": "Temperature rise (bar with cooled ends)",
+   "tests": {
+    "ja": "銅棒の電流と発熱による温度上昇を求め、抵抗と熱伝導の解析解で確かめます。",
+    "en": "Finds current and temperature rise in a copper bar; checked against resistance and conduction formulas.",
+    "zh": "计算铜棒中的电流和温升，并用电阻与热传导解析解验证。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 91688.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.00110553685166191
+   },
+   "rows": [
+    {
+     "quantity": "Temperature rise (bar with cooled ends)",
+     "computed": 7.641010249865076,
+     "reference": 7.641025641025641,
+     "unit": "K",
+     "error_pct": -0.00020142794028288336,
+     "error_abs": -1.5391160565592088e-05,
+     "tol_pct": 1.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 138.4
+  },
+  {
+   "id": "template:cantilever-modal",
+   "physics": "structural",
+   "title": {
+    "ja": "片持ちはりの固有振動",
+    "en": "Cantilever natural frequencies",
+    "zh": "悬臂梁固有频率"
+   },
+   "source": "Steel beam modes compared with the Euler–Bernoulli beam solution.",
+   "tests": {
+    "ja": "鋼製はりの固有振動数をオイラー・ベルヌーイはり理論の解析解と比較します。",
+    "en": "Steel beam modes compared with the Euler–Bernoulli beam solution.",
+    "zh": "将钢梁模态与欧拉–伯努利梁理论解析解比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 12932.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.11471699469605141
+   },
+   "rows": [
+    {
+     "quantity": "Steel beam modes compared with the Euler–Bernoulli beam solution.",
+     "computed": 206.46101511767193,
+     "reference": 206.377511675028,
+     "unit": "Hz",
+     "error_pct": 0.04046150278982363,
+     "error_abs": 0.08350344264394494,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 100.9
+  },
+  {
+   "id": "template:column-buckling",
+   "physics": "structural",
+   "title": {
+    "ja": "柱の座屈（一端固定・他端自由）",
+    "en": "Column buckling (fixed-free)",
+    "zh": "柱的屈曲（一端固定、一端自由）"
+   },
+   "source": "Euler critical load, fixed-free column.",
+   "tests": {
+    "ja": "細長い角柱の先端に圧縮荷重をかけ、座屈荷重をオイラーの式と比較します。",
+    "en": "A slender square column with a compressive tip load; the critical load is compared with Euler's formula.",
+    "zh": "在细长方柱顶端施加压缩载荷，并将临界载荷与欧拉公式比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 6912.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.11972513448115533
+   },
+   "rows": [
+    {
+     "quantity": "Euler critical load, fixed-free column.",
+     "computed": 2637.754356200391,
+     "reference": 2634.4647164366124,
+     "unit": "N",
+     "error_pct": 0.12486938022948646,
+     "error_abs": 3.289639763778723,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 34.2
+  },
+  {
+   "id": "template:column-buckling-clamped",
+   "physics": "structural",
+   "title": {
+    "ja": "柱の座屈（両端固定）",
+    "en": "Column buckling (both ends clamped)",
+    "zh": "柱的屈曲（两端固定）"
+   },
+   "source": "Euler critical load, column clamped at both ends.",
+   "tests": {
+    "ja": "両端を固定した角柱を軸方向に縮め、座屈荷重をオイラーの式と比較します。",
+    "en": "A square column clamped at both ends and shortened axially; the critical load is compared with Euler's formula.",
+    "zh": "两端固定的方柱沿轴向压缩，并将临界载荷与欧拉公式比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 6912.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.20867966120594827
+   },
+   "rows": [
+    {
+     "quantity": "Euler critical load, column clamped at both ends.",
+     "computed": 41957.735593844496,
+     "reference": 42151.4354629858,
+     "unit": "N",
+     "error_pct": -0.45953326859151655,
+     "error_abs": -193.69986914130277,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 87.5
+  },
+  {
+   "id": "template:fatigue-bar",
+   "physics": "structural",
+   "title": {
+    "ja": "棒の疲労（グッドマン）",
+    "en": "Fatigue of a bar (Goodman)",
+    "zh": "杆的疲劳（古德曼）"
+   },
+   "source": "Goodman diagram n = 1/(σa/Se + σm/Su).",
+   "tests": {
+    "ja": "棒を 0 ↔ 15 kN で繰り返し引っ張り、疲労安全率をグッドマンの式と比べます。",
+    "en": "A bar pulled repeatedly between 0 and 15 kN; the fatigue safety factor is compared with Goodman.",
+    "zh": "以 0 ↔ 15 kN 反复拉伸杆件，并将疲劳安全系数与古德曼公式比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 6536.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 6.346293724224502e-07
+   },
+   "rows": [
+    {
+     "quantity": "Goodman diagram n = 1/(σa/Se + σm/Su).",
+     "computed": 1.7777777733677484,
+     "reference": 1.7777777777777777,
+     "unit": "-",
+     "error_pct": -2.4806414700151436e-07,
+     "error_abs": -4.410029230683676e-09,
+     "tol_pct": 1.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 33.4
+  },
+  {
+   "id": "template:thermal-bar-fixed",
+   "physics": "structural",
+   "title": {
+    "ja": "両端拘束棒の熱応力",
+    "en": "Restrained heated bar",
+    "zh": "两端约束杆热应力"
+   },
+   "source": "Axial restraint at both ends; compare thermal stress with EαΔT.",
+   "tests": {
+    "ja": "軸方向のみを両端で拘束。熱応力をEαΔTと比較します。",
+    "en": "Axial restraint at both ends; compare thermal stress with EαΔT.",
+    "zh": "两端仅约束轴向位移，将热应力与EαΔT比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 6536.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 2.276083894262577e-07
+   },
+   "rows": [
+    {
+     "quantity": "Axial restraint at both ends; compare thermal stress with EαΔT.",
+     "computed": 246.00000002775008,
+     "reference": 246.0,
+     "unit": "MPa",
+     "error_pct": 1.1280509859545873e-08,
+     "error_abs": 2.775007601485413e-08,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 40.9
+  },
+  {
+   "id": "template:thermal-bar-free",
+   "physics": "structural",
+   "title": {
+    "ja": "棒の自由熱膨張",
+    "en": "Free thermal expansion",
+    "zh": "杆的自由热膨胀"
+   },
+   "source": "Allow lateral expansion and compare elongation with αΔTL.",
+   "tests": {
+    "ja": "横方向の膨張を妨げず、伸びをαΔTLと比較します。",
+    "en": "Allow lateral expansion and compare elongation with αΔTL.",
+    "zh": "允许横向膨胀，将伸长量与αΔTL比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 6536.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 8.550915502024497e-08
+   },
+   "rows": [
+    {
+     "quantity": "Allow lateral expansion and compare elongation with αΔTL.",
+     "computed": 0.11999999999489021,
+     "reference": 0.12000000000000002,
+     "unit": "mm",
+     "error_pct": -4.258171593107818e-09,
+     "error_abs": -5.109815348625091e-12,
+     "tol_pct": 1.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 35.2
+  },
+  {
+   "id": "template:hanging-bar",
+   "physics": "structural",
+   "title": {
+    "ja": "自重で伸びる棒",
+    "en": "Hanging bar under gravity",
+    "zh": "自重作用下的悬挂杆"
+   },
+   "source": "Verify self-weight stress and displacement against the one-dimensional solution.",
+   "tests": {
+    "ja": "自重による応力と伸びを一次元の解析解で検証します。",
+    "en": "Verify self-weight stress and displacement against the one-dimensional solution.",
+    "zh": "用一维解析解验证自重引起的应力和位移。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 31581.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 1.1302284830061066e-08
+   },
+   "rows": [
+    {
+     "quantity": "Verify self-weight stress and displacement against the one-dimensional solution.",
+     "computed": 0.00018782501630024829,
+     "reference": 0.00018782560975609758,
+     "unit": "mm",
+     "error_pct": -0.00031596109287823637,
+     "error_abs": -5.934558492954982e-10,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 174.8
+  },
+  {
+   "id": "template:rotating-disk",
+   "physics": "structural",
+   "title": {
+    "ja": "回転円板",
+    "en": "Rotating disk",
+    "zh": "旋转圆盘"
+   },
+   "source": "Quarter disk with half thickness; compare centre stress with the plane-stress solution.",
+   "tests": {
+    "ja": "対称な1/4・半厚さモデル。中心応力を平面応力の解析解と比較します。",
+    "en": "Quarter disk with half thickness; compare centre stress with the plane-stress solution.",
+    "zh": "采用四分之一圆盘及半厚度模型，将中心应力与平面应力解析解比较。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 2027.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.00012502620746144516
+   },
+   "rows": [
+    {
+     "quantity": "Quarter disk with half thickness; compare centre stress with the plane-stress solution.",
+     "computed": 35.53560137661287,
+     "reference": 35.51001416808609,
+     "unit": "MPa",
+     "error_pct": 0.07205631742546181,
+     "error_abs": 0.025587208526779648,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 19.6
+  },
+  {
+   "id": "template:shaft-torsion",
+   "physics": "structural",
+   "title": {
+    "ja": "丸棒のねじり",
+    "en": "Shaft torsion",
+    "zh": "圆轴扭转"
+   },
+   "source": "Verify shear stress and twist of a steel shaft under torque.",
+   "tests": {
+    "ja": "鋼製丸棒のトルクによるせん断応力とねじれ角を検証します。",
+    "en": "Verify shear stress and twist of a steel shaft under torque.",
+    "zh": "验证钢圆轴在扭矩作用下的剪应力和扭转角。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 35637.0,
+    "study": true,
+    "gci_pass": false,
+    "gci_pct": 0.01733937279752789
+   },
+   "rows": [
+    {
+     "quantity": "Verify shear stress and twist of a steel shaft under torque.",
+     "computed": 0.01614843598024252,
+     "reference": 0.016148403982006943,
+     "unit": "rad",
+     "error_pct": 0.0001981510718396251,
+     "error_abs": 3.1998235575092515e-08,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 370.5
+  },
+  {
+   "id": "template:large-cantilever",
+   "physics": "structural",
+   "title": {
+    "ja": "大変形片持ちはり",
+    "en": "Large cantilever",
+    "zh": "大变形悬臂梁"
+   },
+   "source": "Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain.",
+   "tests": {
+    "ja": "伸びを無視した Euler エラスティカ、PL²/EI = 1。線形解と比較します。 はり端拘束は横ひずみを許容します。",
+    "en": "Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain.",
+    "zh": "不可伸长 Euler 弹性线，PL²/EI = 1，与线性解比较。 梁端约束允许横向应变。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 3072.0,
+    "study": false,
+    "gci_pass": false,
+    "gci_pct": null
+   },
+   "rows": [
+    {
+     "quantity": "Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain.",
+     "computed": 60.21910669060035,
+     "reference": 60.34,
+     "unit": "mm",
+     "error_pct": -0.2003535124289968,
+     "error_abs": -0.12089330939965492,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 114.9
+  },
+  {
+   "id": "template:plastic-bar",
+   "physics": "structural",
+   "title": {
+    "ja": "弾塑性棒",
+    "en": "Plastic bar",
+    "zh": "弹塑性杆"
+   },
+   "source": "Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement.",
+   "tests": {
+    "ja": "一軸の二直線硬化。1% まで載荷し、力がゼロになる点を経て変位ゼロに戻します。",
+    "en": "Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement.",
+    "zh": "单轴双线性硬化：加载至 1%，卸载经过零力点，再回到零位移。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 810.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 3.069194395150857e-12
+   },
+   "rows": [
+    {
+     "quantity": "Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement.",
+     "computed": 267.99999999998727,
+     "reference": 268.0,
+     "unit": "MPa",
+     "error_pct": -4.75175454539567e-12,
+     "error_abs": -1.2732925824820995e-11,
+     "tol_pct": 1.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 49.4
+  },
+  {
+   "id": "template:plastic-beam-collapse",
+   "physics": "structural",
+   "title": {
+    "ja": "はりの塑性崩壊",
+    "en": "Plastic beam collapse",
+    "zh": "梁的塑性极限"
+   },
+   "source": "Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain.",
+   "tests": {
+    "ja": "完全塑性の矩形片持ちはり。せん断を無視し P = σy b h²/(4L)。限界到達時は未収束で終了します。 はり端拘束は横ひずみを許容します。",
+    "en": "Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain.",
+    "zh": "理想塑性矩形悬臂梁，忽略剪切，P = σy b h²/(4L)。达到极限后以未收敛结束。 梁端约束允许横向应变。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": false,
+     "verified": false,
+     "verified_by": "reference"
+    },
+    "elements": 2304.0,
+    "study": false,
+    "gci_pass": false,
+    "gci_pct": null
+   },
+   "rows": [
+    {
+     "quantity": "Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain.",
+     "computed": 1280.4687500000002,
+     "reference": 1250.0,
+     "unit": "N",
+     "error_pct": 2.4375000000000258,
+     "error_abs": 30.468750000000227,
+     "tol_pct": 3.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 1844.4
+  },
+  {
+   "id": "template:rubber-tension",
+   "physics": "structural",
+   "title": {
+    "ja": "ゴムの引張り",
+    "en": "Rubber tension",
+    "zh": "橡胶拉伸"
+   },
+   "source": "Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress.",
+   "tests": {
+    "ja": "圧縮性 neo-Hookean 材料の一様引張り。λ = 2、側面応力ゼロの厳密解で検証します。",
+    "en": "Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress.",
+    "zh": "可压缩 neo-Hookean 材料的均匀拉伸，λ = 2，侧向应力为零。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 810.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 1.5131584635626113e-13
+   },
+   "rows": [
+    {
+     "quantity": "Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress.",
+     "computed": 29.543160652382817,
+     "reference": 29.5431606523828,
+     "unit": "MPa",
+     "error_pct": 6.661338147750939e-14,
+     "error_abs": 1.7763568394002505e-14,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 20.0
+  },
+  {
+   "id": "template:press-fit",
+   "physics": "structural",
+   "title": {
+    "ja": "圧入",
+    "en": "Press fit",
+    "zh": "过盈配合"
+   },
+   "source": "Lamé thick cylinders, plane stress. Contact pressure and ring hoop stress.",
+   "tests": {
+    "ja": "Lamé の厚肉円筒・平面応力。接触圧力とリングの周方向応力を検証します。",
+    "en": "Lamé thick cylinders, plane stress. Contact pressure and ring hoop stress.",
+    "zh": "Lamé 厚壁圆筒，平面应力。验证接触压力及环的环向应力。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 4133.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.6932521426303664
+   },
+   "rows": [
+    {
+     "quantity": "Lamé thick cylinders, plane stress. Contact pressure and ring hoop stress.",
+     "computed": 76.92125865699693,
+     "reference": 76.87500000000001,
+     "unit": "MPa",
+     "error_pct": 0.060173862760226626,
+     "error_abs": 0.046258656996911895,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 91.5
+  },
+  {
+   "id": "template:stacked-blocks",
+   "physics": "structural",
+   "title": {
+    "ja": "積層ブロック",
+    "en": "Stacked blocks",
+    "zh": "叠放方块"
+   },
+   "source": "Uniform compression of two touching cubes; frictionless contact.",
+   "tests": {
+    "ja": "接触する 2 個の立方体の一様圧縮。摩擦なしの接触を検証します。",
+    "en": "Uniform compression of two touching cubes; frictionless contact.",
+    "zh": "两个相接立方体的均匀压缩，验证无摩擦接触。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 1800.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.07922870288516443
+   },
+   "rows": [
+    {
+     "quantity": "Uniform compression of two touching cubes; frictionless contact.",
+     "computed": 3999.9999999999864,
+     "reference": 4000.0,
+     "unit": "N",
+     "error_pct": -3.4416913763379853e-13,
+     "error_abs": -1.3642420526593924e-11,
+     "tol_pct": 0.5,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 18.2
+  },
+  {
+   "id": "template:friction-block",
+   "physics": "structural",
+   "title": {
+    "ja": "摩擦ブロック",
+    "en": "Friction block",
+    "zh": "摩擦方块"
+   },
+   "source": "Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0.",
+   "tests": {
+    "ja": "圧力とせん断を受ける Coulomb 摩擦。柔らかいばねで滑り後も支持します。 一様状態の検証にはポアソン比 0 を用います。",
+    "en": "Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0.",
+    "zh": "法向压力及剪切下的 Coulomb 粘着与滑动，软弹簧保证稳定。 此验证模型的泊松比为 0。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 1800.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.22568867045181618
+   },
+   "rows": [
+    {
+     "quantity": "Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0.",
+     "computed": 399.9991886461106,
+     "reference": 400.0,
+     "unit": "N",
+     "error_pct": -0.0002028384723518073,
+     "error_abs": -0.0008113538893894656,
+     "tol_pct": 1.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 25.9
+  },
+  {
+   "id": "template:gap-blocks",
+   "physics": "structural",
+   "title": {
+    "ja": "すき間のある2つのブロック（接触）",
+    "en": "Two blocks with a gap (contact)",
+    "zh": "有间隙的两个块（接触）"
+   },
+   "source": "Uniform compression of two blocks in series: F = E (d − g) A / (2h).",
+   "tests": {
+    "ja": "すき間 0.05 mm で離れた2つのブロックを押しつけます。メッシュは上下で異なり、すき間が閉じた後の接触力を手計算と比べます。",
+    "en": "Two blocks 0.05 mm apart are pressed together. They are meshed differently, and the contact force after the gap closes is compared with a hand calculation.",
+    "zh": "将相距 0.05 mm 的两个块压在一起。上下网格不同，比较间隙闭合后的接触力与手算结果。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 3607.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 1.7744132995797902e-06
+   },
+   "rows": [
+    {
+     "quantity": "Uniform compression of two blocks in series: F = E (d − g) A / (2h).",
+     "computed": 102499.99861914152,
+     "reference": 102500.0,
+     "unit": "N",
+     "error_pct": -1.3471790016872376e-06,
+     "error_abs": -0.001380858477205038,
+     "tol_pct": 0.5,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 72.2
+  },
+  {
+   "id": "template:tied-parts",
+   "physics": "structural",
+   "title": {
+    "ja": "別々にメッシュした部品の固着",
+    "en": "Tying separately meshed parts",
+    "zh": "分别划分网格的零件的绑定"
+   },
+   "source": "Uniform tension of one bar: F = E d A / (2h).",
+   "tests": {
+    "ja": "節点を共有しない2つのブロックを接着（固着）して引っ張り、1本の棒と同じ答えになることを確かめます。",
+    "en": "Two blocks that share no nodes are bonded (tied) and pulled; the answer must equal that of one bar.",
+    "zh": "将不共享节点的两个块粘接（绑定）后拉伸，确认结果与一根杆相同。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 3577.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 5.748129615475305e-06
+   },
+   "rows": [
+    {
+     "quantity": "Uniform tension of one bar: F = E d A / (2h).",
+     "computed": 102499.9986549601,
+     "reference": 102500.0,
+     "unit": "N",
+     "error_pct": -1.3122340436488855e-06,
+     "error_abs": -0.0013450398982968181,
+     "tol_pct": 0.5,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 64.8
+  },
+  {
+   "id": "nafems-le1",
+   "physics": "structural",
+   "title": {
+    "ja": "NAFEMS LE1 楕円膜",
+    "en": "NAFEMS LE1 elliptic membrane",
+    "zh": "NAFEMS LE1 椭圆膜"
+   },
+   "source": "NAFEMS, The Standard NAFEMS Benchmarks, TNSB Rev. 3 (1990), LE1: σyy at D = 92.7 MPa",
+   "tests": {
+    "ja": "曲線境界・対称面・外向き圧力",
+    "en": "curved boundary, symmetry planes, outward pressure",
+    "zh": "曲线边界、对称面、向外压力"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "elements": 113225.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 5.24600931529644e-05
+   },
+   "rows": [
+    {
+     "quantity": "σyy at D",
+     "computed": 92.80236882746009,
+     "reference": 92.7,
+     "unit": "MPa",
+     "error_pct": 0.11043023458477122,
+     "error_abs": 0.10236882746008291,
+     "tol_pct": 2,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 1052.4
+  },
+  {
+   "id": "nafems-le10",
+   "physics": "structural",
+   "title": {
+    "ja": "NAFEMS LE10 厚板の曲げ",
+    "en": "NAFEMS LE10 thick plate",
+    "zh": "NAFEMS LE10 厚板弯曲"
+   },
+   "source": "NAFEMS TNSB Rev. 3, LE10: σyy at D = −5.38 MPa",
+   "tests": {
+    "ja": "3次元の曲げ・成分拘束・対称面",
+    "en": "3D bending, component supports, symmetry planes",
+    "zh": "三维弯曲、分量约束、对称面"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "elements": 153239.0,
+    "study": false,
+    "gci_pass": false,
+    "gci_pct": null
+   },
+   "rows": [
+    {
+     "quantity": "σyy at D",
+     "computed": -5.3643837501330385,
+     "reference": -5.38,
+     "unit": "MPa",
+     "error_pct": -0.2902648674156398,
+     "error_abs": 0.015616249866961418,
+     "tol_pct": 2,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 782.2
+  },
+  {
+   "id": "lame-cylinder",
+   "physics": "structural",
+   "title": {
+    "ja": "閉じた厚肉円筒の内圧（Lamé）",
+    "en": "Closed thick cylinder under pressure (Lamé)",
+    "zh": "封闭厚壁圆筒内压（Lamé）"
+   },
+   "source": "Lamé solution, e.g. Timoshenko & Goodier, Theory of Elasticity, §28",
+   "tests": {
+    "ja": "曲面への圧力・2次要素の曲面追従・1/8対称",
+    "en": "pressure on curved faces, curved quadratic elements, 1/8 symmetry",
+    "zh": "曲面压力、二次单元贴合曲面、1/8 对称"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "elements": 221175.0,
+    "study": true,
+    "gci_pass": false,
+    "gci_pct": 3.1387953149696437
+   },
+   "rows": [
+    {
+     "quantity": "hoop stress, mid wall",
+     "computed": 19.99576080652536,
+     "reference": 19.993906066365838,
+     "unit": "MPa",
+     "error_pct": 0.009276527324707639,
+     "error_abs": 0.0018547401595228052,
+     "tol_pct": 1,
+     "tol_abs": null,
+     "pass": true
+    },
+    {
+     "quantity": "axial stress, mid wall",
+     "computed": 9.756423651752694,
+     "reference": 9.75609756097561,
+     "unit": "MPa",
+     "error_pct": 0.0033424304651190617,
+     "error_abs": 0.0003260907770847865,
+     "tol_pct": 1,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 1234.7
+  },
+  {
+   "id": "curved-beam",
+   "physics": "structural",
+   "title": {
+    "ja": "曲がり梁（Winkler–Bach）",
+    "en": "Curved beam (Winkler–Bach)",
+    "zh": "曲梁（Winkler–Bach）"
+   },
+   "source": "Winkler–Bach curved-beam formula, e.g. Roark's Formulas for Stress and Strain, 8th ed., §9.1",
+   "tests": {
+    "ja": "曲げと軸力の組合せ・曲率による応力の偏り",
+    "en": "combined bending and tension, curvature shifts the stress",
+    "zh": "弯曲与轴力组合、曲率导致应力偏移"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "elements": 48605.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.8505247306682541
+   },
+   "rows": [
+    {
+     "quantity": "inner fibre",
+     "computed": 90.59731317529236,
+     "reference": 89.40904395116591,
+     "unit": "MPa",
+     "error_pct": 1.3290257580379243,
+     "error_abs": 1.1882692241264436,
+     "tol_pct": 2,
+     "tol_abs": null,
+     "pass": true
+    },
+    {
+     "quantity": "outer fibre",
+     "computed": -51.922382286138074,
+     "reference": -52.20452197558296,
+     "unit": "MPa",
+     "error_pct": -0.5404506712595732,
+     "error_abs": 0.28213968944488954,
+     "tol_pct": 2,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 88.9
+  },
+  {
+   "id": "bar-two-materials",
+   "physics": "structural",
+   "title": {
+    "ja": "鋼とアルミの直列棒",
+    "en": "Steel and aluminium bar in series",
+    "zh": "钢铝串联杆"
+   },
+   "source": "Hand calculation: u = F/A (L1/E1 + L2/E2)",
+   "tests": {
+    "ja": "部品ごとの材料・成分拘束・部品間の接合面",
+    "en": "per-part materials, component supports, bonded interface",
+    "zh": "分部件材料、分量约束、粘接界面"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "elements": 7979.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.0097301946418301
+   },
+   "rows": [
+    {
+     "quantity": "tip displacement",
+     "computed": 0.1933859929474904,
+     "reference": 0.19370802403676213,
+     "unit": "mm",
+     "error_pct": -0.16624561159666462,
+     "error_abs": -0.0003220310892717293,
+     "tol_pct": 1,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 30.1
+  },
+  {
+   "id": "thick-sphere",
+   "physics": "structural",
+   "title": {
+    "ja": "厚肉球の内圧",
+    "en": "Thick sphere under internal pressure",
+    "zh": "厚壁球内压"
+   },
+   "source": "Lamé solution for a thick sphere, Timoshenko & Goodier §141",
+   "tests": {
+    "ja": "3方向の対称面・曲面の内圧",
+    "en": "three symmetry planes, pressure on a curved inner face",
+    "zh": "三个对称面、曲面内压"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "elements": 323421.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.0004226940261600272
+   },
+   "rows": [
+    {
+     "quantity": "inner displacement",
+     "computed": 0.0019498244574422242,
+     "reference": 0.0019512195121951217,
+     "unit": "mm",
+     "error_pct": -0.07149655608599605,
+     "error_abs": -1.3950547528974837e-06,
+     "tol_pct": 1,
+     "tol_abs": null,
+     "pass": true
+    },
+    {
+     "quantity": "hoop stress at the bore",
+     "computed": 7.135991594841479,
+     "reference": 7.1428571428571415,
+     "unit": "MPa",
+     "error_pct": -0.09611767221927539,
+     "error_abs": -0.006865548015662526,
+     "tol_pct": 3,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 418.2
+  },
+  {
+   "id": "nafems-t4",
+   "physics": "thermal",
+   "title": {
+    "ja": "NAFEMS T4 対流つき2次元伝熱",
+    "en": "NAFEMS T4 2D conduction with convection",
+    "zh": "NAFEMS T4 带对流的二维导热"
+   },
+   "source": "NAFEMS TNSB Rev. 3, T4: T at E = 18.3 °C",
+   "tests": {
+    "ja": "温度固定と対流の組合せ",
+    "en": "fixed temperature with convection",
+    "zh": "定温与对流组合"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "elements": 5967.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 1.5446333099613797e-05
+   },
+   "rows": [
+    {
+     "quantity": "T at E",
+     "computed": 18.249609003446295,
+     "reference": 18.3,
+     "unit": "°C",
+     "error_pct": -0.27536063690549445,
+     "error_abs": -0.05039099655370549,
+     "tol_pct": 1,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 8.8
+  },
+  {
+   "id": "iso10211-1",
+   "physics": "thermal",
+   "title": {
+    "ja": "ISO 10211 附属書A ケース1",
+    "en": "ISO 10211 Annex A, case 1",
+    "zh": "ISO 10211 附录A 案例1"
+   },
+   "source": "ISO 10211:2017 Annex A, case 1 (28 grid points; exact series solution)",
+   "tests": {
+    "ja": "建築熱橋計算法の検証（許容 0.1 K）",
+    "en": "thermal-bridge software validation (tolerance 0.1 K)",
+    "zh": "建筑热桥计算验证（容差 0.1 K）"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "elements": 35030.0,
+    "study": true,
+    "gci_pass": false,
+    "gci_pct": 8.90877084003706
+   },
+   "rows": [
+    {
+     "quantity": "largest deviation of 28 points (at x 1 m, y 7 m)",
+     "computed": 9.657495087082573,
+     "reference": 9.65818776956295,
+     "unit": "°C",
+     "error_pct": -0.007171971563443326,
+     "error_abs": -0.000692682480377016,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 53.7
+  },
+  {
+   "id": "iso10211-2",
+   "physics": "thermal",
+   "title": {
+    "ja": "ISO 10211 附属書A ケース2（4材料の熱橋）",
+    "en": "ISO 10211 Annex A, case 2 (four materials)",
+    "zh": "ISO 10211 附录A 案例2（四种材料热桥）"
+   },
+   "source": "ISO 10211:2017 Annex A, case 2: nine temperatures (±0.1 K) and 9.5 W/m (±0.1 W/m)",
+   "tests": {
+    "ja": "複数材料・薄いアルミ部材・表面熱抵抗",
+    "en": "several materials, a thin aluminium profile, surface resistances",
+    "zh": "多材料、薄铝型材、表面热阻"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "elements": 58846.0,
+    "study": false,
+    "gci_pass": false,
+    "gci_pct": null
+   },
+   "rows": [
+    {
+     "quantity": "T at A",
+     "computed": 7.065034285248439,
+     "reference": 7.1,
+     "unit": "°C",
+     "error_pct": -0.4924748556557851,
+     "error_abs": -0.03496571475156074,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    },
+    {
+     "quantity": "T at B",
+     "computed": 0.7612904173868991,
+     "reference": 0.8,
+     "unit": "°C",
+     "error_pct": -4.838697826637622,
+     "error_abs": -0.03870958261310098,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    },
+    {
+     "quantity": "T at C",
+     "computed": 7.898091623666865,
+     "reference": 7.9,
+     "unit": "°C",
+     "error_pct": -0.024156662444753972,
+     "error_abs": -0.001908376333135564,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    },
+    {
+     "quantity": "T at D",
+     "computed": 6.272057012416212,
+     "reference": 6.3,
+     "unit": "°C",
+     "error_pct": -0.4435394854569452,
+     "error_abs": -0.02794298758378755,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    },
+    {
+     "quantity": "T at E",
+     "computed": 0.8274940984590863,
+     "reference": 0.8,
+     "unit": "°C",
+     "error_pct": 3.4367623073857794,
+     "error_abs": 0.027494098459086236,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    },
+    {
+     "quantity": "T at F",
+     "computed": 16.408421927496278,
+     "reference": 16.4,
+     "unit": "°C",
+     "error_pct": 0.05135321644072638,
+     "error_abs": 0.008421927496279125,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    },
+    {
+     "quantity": "T at G",
+     "computed": 16.334344838552056,
+     "reference": 16.3,
+     "unit": "°C",
+     "error_pct": 0.21070453099420416,
+     "error_abs": 0.03434483855205528,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    },
+    {
+     "quantity": "T at H",
+     "computed": 16.76708285627202,
+     "reference": 16.8,
+     "unit": "°C",
+     "error_pct": -0.19593537933322516,
+     "error_abs": -0.032917143727981824,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    },
+    {
+     "quantity": "T at I",
+     "computed": 18.333599773278383,
+     "reference": 18.3,
+     "unit": "°C",
+     "error_pct": 0.18360531846110584,
+     "error_abs": 0.03359977327838237,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    },
+    {
+     "quantity": "heat flow",
+     "computed": 9.492211218078078,
+     "reference": 9.5,
+     "unit": "W/m",
+     "error_pct": -0.08198717812549948,
+     "error_abs": -0.00778878192192245,
+     "tol_pct": null,
+     "tol_abs": 0.1,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 84.7
+  },
+  {
+   "id": "layered-wall",
+   "physics": "thermal",
+   "title": {
+    "ja": "3層の壁",
+    "en": "Three-layer wall",
+    "zh": "三层墙"
+   },
+   "source": "Hand calculation: series thermal resistances",
+   "tests": {
+    "ja": "部品ごとの熱伝導率・接合面での温度の連続",
+    "en": "per-part conductivity, temperature continuity at interfaces",
+    "zh": "分部件导热系数、界面温度连续"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "elements": 27214.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 5.743513605487723e-09
+   },
+   "rows": [
+    {
+     "quantity": "T, first interface",
+     "computed": 19.847328244272987,
+     "reference": 19.84732824427481,
+     "unit": "°C",
+     "error_pct": -9.182808359862694e-12,
+     "error_abs": -1.822542117224657e-12,
+     "tol_pct": null,
+     "tol_abs": 0.05,
+     "pass": true
+    },
+    {
+     "quantity": "T, second interface",
+     "computed": 0.7633587786215661,
+     "reference": 0.7633587786259541,
+     "unit": "°C",
+     "error_pct": -5.748339582112294e-10,
+     "error_abs": -4.388045482528469e-12,
+     "tol_pct": null,
+     "tol_abs": 0.05,
+     "pass": true
+    },
+    {
+     "quantity": "heat flow",
+     "computed": 0.15267175572719976,
+     "reference": 0.15267175572519084,
+     "unit": "W",
+     "error_pct": 1.3158431289017614e-09,
+     "error_abs": 2.008920807483605e-12,
+     "tol_pct": 1,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 37.6
+  },
+  {
+   "id": "hollow-cylinder",
+   "physics": "thermal",
+   "title": {
+    "ja": "円管の半径方向伝熱",
+    "en": "Radial conduction through a tube",
+    "zh": "圆管径向导热"
+   },
+   "source": "Hand calculation: Q = 2πkLΔT / ln(b/a)",
+   "tests": {
+    "ja": "曲面の温度条件・対数分布",
+    "en": "temperatures on curved faces, logarithmic profile",
+    "zh": "曲面温度条件、对数分布"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "elements": 14417.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.006860638216279181
+   },
+   "rows": [
+    {
+     "quantity": "T at r = 15 mm",
+     "computed": 53.20781202350237,
+     "reference": 53.2029999423075,
+     "unit": "°C",
+     "error_pct": 0.009044755371104616,
+     "error_abs": 0.004812081194870643,
+     "tol_pct": null,
+     "tol_abs": 0.05,
+     "pass": true
+    },
+    {
+     "quantity": "heat flow",
+     "computed": 1813.0053048879217,
+     "reference": 1812.9440567308775,
+     "unit": "W",
+     "error_pct": 0.003378380971925318,
+     "error_abs": 0.06124815704424691,
+     "tol_pct": 1,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 11.6
+  },
+  {
+   "id": "template:channel",
+   "physics": "cfd",
+   "title": {
+    "ja": "平行平板の流れ",
+    "en": "Flow between parallel plates",
+    "zh": "平行平板间流动"
+   },
+   "source": "Outlet centre velocity (Poiseuille u_max = 1.5 U)",
+   "tests": {
+    "ja": "2枚の板の間を流れる層流。十分発達した速度分布が放物線（ポアズイユ流れ）になるかを確かめます。",
+    "en": "Laminar flow between two plates. Checks that the developed velocity profile becomes a parabola (Poiseuille flow).",
+    "zh": "两块平板之间的层流。确认充分发展后的速度分布是否为抛物线（泊肃叶流动）。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 5502.0,
+    "study": false,
+    "gci_pass": false,
+    "gci_pct": null
+   },
+   "rows": [
+    {
+     "quantity": "Outlet centre velocity (Poiseuille u_max = 1.5 U)",
+     "computed": 0.01496614,
+     "reference": 0.015,
+     "unit": "m/s",
+     "error_pct": -0.22573333333333429,
+     "error_abs": -3.386000000000014e-05,
+     "tol_pct": 2.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 6.2
+  },
+  {
+   "id": "template:sphere-drag",
+   "physics": "external",
+   "title": {
+    "ja": "球まわりの流れ（抗力）",
+    "en": "Flow past a sphere (drag)",
+    "zh": "圆球绕流（阻力）"
+   },
+   "source": "Drag coefficient (Schiller-Naumann)",
+   "tests": {
+    "ja": "一様な流れの中に置いた球の抗力係数を求め、Schiller-Naumann の式（Re=100）と比較します。物体まわり流れの標準問題。",
+    "en": "Finds the drag coefficient of a sphere in uniform flow and compares it with the Schiller-Naumann correlation (Re = 100). The standard external-flow benchmark.",
+    "zh": "求均匀来流中圆球的阻力系数，并与 Schiller-Naumann 公式（Re=100）比较。绕流的标准算例。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 437098.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.02310715643783413
+   },
+   "rows": [
+    {
+     "quantity": "Drag coefficient (Schiller-Naumann)",
+     "computed": 1.10034941,
+     "reference": 1.0917660555811508,
+     "unit": "-",
+     "error_pct": 0.7861898961751669,
+     "error_abs": 0.008583354418849165,
+     "tol_pct": 8.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Correlation"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 701.0
+  },
+  {
+   "id": "template:hertz-cylinder",
+   "physics": "structural",
+   "title": {
+    "ja": "円柱と平面の接触（ヘルツ）",
+    "en": "Cylinder on a flat (Hertz contact)",
+    "zh": "圆柱与平面接触（赫兹）"
+   },
+   "source": "Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a.",
+   "tests": {
+    "ja": "鋼の円柱を鋼のブロックに押しつけ、最大接触圧力と接触幅をヘルツの式と比べます（平面ひずみ・1/4モデル）。",
+    "en": "A steel cylinder pressed onto a steel block; peak contact pressure and contact width are compared with Hertz (plane strain, quarter model).",
+    "zh": "将钢圆柱压在钢块上，并将最大接触压力和接触宽度与赫兹公式比较（平面应变、1/4 模型）。"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "elements": 18696.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.12535753487253287
+   },
+   "rows": [
+    {
+     "quantity": "Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a.",
+     "computed": 1406.7415862844118,
+     "reference": 1407.966573444326,
+     "unit": "MPa",
+     "error_pct": -0.08700399448529073,
+     "error_abs": -1.2249871599142352,
+     "tol_pct": 5.0,
+     "tol_abs": null,
+     "pass": true,
+     "reference_label": "Hand calc"
+    }
+   ],
+   "status": "pass",
+   "wall_s": 2258.1
+  },
+  {
+   "id": "hagen-poiseuille",
+   "physics": "flow",
+   "title": {
+    "ja": "円管の層流（Hagen–Poiseuille）",
+    "en": "Laminar pipe flow (Hagen–Poiseuille)",
+    "zh": "圆管层流（Hagen–Poiseuille）"
+   },
+   "source": "Hagen–Poiseuille: dp/dx = 32 μ U / d²",
+   "tests": {
+    "ja": "内部流れの壁摩擦・圧力勾配",
+    "en": "wall friction and pressure gradient in internal flow",
+    "zh": "内部流动的壁面摩擦与压力梯度"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "elements": 172568.0,
+    "study": true,
+    "gci_pass": true,
+    "gci_pct": 0.4230742327008489
+   },
+   "rows": [
+    {
+     "quantity": "pressure gradient, developed flow",
+     "computed": 5.114700688528589,
+     "reference": 5.10976,
+     "unit": "Pa/m",
+     "error_pct": 0.09669120523447675,
+     "error_abs": 0.004940688528589199,
+     "tol_pct": 2,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 76.7
+  },
+  {
+   "id": "sudden-expansion",
+   "physics": "flow",
+   "title": {
+    "ja": "急拡大管の損失（Borda–Carnot）",
+    "en": "Sudden expansion loss (Borda–Carnot)",
+    "zh": "突扩管损失（Borda–Carnot）"
+   },
+   "source": "Borda–Carnot: K = (1 − A1/A2)² = 0.5625; turbulent, Re 10,000, k-ω SST",
+   "tests": {
+    "ja": "乱流・はく離と再付着・壁の境界層メッシュ",
+    "en": "turbulence, separation and reattachment, wall layers",
+    "zh": "湍流、分离与再附着、壁面边界层网格"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": false,
+     "verified": false,
+     "verified_by": null
+    },
+    "elements": null,
+    "study": false
+   },
+   "rows": [
+    {
+     "quantity": "loss coefficient K",
+     "computed": 0.5591575913404152,
+     "reference": 0.5625,
+     "unit": "-",
+     "error_pct": -0.5942059839261857,
+     "error_abs": -0.0033424086595847946,
+     "tol_pct": 5,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 3490.3
+  },
+  {
+   "id": "blasius-pipe",
+   "physics": "flow",
+   "title": {
+    "ja": "乱流の円管摩擦（Blasius）",
+    "en": "Turbulent pipe friction (Blasius)",
+    "zh": "湍流圆管摩擦（Blasius）"
+   },
+   "source": "Blasius: f = 0.316 Re^−0.25 (Re 20,000), dp/dx = f/d · ρU²/2",
+   "tests": {
+    "ja": "乱流の壁摩擦（壁関数・境界層メッシュ）",
+    "en": "turbulent wall friction (wall functions, wall layers)",
+    "zh": "湍流壁面摩擦（壁函数、边界层网格）"
+   },
+   "info": {
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "elements": null,
+    "study": false
+   },
+   "rows": [
+    {
+     "quantity": "pressure gradient, developed flow",
+     "computed": 5541.283918156302,
+     "reference": 5303.83641371467,
+     "unit": "Pa/m",
+     "error_pct": 4.476900981101906,
+     "error_abs": 237.4475044416322,
+     "tol_pct": 10,
+     "tol_abs": null,
+     "pass": true
+    }
+   ],
+   "status": "pass",
+   "wall_s": 172.5
+  }
+ ]
+}
