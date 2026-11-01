@@ -74,49 +74,69 @@ def _scratch_roots() -> list[Path]:
     return [Path.home() / ".novasolver-studio", Path(tempfile.gettempdir()) / "novasolver-studio"]
 
 
-def _scratch_run(pointer: Path) -> Path | None:
-    """The scratch run folder named in an of_location.txt, or None when it is not one of ours (never delete
-    anything outside <scratch root>/runs/)."""
+def _is_link(p: Path) -> bool:
+    try:
+        return p.is_symlink() or (hasattr(p, "is_junction") and p.is_junction())
+    except OSError:
+        return True
+
+
+def _private_runs() -> list[Path]:
+    """<root>/runs of the scratch roots only this user can write to. The all-users Public folder and the shared
+    temp folder are left out: another account could turn a folder there into a link to this user's files."""
+    roots = _windows_scratch_roots()[:2] if sys.platform == "win32" else [Path.home() / ".novasolver-studio"]
+    return [r / "runs" for r in roots if r.is_dir() and not _is_link(r) and not _is_link(r / "runs")]
+
+
+def _scratch_run(pointer: Path, runs_dirs: list[Path] | None = None) -> Path | None:
+    """The scratch run folder named in an of_location.txt, or None unless it is a real folder directly inside one of
+    our <scratch root>/runs folders (never anything else: the pointer may come from an imported case file)."""
     try:
         wd = Path(pointer.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         return None
     run = wd.parent
-    if wd.name != "of" or run.parent.name != "runs":
+    if wd.name != "of" or run.name in ("", ".", "..") or any(part in (".", "..") for part in wd.parts):
         return None
-    roots = {str(r.resolve()).lower() for r in _scratch_roots()}
-    return run if str(run.parent.parent.resolve()).lower() in roots else None
+    for runs in runs_dirs if runs_dirs is not None else _private_runs():
+        try:
+            if run.parent.resolve() == runs.resolve() and run.is_dir() and not _is_link(run):
+                return run
+        except OSError:
+            continue
+    return None
 
 
 def remove_scratch(folder: Path) -> None:
     """Delete the OpenFOAM scratch folders of the jobs under folder (a case being deleted)."""
+    runs_dirs = _private_runs()
     for pointer in folder.rglob("of_location.txt"):
-        run = _scratch_run(pointer)
+        run = _scratch_run(pointer, runs_dirs)
         if run is not None:
             shutil.rmtree(run, ignore_errors=True)
 
 
 def sweep_scratch(min_age_days: float = 7.0) -> int:
     """Delete scratch runs that no case in this workspace points at any more and that nothing touched for a week
-    (another workspace on this computer may still use a younger one). Returns how many were removed."""
+    (another workspace on this computer may still use a younger one). Only this user's own scratch roots are swept.
+    Returns how many were removed."""
     import time
+    runs_dirs = _private_runs()
     keep = {str(r.resolve()).lower() for p in (workspace() / "cases").rglob("of_location.txt")
-            if (r := _scratch_run(p)) is not None}
+            if (r := _scratch_run(p, runs_dirs)) is not None}
     removed, cutoff = 0, time.time() - min_age_days * 86400
-    for root in _scratch_roots():
-        runs = root / "runs"
-        if not runs.is_dir():
-            continue
+    for runs in runs_dirs:
         for run in runs.iterdir():
+            if _is_link(run) or not run.is_dir():
+                continue
             try:
                 newest = max([run.stat().st_mtime, *(f.stat().st_mtime for f in run.rglob("*"))])
             except OSError:
                 continue
-            if run.is_dir() and str(run.resolve()).lower() not in keep and newest < cutoff:
+            if str(run.resolve()).lower() not in keep and newest < cutoff:
                 shutil.rmtree(run, ignore_errors=True)
                 removed += 1
     return removed
-
 
 def foam_workdir(jd: Path) -> Path:
     """Empty OpenFOAM case folder for the job folder jd. MinGW OpenFOAM is fragile with non-ASCII paths, so such jobs

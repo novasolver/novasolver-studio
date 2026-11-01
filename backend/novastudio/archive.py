@@ -211,6 +211,8 @@ def import_case(path: str | None = None, data: bytes | None = None, example: str
             manifest = read_manifest(zf)
             contents, total = {}, 0
             for f in manifest['files']:
+                if str(f['path']).replace('\\', '/').rsplit('/', 1)[-1] in SKIP:
+                    continue                              # never exported; a pointer in a crafted file must not land
                 b = _read(zf, f['path'], f['size'])       # never more than the manifest promised
                 total += len(b)
                 if len(b) != f['size'] or hashlib.sha256(b).hexdigest() != f['sha256']:

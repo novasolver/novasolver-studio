@@ -1145,14 +1145,14 @@ function GateStepper() {
               ) : (
                 <Check size={12} className="text-green" />
               )}
-              {t(g.k === "verified" && byRef ? "gate.reference" : `gate.${g.k}`)}
+              {t(g.k === "verified" && byRef ? (g.on ? "gate.reference" : "gate.referenceCheck") : `gate.${g.k}`)}
             </span>
           </Tooltip>
         </div>
       ))}
     </div>
     {/* what the third gate found, in words: "Mesh convergence: outside limit (GCI 7.6%)" */}
-    {label && !byRef && <div className="tnum mt-1.5 text-label text-fg-2">{label}</div>}
+    {label && !(byRef && gates.verified) && <div className="tnum mt-1.5 text-label text-fg-2">{label}</div>}
     </>
   );
 }

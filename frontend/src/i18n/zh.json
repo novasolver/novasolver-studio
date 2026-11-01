@@ -566,5 +566,6 @@
   "gate.mesh": "网格收敛：已确认",
   "gate.reference": "与参考解一致",
   "gate.verified.tipTodo": "尚未进行网格收敛检查，网格尺寸带来的误差未知。",
-  "verify.gci": "GCI"
+  "verify.gci": "GCI",
+  "gate.referenceCheck": "与参考解对比"
 }

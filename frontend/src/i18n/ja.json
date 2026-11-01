@@ -566,5 +566,6 @@
   "gate.mesh": "メッシュ収束：確認済み",
   "gate.reference": "参照解と一致",
   "gate.verified.tipTodo": "メッシュ収束の確認をまだ実行していません。メッシュの粗さによる誤差は未確認です。",
-  "verify.gci": "GCI"
+  "verify.gci": "GCI",
+  "gate.referenceCheck": "参照解との比較"
 }

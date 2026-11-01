@@ -87,6 +87,19 @@ async def _call(fn, language, *a, **kw):
         return None, _err(e, language)
 
 
+def _verification_text(v: dict, digits: int) -> str:
+    """One line for the verification block. A mesh study reports a GCI, not an error against a reference, and has no
+    extrapolated value when the three meshes do not allow one."""
+    verdict = 'PASS' if v['pass'] else 'FAIL'
+    if v.get('kind') == 'convergence':
+        ext = (f", Richardson extrapolation {v['reference']:.{digits}g} {v['unit']}" if v.get('reference') is not None
+               else ", no extrapolation (the three meshes do not converge monotonically)")
+        return (f"{v['label']}: finest mesh {v['computed']:.{digits}g} {v['unit']}{ext}, "
+                f"GCI {v['error_pct']:.2g}% (tolerance {v['tolerance_pct']}%) -> {verdict}")
+    return (f"{v['label']}: computed {v['computed']:.{digits}g} {v['unit']}, reference {v['reference']:.{digits}g} "
+            f"{v['unit']}, error {v['error_pct']:+.2f}% (tolerance {v['tolerance_pct']}%) -> {verdict}")
+
+
 def _gates_line(g: dict | None) -> str:
     if not g:
         return "ran=no"
@@ -366,7 +379,7 @@ async def run_simulation(case_id: str, mode: Literal["preview", "final"] | None 
         s = f"Done ({res['engine']}, {res.get('wall_s')} s). {_gates_line(res['gates'])}."
         s += "\n" + ", ".join(f"{c['label']} {c['value']} {c['unit']}" for c in res["cards"][:4])
         if v:
-            s += f"\n{v['label']}: {v['computed']:.4g} vs {v['reference']:.4g} {v['unit']} ({v['error_pct']:+.2f}%, tol {v['tolerance_pct']}%)"
+            s += "\n" + _verification_text(v, 4)
         for w in res.get("warnings", []):
             s += f"\nWARNING: {w['message']}"
         return _ok(s, {"done": True, "job_id": r["job"]["job_id"], "results": res})
@@ -451,8 +464,7 @@ async def verify_case(case_id: str, language: Lang = "ja") -> CallToolResult:
         return e
     v = r["verification"]
     if v:
-        s = (f"{v['label']}: computed {v['computed']:.5g} {v['unit']}, reference {v['reference']:.5g} {v['unit']}, "
-             f"error {v['error_pct']:+.2f}% (tolerance {v['tolerance_pct']}%) -> {'PASS' if v['pass'] else 'FAIL'}")
+        s = _verification_text(v, 5)
     else:
         s = f"Verification not applicable: {r['gates_detail'].get('verified')}"
     return _ok(s + f"\n{_gates_line(r['gates'])}", r)

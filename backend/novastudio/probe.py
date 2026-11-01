@@ -29,6 +29,7 @@ def _fields(kind: str, data, mode: int = 1) -> dict[str, tuple[np.ndarray, str]]
                           np.stack([s[:, 5], s[:, 4], s[:, 2]], 1)], 1)
             ev = np.linalg.eigvalsh(T)
             out["s1"], out["s3"] = (ev[:, 2], "MPa"), (ev[:, 0], "MPa")
+            out["tresca"] = (ev[:, 2] - ev[:, 0], "MPa")          # maximum shear stress x 2
         if 'T' in data.files:
             out['temp'] = (data['T']-273.15,'°C')
         return out

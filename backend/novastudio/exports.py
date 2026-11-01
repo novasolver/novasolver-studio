@@ -293,7 +293,8 @@ def report(case,jd,raw,lang):
     gates = pl['gates']
     # the third gate says what was checked (mesh convergence of this model, or a textbook answer for an example)
     by = {'mesh': 'export.verified_mesh' if gates['verified'] else 'export.verified_mesh_fail',
-          'reference': 'export.verified_reference'}.get(gates.get('verified_by'), 'export.verified_none')
+          'reference': 'export.verified_reference' if gates['verified'] else 'export.verified_reference_fail'
+          }.get(gates.get('verified_by'), 'export.verified_none')
     html += table((t('export.gate', lang), t('export.status', lang), t('export.meaning', lang)),
         [(t('gate.'+g, lang) if g != 'verified' else pl.get('gate_label') or t('gate.verified', lang),
           ('✓ ' if gates[g] else '✗ ')+t('export.yes' if gates[g] else 'export.no', lang),

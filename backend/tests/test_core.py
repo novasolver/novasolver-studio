@@ -27,6 +27,15 @@ def test_cantilever_preview_verified():
     assert r["done"] and r["results"]["gates"] == {"ran": True, "converged": True, "verified": True, "verified_by": "reference"}
     v = r["results"]["verification"]
     assert abs(v["error_pct"]) < 2.0
+    # stress components, principal stresses and Tresca are offered as colour maps (and agree with each other)
+    from novastudio import results, store
+    case = store.load(cid)
+    ids = [q["id"] for q in r["results"]["quantities"]]
+    assert ids[:3] == ["vm", "disp", "uz"] and {"sxx", "s1", "s3", "tresca", "disp_x"} <= set(ids)
+    f = {q: np.asarray(results.field(case, q, "en")["scalars"], float) for q in ("vm", "s1", "s3", "tresca", "sxx")}
+    assert np.all(f["s1"] >= f["s3"] - 1e-9) and np.all(f["vm"] <= f["tresca"] + 1e-6)
+    # a bending beam: sxx is tension on one face, compression on the other, and carries most of the stress (near the clamp the triaxial state makes |sxx| exceed vm)
+    assert f["sxx"].max() > 0.5 * f["vm"].max() and f["sxx"].min() < -0.5 * f["vm"].max()
 
 
 def test_edit_rules_and_blocking():

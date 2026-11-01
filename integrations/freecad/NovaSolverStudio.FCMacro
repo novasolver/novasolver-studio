@@ -63,9 +63,14 @@ def open_in_program(program, path, physics, lang):
     p = subprocess.Popen([*program, "--import", str(path), "--physics", physics, "--units", "mm", "--lang", lang],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        return p.wait(timeout=5) != 2
+        code = p.wait(timeout=5)
     except subprocess.TimeoutExpired:
         return True
+    if code == 2:
+        return False
+    if code != 0:                       # e.g. "already starting": say so instead of guessing
+        raise RuntimeError(f"NovaSolver Studio exited with code {code}; try again in a moment")
+    return True
 
 
 def send_step(path, physics=PHYSICS, lang="ja"):

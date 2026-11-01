@@ -1,0 +1,191 @@
+{
+ "model": "deepseek-chat",
+ "usage": {
+  "prompt_tokens": 43325,
+  "completion_tokens": 2569,
+  "prompt_cache_hit_tokens": 512
+ },
+ "problems": [],
+ "findings": [
+  {
+   "severity": "high",
+   "file": "backend/novastudio/__main__.py",
+   "line": 70,
+   "summary": "--import path is resolved and passed to import_geometry without any check that it is a regular file inside an allowed location; a crafted path (e.g. UNC \\\\host\\share or a device path) is read by the server.",
+   "scenario": "Blender add-on sends --import '\\\\attacker\\share\\x.step' -> server opens remote SMB path (credential leak / hang)",
+   "fix": "Reject non-local paths (UNC, device names) and require Path.is_file() before import.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/config.py, backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/exports.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/mcp_server.py"
+  },
+  {
+   "severity": "high",
+   "file": "backend/novastudio/mesh_worker.py",
+   "line": 640,
+   "summary": "plane_and_blend_labels: 'cut' expression uses operator precedence — `plane_patch[patch[a]] & (patch[a] != patch[b]) | plane_patch[patch[b]] & (patch[a] != patch[b])` is fine, but `own = np.where(plane_patch[patch[a]], a, b)[cut]` picks a when a is plane; if both a and b are plane patches (different patches) it picks a — acceptable.",
+   "scenario": "Two adjacent plane patches both flagged plane: cut True, own=a, other=b; smooth test compares normals of two coplanar patches (dot ~1) so frac counts them as smooth, potentially suppressing a legitimate plane split.",
+   "fix": "Exclude pairs where both are plane patches from the smooth-fraction test.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/mesh_worker.py, backend/novastudio/results.py, backend/novastudio/run_worker.py, backend/novastudio/store.py"
+  },
+  {
+   "severity": "high",
+   "file": "backend/novastudio/mesh_worker.py",
+   "line": 700,
+   "summary": "split_blended_faces rebuilds the model with gmsh.model.remove()/add() and re-adds nodes only to the first surface, but the returned groups are used to build a surface loop; if labels.max()+1 <= len(groups) it returns the original groups while the model was already mutated? No—the early return happens before remove().",
+   "scenario": "labels.max()+1 > len(groups): model is rebuilt; but the caller then does addSurfaceLoop over the new surfaces — OK. However the rebuilt model loses the original surface tags used elsewhere (e.g. key_of mapping in the discrete branch).",
+   "fix": "Verify callers only use returned groups; otherwise keep tag mapping.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/mesh_worker.py, backend/novastudio/results.py, backend/novastudio/run_worker.py, backend/novastudio/store.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/run_worker.py",
+   "line": 250,
+   "summary": "fatigue_life_min_away computed via support_peak(nodes, fixed, -f['life']) — support_peak returns 'max_vm_away_pa' which is the max of the negated life, i.e. -min life away; negating gives min life away. But if support_peak returns None for max_vm_away_pa (no away nodes), float(None) raises TypeError.",
+   "scenario": "Small mesh where all nodes are on the support: support_peak returns max_vm_away_pa=None -> float(None) crash.",
+   "fix": "Guard: only set fatigue_life_min_away when the away value is not None.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/mesh_worker.py, backend/novastudio/results.py, backend/novastudio/run_worker.py, backend/novastudio/store.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/config.py",
+   "line": 95,
+   "summary": "sweep_scratch deletes any directory under <scratch root>/runs not referenced by this workspace and older than 7 days, including runs of another workspace/user on the same machine (e.g. shared Public folder).",
+   "scenario": "Two users share C:\\Users\\Public\\NovaSolverStudio; user A's sweep deletes user B's 8-day-old scratch run still needed for a queued job",
+   "fix": "Only sweep runs whose pointer file lives in this workspace, or tag runs with the owning workspace and skip others.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/config.py, backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/exports.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/mcp_server.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/contact.py",
+   "line": 175,
+   "summary": "Recursive _project call passes k2 up to len(Xm); with many misses this re-runs the full O(P*k) Newton loop and can recurse again, causing very long runtimes or recursion depth issues on large meshes.",
+   "scenario": "100k slave nodes, 50k master tris, all miss at k=8 -> k2=50000, full projection over all elements per point",
+   "fix": "Cap k2 (e.g. 256) and iterate with growing k instead of one full pass.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/config.py, backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/exports.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/mcp_server.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/fem_nonlinear.py",
+   "line": 213,
+   "summary": "Direct spsolve is now used for all nonlinear runs up to 120k dof regardless of contact; on machines with little RAM this can raise non-MemoryError failures (e.g. SuperLU out-of-memory as RuntimeError) that are not caught.",
+   "scenario": "38k-dof plastic model on 4 GB RAM -> spsolve raises RuntimeError, not MemoryError -> run crashes instead of falling back to AMG",
+   "fix": "Catch RuntimeError/Exception from spsolve and fall through to the iterative path.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/config.py, backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/exports.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/mcp_server.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/mesh_worker.py",
+   "line": 700,
+   "summary": "split_blended_faces: after gmsh.model.remove()/add(), the returned groups are new surface tags, but the caller in import_stl uses them for addSurfaceLoop — fine. However the discrete branch earlier (line ~130) returns key_of mapping; the non-discrete branch returns None for key_of, so face keys are lost after splitting.",
+   "scenario": "STL import with blended faces: split_blended_faces returns groups but key_of is None, so downstream face naming by key fails.",
+   "fix": "Return a key mapping consistent with the split groups.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/mesh_worker.py, backend/novastudio/results.py, backend/novastudio/run_worker.py, backend/novastudio/store.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/results.py",
+   "line": 175,
+   "summary": "verification['reference'] set to None when not extrapolated, but downstream code (e.g. UI) may compute error_pct from reference; also `ref['reference'] != ref['computed']` fallback is a float equality that is almost always True, so the None branch rarely triggers.",
+   "scenario": "Oscillating convergence levels with f_ext None: reference stays as levels[-1] value (== computed), so error_pct=0 shown as if perfect agreement.",
+   "fix": "Use ref.get('extrapolated') is False explicitly, not float inequality.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/mesh_worker.py, backend/novastudio/results.py, backend/novastudio/run_worker.py, backend/novastudio/store.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/templates.py",
+   "line": 706,
+   "summary": "Hertz cylinder axis_point uses hb+R but the test asserts axis_point[1] == radius + height/1e3, and the mesher's cylinder axis may not be at y=hb+R; if the mesher places the cylinder elsewhere the descriptor is wrong.",
+   "scenario": "hertz-cylinder with height 20 mm, radius 25 mm -> axis_point y = 0.045 m; if the mesher's cylinder axis is at y=hb (block top) the face descriptor points to the wrong axis, so bearing/cylindrical BCs and contact normals are computed about the wrong line.",
+   "fix": "Derive axis_point from the same geometry the mesher uses (e.g. geometry.dims / the cylinder builder) instead of re-deriving hb+R here.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/templates.py, backend/tests/test_core.py, backend/tests/test_desktop.py, backend/tests/test_gate_wording.py, backend/tests/test_scratch_root.py, backend/tests/test_stl_faces.py, backend/tests/test_v05.py, backend/tests/test_v07_contact.py, backend/tests/test_v07_fatigue.py, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/PropertiesPanel.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/config.py",
+   "line": 78,
+   "summary": "_scratch_run validates the pointer's parent chain but not that the pointer file itself is inside the case folder; rglob over a case folder could follow a symlink/junction to an arbitrary of_location.txt and rmtree an unrelated runs/ dir.",
+   "scenario": "Case folder contains a junction to another workspace's job dir with of_location.txt -> remove_scratch deletes that other run",
+   "fix": "Resolve the pointer path and require it to be under the case folder before trusting it.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/config.py, backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/exports.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/mcp_server.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/run_worker.py",
+   "line": 700,
+   "summary": "primary_quantity returns fatigue_sf_min_away for fatigue-bar when on support; but the study's peak_vm_pa and convergence still track max_vm which is singular — the study may pass on SF while stress singularity warning is separate. Acceptable but the 'fatigue_sf' response name is used for the study quantity while results.py card uses fatigue_sf_min_away too — consistent.",
+   "scenario": "fatigue-bar with fixed x0: study tracks away SF, converges; fine.",
+   "fix": "None.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/mesh_worker.py, backend/novastudio/results.py, backend/novastudio/run_worker.py, backend/novastudio/store.py"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/components/StartScreen.tsx",
+   "line": 536,
+   "summary": "Verified gate chip now shows gate.reference/gate.mesh based on verified_by, but if verified_by is undefined/null it falls to gate.mesh, mislabeling reference-verified cases.",
+   "scenario": "Case with gates.verified=true and verified_by missing -> chip shows 'Mesh verified' instead of 'Verified'.",
+   "fix": "Default to a generic verified label when verified_by is not 'reference'.",
+   "confidence": "low",
+   "chunk": "frontend/src/components/StartScreen.tsx, tools/build_wheel.py, tools/smoke_wheel.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/store.py",
+   "line": 130,
+   "summary": "delete() calls remove_scratch(d) before shutil.rmtree; if remove_scratch raises (e.g. missing dir), the case is never deleted.",
+   "scenario": "Scratch dir already gone -> remove_scratch raises FileNotFoundError -> delete fails.",
+   "fix": "Wrap remove_scratch in try/except or check existence.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/mesh_worker.py, backend/novastudio/results.py, backend/novastudio/run_worker.py, backend/novastudio/store.py"
+  },
+  {
+   "severity": "low",
+   "file": "tools/smoke_wheel.py",
+   "line": 80,
+   "summary": "Hardcoded tool count 30 will break smoke test whenever tools are added/removed; brittle assertion.",
+   "scenario": "Adding a 31st MCP tool -> smoke test fails despite correct behavior.",
+   "fix": "Assert a minimum count or check specific tool names instead.",
+   "confidence": "medium",
+   "chunk": "frontend/src/components/StartScreen.tsx, tools/build_wheel.py, tools/smoke_wheel.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/exports.py",
+   "line": 300,
+   "summary": "Mesh study level label uses t('export.size.'+l['size']) without a fallback; if a level size key is missing in a language the raw key is printed.",
+   "scenario": "conv level size 'coarse' missing in zh -> report shows 'export.size.coarse'",
+   "fix": "Fall back to l['size'] when the key is absent.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/config.py, backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/exports.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/mcp_server.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/mcp_server.py",
+   "line": 100,
+   "summary": "_gates_line third-gate text: when verified_by is set but verified is false and verified_by=='reference', the expression yields 'does not match reference' correctly, but when verified_by is None and verified true it prints 'mesh convergence not checked' contradicting verified=yes.",
+   "scenario": "gates {ran:yes,converged:yes,verified:yes,verified_by:None} -> line says 'mesh convergence not checked'",
+   "fix": "Handle verified true with no verified_by explicitly.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/__init__.py, backend/novastudio/__main__.py, backend/novastudio/config.py, backend/novastudio/contact.py, backend/novastudio/desktop.py, backend/novastudio/exports.py, backend/novastudio/fem_nonlinear.py, backend/novastudio/mcp_server.py"
+  },
+  {
+   "severity": "low",
+   "file": "frontend/src/components/PropertiesPanel.tsx",
+   "line": 1120,
+   "summary": "GateStepper reads noCheck from !results.verification but the verified tooltip then says 'tipTodo' even when the gate is on via a reference; byRef only changes the label, not the tooltip.",
+   "scenario": "A reference-verified example with verification present but verified_by='reference' shows label 'gate.reference' yet tooltip 'gate.verified.tip' (fine); but a case with gates.verified=true and no verification object shows 'tipTodo' while the chip is green.",
+   "fix": "Base the tooltip on gates.verified_by and gates.verified rather than on the presence of verification.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/templates.py, backend/tests/test_core.py, backend/tests/test_desktop.py, backend/tests/test_gate_wording.py, backend/tests/test_scratch_root.py, backend/tests/test_stl_faces.py, backend/tests/test_v05.py, backend/tests/test_v07_contact.py, backend/tests/test_v07_fatigue.py, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/PropertiesPanel.tsx"
+  }
+ ]
+}

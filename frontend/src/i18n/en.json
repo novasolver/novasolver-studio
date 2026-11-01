@@ -566,5 +566,6 @@
   "gate.mesh": "Mesh convergence: checked",
   "gate.reference": "Matches reference",
   "gate.verified.tipTodo": "No mesh convergence check yet, so the error from the mesh size is unknown.",
-  "verify.gci": "GCI"
+  "verify.gci": "GCI",
+  "gate.referenceCheck": "Reference check"
 }

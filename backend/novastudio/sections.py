@@ -33,7 +33,9 @@ def section_field(jd, kind, quantity, mode, P, triangles, scalars, displacement,
     else:
         fields = _fields(kind,data)
         # Probe uses SI for electric fields, while the result colour bar uses display units.
-        nodal = fields[quantity][0]
+        from .results import PROBE_NAME
+        name = PROBE_NAME.get(quantity, quantity) if kind == 'structural' else quantity
+        nodal = (fields[name] if name in fields else fields['vm'])[0]   # a run without the stress tensor shows vm
         if quantity in ('emag','jmag','q'):
             nodal = nodal/1e6
         nodal = np.column_stack([nodal,data['u']]) if displacement is not None else nodal[:,None]

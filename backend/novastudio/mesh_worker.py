@@ -645,8 +645,8 @@ def plane_and_blend_labels(xyz: np.ndarray, tris: np.ndarray, group: np.ndarray)
             if len(P) >= 3:
                 w[p] = float(np.ptp(P @ np.linalg.svd(P, full_matrices=False)[2][1]))
     plane_patch = np.zeros(npatch, bool)
-    for g in np.unique(group):
-        ids = np.flatnonzero(pg == g)
+    by_group = np.argsort(pg, kind="stable")                        # patches of each region, one sort for all
+    for ids in np.split(by_group, np.flatnonzero(np.diff(pg[by_group])) + 1):
         if len(ids) < 2:
             continue
         # facet strips of one curved surface all have about the same width; a plane is far wider (or large)
@@ -660,7 +660,8 @@ def plane_and_blend_labels(xyz: np.ndarray, tris: np.ndarray, group: np.ndarray)
         own = np.where(plane_patch[patch[a]], a, b)[cut]
         other = np.where(plane_patch[patch[a]], b, a)[cut]
         length = np.linalg.norm(xyz[ev[cut, 0]] - xyz[ev[cut, 1]], axis=1)
-        smooth = np.einsum('ij,ij->i', unit[own], unit[other]) > np.cos(np.radians(2))
+        # a seam against another flat patch is an edge between two faces, never a continuation of this one
+        smooth = (np.einsum('ij,ij->i', unit[own], unit[other]) > np.cos(np.radians(2))) & ~plane_patch[patch[other]]
         frac = np.bincount(patch[own], weights=length * smooth, minlength=npatch) / \
             np.maximum(np.bincount(patch[own], weights=length, minlength=npatch), 1e-300)
         # where the surface does continue (a boss top running into a gentle slope) the seam is straight; where

@@ -18,7 +18,13 @@ QUANTITIES = {
     'buckling': [('mode', '-', 'sequential')],
     "electrostatic": [("v", "V", "sequential"), ("emag", "kV/mm", "sequential")],
     "current": [("temp", "°C", "sequential"), ("v", "V", "sequential"), ("jmag", "A/mm2", "sequential"), ("q", "W/cm3", "sequential")],
-    "structural": [("vm", "MPa", "sequential"), ("disp", "mm", "sequential"), ("uz", "mm", "diverging")],   # stress first: what decides failure
+    # stress first: what decides failure. The first three are the everyday view; components, principal stresses and
+    # Tresca follow in the same list for whoever needs them (a select, so the panel stays as simple as before).
+    "structural": [("vm", "MPa", "sequential"), ("disp", "mm", "sequential"), ("uz", "mm", "diverging"),
+                   ("disp_x", "mm", "diverging"), ("disp_y", "mm", "diverging"),
+                   ("s1", "MPa", "diverging"), ("s3", "MPa", "diverging"), ("tresca", "MPa", "sequential"),
+                   ("sxx", "MPa", "diverging"), ("syy", "MPa", "diverging"), ("szz", "MPa", "diverging"),
+                   ("sxy", "MPa", "diverging"), ("syz", "MPa", "diverging"), ("szx", "MPa", "diverging")],
     "thermal": [("temp", "°C", "sequential")],
     "conjugate": [("temp", "°C", "sequential"), ("speed", "m/s", "sequential")],
     "flow3d": [("speed", "m/s", "sequential"), ("p", "Pa", "sequential")],
@@ -27,6 +33,10 @@ QUANTITIES = {
     "cavity_of": [("speed", "m/s", "sequential"), ("ux", "m/s", "diverging")],
     "channel_of": [("speed", "m/s", "sequential"), ("ux", "m/s", "diverging")],
 }
+
+
+STRUCTURAL_EXTRA = {"disp_x", "disp_y", "s1", "s3", "tresca", "sxx", "syy", "szz", "sxy", "syz", "szx"}
+PROBE_NAME = {"disp_x": "ux", "disp_y": "uy"}    # the probe's names (in the colour map, ux is the flow speed x)
 
 
 RUN_ID = re.compile(r"^r_\d{8}_\d{6}_[0-9a-f]{4}$")
@@ -196,9 +206,11 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     if not verification:
         gate_label = t("gate.mesh_todo", lang)
     elif verification["kind"] == "convergence":
-        gate_label = t("gate.mesh_ok" if verification["pass"] else "gate.mesh_fail", lang, gci=verification["error_pct"])
+        g = verification["error_pct"]
+        gate_label = t("gate.mesh_ok" if gates["verified"] else "gate.mesh_fail", lang,
+                       gci=f"{g:.2g}" if abs(g) < 10 else f"{g:.0f}")          # 1.9, 7.6, 12, 140 (never 1.4e+02)
     else:
-        gate_label = t("gate.reference_ok" if verification["pass"] else "gate.reference_fail", lang)
+        gate_label = t("gate.reference_ok" if gates["verified"] else "gate.reference_fail", lang)
     gates_detail = {"converged": r.get("converged_detail"),
                     "verified": None if verification else t(
                         "verify.none_reason" if case["reference"].get("kind") in (None, "none") else "verify.pattern_reason", lang),
@@ -415,6 +427,12 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
         else:
             U = data["u"][used]
             vals = {"disp": np.linalg.norm(U, axis=1) * 1e3, "vm": data["vm"][used] / 1e6, "uz": U[:, 2] * 1e3}
+            if quantity in STRUCTURAL_EXTRA:      # components, principal stresses, Tresca: same values as the probe
+                from .probe import _fields
+                extra = _fields(kind, data)       # runs before 0.2.2 have no stress tensor: falls back to vm
+                src = PROBE_NAME.get(quantity, quantity)
+                if src in extra:
+                    vals[quantity] = extra[src][0][used]
             for q,scale in [('p_contact',1e-6),('contact_gap',1e3),('contact_slip',1e3),('contact_status',1),('peeq',1)]:
                 if q in data.files:
                     vals[q] = data[q][used]*scale

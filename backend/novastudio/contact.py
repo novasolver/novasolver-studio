@@ -182,7 +182,7 @@ def _project(points, dirs, Xm, search, candidates=8):
         # a strongly graded master (one large element among many small ones) can hide the element that holds the
         # point beyond the k nearest centres; every element that could hold it has its centre within this radius
         reach = tree.query_ball_point(points[miss], size.max() + 2 * search + 1e-12, return_length=True)
-        k2 = min(int(reach.max()), len(Xm))
+        k2 = min(int(reach.max()), len(Xm), 256)     # bounded: a point still missed is dropped, as before
         if k2 > k:
             e2, xi2, t2 = _project(points[miss], dirs[miss], Xm, search, k2)
             best_e[miss], best_xi[miss], best_t[miss] = e2, xi2, t2

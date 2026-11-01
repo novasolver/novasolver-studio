@@ -183,9 +183,14 @@ def open_in_program(program, path, physics, units, lang, material=None) -> bool:
     p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          close_fds=True)
     try:
-        return p.wait(timeout=5) != 2
+        code = p.wait(timeout=5)
     except subprocess.TimeoutExpired:                          # still running: it took the file
         return True
+    if code == 2:
+        return False
+    if code != 0:                                              # e.g. "already starting": say so instead of guessing
+        raise RuntimeError(f"NovaSolver Studio exited with code {code}; try again in a moment")
+    return True
 
 
 def _work(port, program, name, path, physics, material, lang, result):

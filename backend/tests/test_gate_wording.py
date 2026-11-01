@@ -25,4 +25,4 @@ def test_gate_wording_has_no_verified_label():
             d = json.loads((root / f"{lang}.json").read_text(encoding="utf-8"))
             assert d["gate.verified"] not in ("検証済み", "検証", "Verified", "已验证"), (root, lang)
     d = json.loads((I18N / "ja.json").read_text(encoding="utf-8"))
-    assert d["gate.mesh_ok"].format(gci=1.94) == "メッシュ収束：確認済み（GCI 1.9%）"
+    assert d["gate.mesh_ok"].format(gci="1.9") == "メッシュ収束：確認済み（GCI 1.9%）"
