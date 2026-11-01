@@ -56,7 +56,7 @@ def _fetch(name: str, progress=None) -> bytes:
     from .config import offline
     if offline():                                  # the cache still serves examples downloaded before
         raise ConnectionRefusedError("offline mode")
-    error = None
+    errors = []
     for base in base_urls():
         req = urllib.request.Request(base + name, headers={'User-Agent': f'NovaSolverStudio/{__version__}'})
         try:
@@ -71,7 +71,7 @@ def _fetch(name: str, progress=None) -> bytes:
                     if progress and total > 1 << 20:
                         progress(got, total)
         except OSError as e:                       # unreachable or not there: try the next host
-            error = e
+            errors.append(e)
             continue
         try:
             (data_dir() / 'examples').mkdir(parents=True, exist_ok=True)
@@ -79,7 +79,8 @@ def _fetch(name: str, progress=None) -> bytes:
         except OSError:
             pass
         return b''.join(chunks)
-    raise error
+    # 'not published' only when every host said 404; a host we could not reach (slow, blocked, TLS) wins
+    raise next((e for e in errors if not (isinstance(e, urllib.error.HTTPError) and e.code == 404)), errors[-1])
 
 
 def _write(path: Path, data: bytes) -> None:

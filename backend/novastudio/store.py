@@ -284,6 +284,10 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             diff.append(_set_contact_pair(new, path, value))
             continue
         if path not in allowed:
+            keys = templates.face_keys(case)
+            if path.startswith('boundaries.') and path.split('.')[1] not in keys:      # a face this shape does not have
+                shown = ', '.join(keys[:12]) + (', ...' if len(keys) > 12 else '')
+                raise StudioError('err.path', 400, path=f"{path} (no face '{path.split('.')[1]}'; this case has {shown})")
             raise StudioError("err.path", 400, path=path)
         parts = path.split(".")
         parent = new
@@ -389,6 +393,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(allowed_m)})")
             nv = value
         elif parts[0] == "body_materials":
+            value = value.strip().lower() if isinstance(value, str) else value     # "PLA" = "pla"
             if value not in templates.MATERIALS_SOLID:
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: {', '.join(templates.MATERIALS_SOLID)})")
             nv = value
@@ -431,6 +436,7 @@ def apply_changes(case: dict, changes: dict) -> tuple[dict, list[dict]]:
             nv = value
         elif key == "preset":
             presets = templates.MATERIALS_SOLID if parts[1] == "solid" else templates.MATERIALS_FLUID
+            value = value.strip().lower() if isinstance(value, str) else value     # "PLA" = "pla"
             if value != "custom" and value not in presets:
                 raise StudioError("err.path", 400, path=f"{path}={value} (allowed: custom, {', '.join(presets)})")
             nv = value

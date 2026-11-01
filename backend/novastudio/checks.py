@@ -126,12 +126,15 @@ def run(case: dict, lang: str) -> list[dict]:
             if any(v['role'] == 'displacement' and any(v.get(k) is not None and units.to_si(v[k]) != 0 for k in ('ux','uy','uz')) for v in b.values()):
                 add('warn','modal_displacement_ignored','boundaries')
         if not modal and not any(v["role"] in ("fixed", 'beam-clamp', "symmetry", "constraint",'displacement','spring') for v in b.values()):
-            add("error", "no_fixed", "boundaries", fix='update_case(changes={"boundaries.x0.role": "fixed"})')
+            add("error", "no_fixed", "boundaries", fix='update_case(changes={"boundaries.' + ('x0' if 'x0' in b else 'f<n>') + '.role": "fixed"})')
         interference = any(c.get('type','bonded') != 'bonded' and units.to_si(c.get('offset',0)) != 0 for c in case.get('contacts',{}).values())
         imposed = any(v['role'] == 'displacement' and any(v.get(k) is not None and units.to_si(v[k]) != 0 for k in ('ux','uy','uz')) for v in b.values())
         if not modal and not interference and not imposed and not any(v["role"] in geometry.LOAD_ROLES for v in b.values()) and thermal_mode == 'none' and not any(
                 case['physics'].get(k, {}).get('enabled') for k in ('gravity','rotation')):
-            add("error", "no_load", "boundaries", fix='update_case(changes={"boundaries.x1.role": "load"})')
+            f = 'x1' if 'x1' in b else 'f<n>'               # imported shapes name faces f1, f2, ...
+            add("error", "no_load", "boundaries",
+                fix=f'update_case(changes={{"boundaries.{f}.role": "load", "boundaries.{f}.force": "<N>", '
+                    f'"boundaries.{f}.direction": "-z"}})')
         if not modal and thermal_mode != 'none':
             mats = [templates.solid_props(case,k) for k in case.get('body_materials',{})] or [templates.solid_props(case)]
             if all(m.get('alpha',0) == 0 for m in mats):
