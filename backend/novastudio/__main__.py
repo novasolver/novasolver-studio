@@ -2,7 +2,9 @@
 
   novastudio                 start the app: local server + the UI in its own window (what the packaged exe does)
   novastudio FILE.nscase     open a case file in the running app (or start it)
-  novastudio --case ID       open a saved case in the app window (used by the Blender add-on)
+  novastudio --case ID       open a saved case in the app window
+  novastudio --import FILE [--physics P] [--units mm|m|inch] [--lang L] [--material M]
+                             open a CAD file as a new case (used by the Blender add-on and the FreeCAD macro)
   novastudio serve [--port]  server only (127.0.0.1)
   novastudio mcp             MCP server on stdio
   novastudio env             print available engines
@@ -49,6 +51,16 @@ def main() -> None:
             raise SystemExit("--case expects a case id such as c_20261031_120000_ab12")
         _app(None, f"?case={argv[1]}")
         return
+    if argv and argv[0] == "--import":                         # a CAD file from the Blender add-on / FreeCAD macro
+        ip = argparse.ArgumentParser(prog="novastudio --import")
+        ip.add_argument("path")
+        ip.add_argument("--physics", default="structural")
+        ip.add_argument("--units", choices=("mm", "m", "inch"), default="mm")
+        ip.add_argument("--lang", choices=("ja", "en", "zh"), default="ja")
+        ip.add_argument("--material")
+        a = ip.parse_args(argv[1:])
+        _app(None, cad=a)
+        return
     ap =argparse.ArgumentParser(prog="novastudio")
     sub = ap.add_subparsers(dest="cmd")
     s = sub.add_parser("serve", help="run the local UI server (127.0.0.1 only)")
@@ -78,13 +90,14 @@ def main() -> None:
         _app(None)
 
 
-def _app(case_path: str | None, query: str = "") -> None:
+def _app(case_path: str | None, query: str = "", cad: argparse.Namespace | None = None) -> None:
     """App mode (double-click, Start menu, a double-clicked .nscase): one server per user, the UI in its own window.
     A second start only opens another window on the running server (and imports the file it was given)."""
     import os
     import threading
     import time
     import webbrowser
+    from pathlib import Path
 
     from . import desktop
     case = desktop.case_file([case_path]) if case_path else None
@@ -93,7 +106,13 @@ def _app(case_path: str | None, query: str = "") -> None:
     shown = {}
 
     def show(port: int) -> object:
-        url = shown["url"] = f"http://127.0.0.1:{port}/{desktop.open_case(case) if case else query}"
+        if case:
+            query_ = desktop.open_case(case)
+        elif cad:
+            query_ = desktop.import_cad(Path(cad.path).resolve(), cad.physics, cad.units, cad.lang, cad.material)
+        else:
+            query_ = query
+        url = shown["url"] = f"http://127.0.0.1:{port}/{query_}"
         if no_ui:
             return None
         proc = desktop.open_window(url)
@@ -125,6 +144,8 @@ def _app(case_path: str | None, query: str = "") -> None:
     if not thread.is_alive():
         raise SystemExit("the local server could not start")
     inst.publish(port)
+    from .config import sweep_scratch
+    threading.Thread(target=sweep_scratch, daemon=True).start()   # only the instance that owns the workspace
     proc = show(port)
     if proc is not None and not desktop.window_started(proc):   # Edge/Chrome blocked or broken: use the browser
         webbrowser.open(shown["url"])

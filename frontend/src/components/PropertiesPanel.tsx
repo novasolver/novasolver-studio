@@ -1111,6 +1111,10 @@ function GateStepper() {
   const t = useT();
   const gates = useStore((s) => s.results?.gates);
   const conv = useStore((s) => s.results?.verification?.kind === "convergence");
+  const noCheck = useStore((s) => !s.results?.verification);
+  // the third gate names what it checked (mesh convergence with its GCI, or an example's reference answer)
+  const label = useStore((s) => s.results?.gate_label);
+  const byRef = gates?.verified_by === "reference";
   if (!gates) return null;
   const items = [
     { k: "ran", on: gates.ran },
@@ -1118,11 +1122,14 @@ function GateStepper() {
     { k: "verified", on: gates.verified },
   ];
   return (
+    <>
     <div className="flex items-center">
       {items.map((g, i) => (
         <div key={g.k} className="flex min-w-0 items-center">
           {i > 0 && <span className="mx-1 h-px w-3 shrink-0 bg-line-strong" />}
-          <Tooltip content={t(g.k === "verified" && conv ? "gate.verified.tipConv" : `gate.${g.k}.tip`)}>
+          <Tooltip
+            content={t(g.k !== "verified" ? `gate.${g.k}.tip` : noCheck ? "gate.verified.tipTodo" : conv ? "gate.verified.tipConv" : "gate.verified.tip")}
+          >
             <span
               className={cn(
                 "inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-[11px] px-2 text-label font-medium",
@@ -1138,12 +1145,15 @@ function GateStepper() {
               ) : (
                 <Check size={12} className="text-green" />
               )}
-              {t(`gate.${g.k}`)}
+              {t(g.k === "verified" && byRef ? "gate.reference" : `gate.${g.k}`)}
             </span>
           </Tooltip>
         </div>
       ))}
     </div>
+    {/* what the third gate found, in words: "Mesh convergence: outside limit (GCI 7.6%)" */}
+    {label && !byRef && <div className="tnum mt-1.5 text-label text-fg-2">{label}</div>}
+    </>
   );
 }
 
@@ -1152,21 +1162,26 @@ export function VerificationLine({ compact }: { compact?: boolean }) {
   const v = useStore((s) => s.results?.verification);
   if (!v) return null;
   const u = v.unit && v.unit !== "-" ? ` ${unitLabel(v.unit)}` : "";
+  const conv = v.kind === "convergence";        // error_pct is then the GCI, not a difference from a reference
   return (
     <span className={cn("tnum inline-flex flex-wrap items-baseline gap-x-1.5", compact ? "text-label" : "text-body")}>
-      <span className="text-fg-3">{v.reference_label ?? t("verify.reference")}</span>
-      <span className="text-fg">
-        {fmt(v.reference, 4)}
-        {u}
-      </span>
-      <span className="ml-2 text-fg-3">{t("verify.computed")}</span>
+      {v.reference != null && (
+        <>
+          <span className="text-fg-3">{v.reference_label ?? t("verify.reference")}</span>
+          <span className="mr-2 text-fg">
+            {fmt(v.reference, 4)}
+            {u}
+          </span>
+        </>
+      )}
+      <span className="text-fg-3">{t("verify.computed")}</span>
       <span className="text-fg">
         {fmt(v.computed, 4)}
         {u}
       </span>
-      <span className="ml-2 text-fg-3">{t("verify.diff")}</span>
+      <span className="ml-2 text-fg-3">{t(conv ? "verify.gci" : "verify.diff")}</span>
       <span className={cn("inline-flex items-center gap-0.5 font-medium", v.pass ? "text-green" : "text-red")}>
-        {fmtSignedPct(v.error_pct)}
+        {conv ? `${fmtGci(v.error_pct)}%` : fmtSignedPct(v.error_pct)}
         {v.pass ? <Check size={12} /> : <X size={12} />}
       </span>
     </span>
@@ -1427,10 +1442,10 @@ function ResultsStep() {
                 </div>
               ))}
               <div className="min-w-0 text-right">
-                <div className="text-micro text-fg-2">{t("verify.diff")}</div>
+                <div className="text-micro text-fg-2">{t(v.kind === "convergence" ? "verify.gci" : "verify.diff")}</div>
                 <div className={cn("mt-0.5 inline-flex items-center gap-1 whitespace-nowrap text-em font-semibold", v.pass ? "text-green" : "text-red")}>
                   {v.pass ? <Check size={14} /> : <X size={14} />}
-                  {fmtSignedPct(v.error_pct)}
+                  {v.kind === "convergence" ? `${fmtGci(v.error_pct)}%` : fmtSignedPct(v.error_pct)}
                 </div>
               </div>
             </div>

@@ -16,9 +16,10 @@ with a hand calculation. Real app, real numbers.*
 
 ## Why Studio
 
-- **Ran ≠ right.** Every result carries three separate gates: **ran → converged → verified**. Templates are checked
-  against closed-form or literature answers, imported parts by an automatic mesh-convergence study (Roache GCI), and
-  the AI is told never to call a result correct unless the verify gate passes. Warnings that matter (stress above
+- **Ran ≠ right.** Every result carries three separate checks: **ran → converged → mesh convergence**. The third
+  refines the mesh in three steps and reports the GCI (Roache), so you know the answer does not depend on the mesh;
+  the built-in examples are also compared with closed-form or literature answers. None of this checks the boundary
+  conditions or the design, and the AI is told to say exactly what was checked. Warnings that matter (stress above
   yield, a stress singularity at a sharp corner) are passed on, not hidden.
 - **Your models stay on your computer.** No account, no upload, no telemetry. The only network use is the optional
   update check and example download (offline mode turns those off), and a public test fails if any other code starts
@@ -147,8 +148,8 @@ Also listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as 
 }
 ```
 
-Then ask, for example: *"Import bracket.step, fix the bottom face, push 500 N on the top face, run it and tell me
-whether the result is verified."*
+Then ask, for example: *"Import bracket.step, fix the bottom face, push 500 N on the top face, run it, check mesh
+convergence and tell me the safety factor."*
 
 ## Electromagnetics (0.3) / 電磁気
 

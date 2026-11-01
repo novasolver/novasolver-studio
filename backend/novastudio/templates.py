@@ -713,6 +713,13 @@ def face_descriptors(case: dict) -> None:
             {'bottom': ['b1'], 'block_top': ['b1'], 'x1': ['b1'], 'cyl_surface': ['b2'], 'load': ['b2']}   # x1: block only
         case['geometry']['faces'] = [{'key':k,'n':i+1,'type':'Plane','bodies':own.get(k,['b1','b2']),'interface':False,
             'neighbors':[],'smooth_neighbors':[]} for i,k in enumerate(face_keys(case))]
+        if case['geometry']['kind'] == 'hertz':          # the mesher's cylinder: axis z through (0, hb + R)
+            from .units import to_si
+            p = case['geometry']['params']
+            R, hb = to_si(p['radius']), to_si(p['height'])
+            for f in case['geometry']['faces']:
+                if f['key'] == 'cyl_surface':
+                    f.update(type='Cylinder', axis=[0.0, 0.0, 1.0], axis_point=[0.0, hb+R, 0.0], radius=R)
         case['body_materials'] = case.get('body_materials',{'b1':'steel','b2':'steel'})
         return
     if case['geometry']['kind'] in ('press_fit','stacked'):

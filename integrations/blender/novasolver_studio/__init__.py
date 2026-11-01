@@ -156,7 +156,8 @@ class NOVASOLVER_OT_send(bpy.types.Operator):
         tmp = Path(tempfile.gettempdir()) / "novasolver_blender"
         tmp.mkdir(exist_ok=True)
         name = re.sub(r"[^A-Za-z0-9_-]+", "_", obj.name).strip("_") or "part"
-        (tmp / f"{name}.stl").write_bytes(stl)
+        path = tmp / f"{name}.stl"
+        path.write_bytes(stl)
 
         port = running_port()
         program = studio_program(prefs)
@@ -164,7 +165,7 @@ class NOVASOLVER_OT_send(bpy.types.Operator):
             self.report({"ERROR"}, "NovaSolver Studio is not installed (or set its location in the add-on preferences)")
             webbrowser.open(DOWNLOAD_PAGE)
             return {"CANCELLED"}
-        args = (port, program, name, stl, st.physics, st.material, ui_lang())
+        args = (port, program, name, path, st.physics, st.material, ui_lang())
         result = NOVASOLVER_OT_send._result = {}
         NOVASOLVER_OT_send._thread = threading.Thread(target=_work, args=(*args, result), daemon=True)
         NOVASOLVER_OT_send._thread.start()
@@ -173,9 +174,26 @@ class NOVASOLVER_OT_send(bpy.types.Operator):
         return {"FINISHED"}
 
 
-def _work(port, program, name, stl, physics, material, lang, result):
+def open_in_program(program, path, physics, units, lang, material=None) -> bool:
+    """Studio 0.7.1+ imports the file and opens one window on it (starting itself if needed). False when the
+    installed Studio is older and rejects --import (argparse exits with 2 right away)."""
+    argv = [*program, "--import", str(path), "--physics", physics, "--units", units, "--lang", lang]
+    if material:
+        argv += ["--material", material]
+    p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         close_fds=True)
     try:
-        if port is None:                                       # start Studio and wait for its server
+        return p.wait(timeout=5) != 2
+    except subprocess.TimeoutExpired:                          # still running: it took the file
+        return True
+
+
+def _work(port, program, name, path, physics, material, lang, result):
+    try:
+        if program and open_in_program(program, path, physics, "m", lang, material):
+            result["opened"] = True
+            return
+        if port is None:                                       # older Studio: start it and wait for its server
             subprocess.Popen(program, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              close_fds=True)
             t0 = time.monotonic()
@@ -183,7 +201,7 @@ def _work(port, program, name, stl, physics, material, lang, result):
                 if time.monotonic() - t0 > 180:
                     raise TimeoutError("NovaSolver Studio did not start within 3 minutes")
                 time.sleep(1)
-        result["case_id"] = send(port, name, stl, physics, material, lang)
+        result["case_id"] = send(port, name, path.read_bytes(), physics, material, lang)
         result["port"] = port
         result["program"] = program
     except Exception as e:                                     # shown in the panel; Blender keeps running
@@ -198,6 +216,9 @@ def _poll():
     scene = bpy.context.scene
     if "error" in r:
         scene.novasolver.status = r["error"][:200]
+        return None
+    if r.get("opened"):
+        scene.novasolver.status = "Opening in NovaSolver Studio..."
         return None
     cid = r.get("case_id")
     if cid:

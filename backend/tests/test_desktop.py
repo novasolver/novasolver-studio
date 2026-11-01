@@ -104,3 +104,13 @@ def test_window_started_detects_a_browser_that_quits(tmp_path, monkeypatch):
     monkeypatch.delenv("NOVASTUDIO_BROWSER", raising=False)
     desktop.open_window("http://127.0.0.1:8765/")
     assert not (desktop.window_profile() / "lockfile").exists()
+
+def test_import_cad_opens_the_new_case_with_its_material(tmp_path):
+    # what `novastudio --import` does for the Blender add-on / FreeCAD macro: one process imports and opens one window
+    from novastudio import store
+    q = desktop.import_cad(BACKEND / "novastudio" / "samples" / "l_bracket.step", "structural", "mm", "en", "petg")
+    assert q.startswith("?case=c_")
+    assert store.load(q[len("?case="):])["materials"]["solid"]["preset"] == "petg"
+    bad = tmp_path / "broken.step"
+    bad.write_bytes(b"not a step file")
+    assert desktop.import_cad(bad, "structural", "mm", "en", None) == ""      # Start screen, not a crash

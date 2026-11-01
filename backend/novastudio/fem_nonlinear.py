@@ -202,7 +202,7 @@ class Mechanics:
         return K,force,stresses,ep,peeq,max_strain
 
 
-CONTACT_DIRECT_LIMIT = 120000      # primal unknowns; a direct factorisation of this size needs about 2 GB
+CONTACT_DIRECT_LIMIT = 120000      # primal unknowns (any nonlinear run); a direct factorisation this size needs about 2 GB
 
 
 def linear_solve(A,b,contact=False,nprimal=None,near_null=None):
@@ -212,10 +212,13 @@ def linear_solve(A,b,contact=False,nprimal=None,near_null=None):
         warnings.simplefilter('error',spla.MatrixRankWarning)
         size = len(b) if nprimal is None else nprimal
         x = None
-        if contact and fem.DIRECT_LIMIT < size <= CONTACT_DIRECT_LIMIT:
+        if fem.DIRECT_LIMIT < size <= CONTACT_DIRECT_LIMIT:
             # contact saddle systems: the GMRES/AMG path below needed over 10 minutes per Newton step on a 100k-dof
             # Hertz model with a mortar pair; a direct factorisation of that size takes well under a minute, if the
-            # memory is there (otherwise fall through to the iterative path)
+            # memory is there (otherwise fall through to the iterative path). The same holds without contact: a
+            # Newton run makes dozens of solves on tangents that plasticity makes near-singular, and AMG-CG ran its
+            # 2 x 3000 iterations on each (plastic-beam-collapse, fine mesh, 38k unknowns: hours; direct: 5.5 s a
+            # solve, 11 minutes for the run).
             try:
                 x = spla.spsolve(A.tocsc(),b,permc_spec='MMD_AT_PLUS_A')
             except MemoryError:

@@ -97,6 +97,22 @@ def open_case(path: Path) -> str:
         return ""
 
 
+def import_cad(path: Path, physics: str, units: str, lang: str, material: str | None) -> str:
+    """Query string that opens a CAD file (from the Blender add-on or the FreeCAD macro) as a new case. Like
+    open_case, the import runs in this process, so a Studio that was not running opens one window, not two."""
+    from . import commands
+    try:
+        case = commands.import_geometry(physics, path.name, None, str(path), lang, units=units)["case"]
+        if material and physics == "structural" and "solid" in case.get("materials", {}):
+            case = commands.update_case(case["case_id"], case["revision"],
+                                        {"materials.solid.preset": material}, lang)["case"]
+        return f"?case={case['case_id']}"
+    except Exception:                       # the window still opens; the Start screen can import the file by hand
+        import logging
+        logging.getLogger("novastudio").exception("could not import %s", path)
+        return ""
+
+
 def _browsers() -> list[Path]:
     roots = [os.environ.get(k) for k in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA")]
     rel = (r"Microsoft\Edge\Application\msedge.exe", r"Google\Chrome\Application\chrome.exe")

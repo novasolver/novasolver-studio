@@ -291,13 +291,25 @@ def report(case,jd,raw,lang):
     # 3. how far the answer is checked
     html += heading('verification')
     gates = pl['gates']
+    # the third gate says what was checked (mesh convergence of this model, or a textbook answer for an example)
+    by = {'mesh': 'export.verified_mesh' if gates['verified'] else 'export.verified_mesh_fail',
+          'reference': 'export.verified_reference'}.get(gates.get('verified_by'), 'export.verified_none')
     html += table((t('export.gate', lang), t('export.status', lang), t('export.meaning', lang)),
-        [(t('gate.'+g, lang), ('✓ ' if gates[g] else '✗ ')+t('export.yes' if gates[g] else 'export.no', lang),
+        [(t('gate.'+g, lang) if g != 'verified' else pl.get('gate_label') or t('gate.verified', lang),
+          ('✓ ' if gates[g] else '✗ ')+t('export.yes' if gates[g] else 'export.no', lang),
           # the GUI strings start with the gate's English name ("ran：..."); the table already names it
-          t('export.'+g, lang).split('：', 1)[-1].split(': ', 1)[-1])
+          t('export.'+g if g != 'verified' else by, lang).split('：', 1)[-1].split(': ', 1)[-1])
          for g in ('ran','converged','verified')])
     v = pl.get('verification') or {}
-    if v:
+    if v and v.get('kind') == 'convergence':
+        # The mesh study table below carries the GCI, tolerance and verdict. Here only the two values it compares:
+        # the Richardson extrapolation (when the levels allow one) and the finest mesh.
+        html += table((t('export.item', lang), t('export.value', lang)),
+                      [(t('export.check', lang), v.get('label', '')),
+                       (v.get('reference_label') or t('export.reference', lang),
+                        _si(v['reference'], v.get('unit', '')) if v.get('reference') is not None else t('export.no_extrapolation', lang)),
+                       (t('export.finest', lang), _si(v.get('computed'), v.get('unit', '')))])
+    elif v:
         rows = [(t('export.check', lang), v.get('label', '')),
                 (v.get('reference_label') or t('export.reference', lang), _si(v.get('reference'), v.get('unit', ''))),
                 (t('export.computed', lang), _si(v.get('computed'), v.get('unit', ''))),
@@ -310,9 +322,12 @@ def report(case,jd,raw,lang):
     conv = raw.get('convergence')
     if conv:
         u = UNIT_LABEL.get(conv.get('unit', ''), conv.get('unit', ''))
+        q = conv.get('quantity') or ''
+        qname = t('qty.study.'+q, lang) if q else ''
         html += '<p>'+h(t('export.mesh_study', lang))+'</p>'+table(
-            (t('export.level', lang), t('card.elements', lang), (conv.get('quantity') or '')+(' ['+u+']' if u else '')),
-            [(l['size'], f"{l['elements']:,}", _num(l['value'], 6)) for l in conv.get('levels', [])], (1, 2))
+            (t('export.level', lang), t('card.elements', lang),
+             (qname if qname != 'qty.study.'+q else q)+(' ['+u+']' if u else '')),
+            [(t('export.size.'+l['size'], lang), f"{l['elements']:,}", _num(l['value'], 6)) for l in conv.get('levels', [])], (1, 2))
         html += table((t('export.item', lang), t('export.value', lang)),
                       [('GCI', f"{conv.get('gci_pct', 0):.3g} %"), (t('export.tolerance', lang), f"{conv.get('tolerance_pct', 5):g} %"),
                        (t('export.verdict', lang), t('export.pass' if conv.get('pass') else 'export.fail', lang))])

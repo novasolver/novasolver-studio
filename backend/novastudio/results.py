@@ -125,9 +125,11 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
             cards.append(_card("kt", m["kt"], "-", lang))
         if 'fatigue_sf_min' in m:
             # the minimum next to a rigid support is a singularity: lead with the value away from the supports
-            sf = m.get('fatigue_sf_min_away', m['fatigue_sf_min']) if m.get('fatigue_on_support') else m['fatigue_sf_min']
+            on = m.get('fatigue_on_support')
+            sf = m.get('fatigue_sf_min_away', m['fatigue_sf_min']) if on else m['fatigue_sf_min']
+            life = m.get('fatigue_life_min_away', m['fatigue_life_min']) if on else m['fatigue_life_min']
             cards.append(_card('fatigue_sf', min(sf, 1e6), '-', lang, 3))
-            cards.append(_card('fatigue_life', min(m['fatigue_life_min'], m['fatigue_infinite']), 'cycles', lang, 3))
+            cards.append(_card('fatigue_life', min(life, m['fatigue_infinite']), 'cycles', lang, 3))
         cards += [_card("max_vm", m["max_vm_pa"] / 1e6, "MPa", lang), _card("max_disp", m["max_disp_m"] * 1e3, "mm", lang)]
         if "reaction_n" in m and m.get('applied_n',m['reaction_n']) > max(1e-9,1e-9*m.get('force_scale_n',0)):
             cards.append(_card("reaction", m["reaction_n"], "N", lang))
@@ -184,8 +186,19 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
                                                                "analytic" if case["reference"]["kind"] == "analytic"
                                                                else "correlation" if case["reference"]["kind"] == "correlation"
                                                                else "literature"), lang)}
+    if verification and verification["kind"] == "convergence" and not ref.get("extrapolated", ref["reference"] != ref["computed"]):
+        verification["reference"] = None          # oscillating levels: no Richardson value to show, only the GCI
     gates = {"ran": bool(r.get("ran")), "converged": bool(r.get("ran") and r.get("converged")),
-             "verified": bool(r.get("ran") and r.get("converged") and verification and verification["pass"])}
+             "verified": bool(r.get("ran") and r.get("converged") and verification and verification["pass"]),
+             # what the third gate checked: "mesh" = mesh convergence (GCI) of this model, "reference" = a textbook or
+             # literature answer (examples only). Neither says the boundary conditions or the design are right.
+             "verified_by": None if not verification else "mesh" if verification["kind"] == "convergence" else "reference"}
+    if not verification:
+        gate_label = t("gate.mesh_todo", lang)
+    elif verification["kind"] == "convergence":
+        gate_label = t("gate.mesh_ok" if verification["pass"] else "gate.mesh_fail", lang, gci=verification["error_pct"])
+    else:
+        gate_label = t("gate.reference_ok" if verification["pass"] else "gate.reference_fail", lang)
     gates_detail = {"converged": r.get("converged_detail"),
                     "verified": None if verification else t(
                         "verify.none_reason" if case["reference"].get("kind") in (None, "none") else "verify.pattern_reason", lang),
@@ -239,7 +252,7 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
         warnings.append({"code": "stress_singular", "message": t("result.stress_singular", lang, a=a, b=b, c=c)})
     return {"run_id": jd.name, "kind": r["kind"], "warnings": warnings, "engine": r["engine"], "mode": r["mode"], "revision": r.get("revision"),
             "stale": r.get("revision") != case["revision"], "wall_s": r.get("wall_s"),
-            "gates": gates, "gates_detail": gates_detail, "cards": cards, "verification": verification,
+            "gates": gates, "gate_label": gate_label, "gates_detail": gates_detail, "cards": cards, "verification": verification,
             "quantities": quantities, "nova_tool": _nova_tool(case), "convergence": _conv_view(r.get("convergence"), lang),
             'curve':r.get('curve',[]),'interfaces':r.get('interfaces',{}),'large_deformation':r.get('large_deformation',False),
             'error':r.get('error'),

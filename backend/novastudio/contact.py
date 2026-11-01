@@ -177,6 +177,15 @@ def _project(points, dirs, Xm, search, candidates=8):
                  (np.linalg.norm(points - centre[e], axis=1) <= size[e] + search * 2 + 1e-12)
         better = inside & (np.abs(t) < np.abs(best_t))
         best_e[better], best_t[better], best_xi[better] = e[better], t[better], xi[better]
+    miss = np.flatnonzero(best_e < 0)
+    if len(miss) and k < len(Xm):
+        # a strongly graded master (one large element among many small ones) can hide the element that holds the
+        # point beyond the k nearest centres; every element that could hold it has its centre within this radius
+        reach = tree.query_ball_point(points[miss], size.max() + 2 * search + 1e-12, return_length=True)
+        k2 = min(int(reach.max()), len(Xm))
+        if k2 > k:
+            e2, xi2, t2 = _project(points[miss], dirs[miss], Xm, search, k2)
+            best_e[miss], best_xi[miss], best_t[miss] = e2, xi2, t2
     return best_e, best_xi, best_t
 
 

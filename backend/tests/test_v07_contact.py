@@ -21,7 +21,7 @@ def run(cid):
 def test_gap_blocks_patch_test_non_matching(ws):
     cid = C.create_case("gap-blocks", {}, "en")["case"]["case_id"]
     res = run(cid)
-    assert res["gates"] == {"ran": True, "converged": True, "verified": True}
+    assert res["gates"] == {"ran": True, "converged": True, "verified": True, "verified_by": "reference"}
     v = res["verification"]
     assert abs(v["error_pct"]) < 0.5
     # the mortar patch test: a uniform stress crosses the non-matching interface unchanged
@@ -80,3 +80,31 @@ def test_contact_fields_render_for_separate_surfaces(ws):
     from novastudio import results as R
     out = R.field(store.load(cid), "p_contact", "en")
     assert out["quantity"] == "p_contact" and max(out["scalars"]) > 0
+
+
+def test_projection_finds_a_large_master_element_behind_many_small_ones():
+    # review #32: the 8 nearest element centres can all belong to small elements that do not hold the point
+    from novastudio.contact import _project
+
+    def tri6(a, b, c):
+        a, b, c = map(np.asarray, (a, b, c))
+        return np.array([a, b, c, (a + b) / 2, (b + c) / 2, (c + a) / 2], float)
+
+    big = tri6([0, 0, 0], [10, 0, 0], [0, 10, 0])
+    small = [tri6([1 + 0.1 * i, 1, 0.5], [1.05 + 0.1 * i, 1, 0.5], [1 + 0.1 * i, 1.05, 0.5]) for i in range(12)]
+    Xm = np.array([*small, big])                           # off the plane by 0.5 > search: never a hit
+    p = np.array([[1.0, 1.0, 0.0], [20.0, 20.0, 0.0]])     # the second point is outside every element
+    e, xi, t = _project(p, np.array([[0, 0, 1.0]] * 2), Xm, search=0.1)
+    assert e.tolist() == [len(small), -1]
+    assert abs(t[0]) < 1e-9 and np.allclose(xi[0], [0.1, 0.1])
+
+
+def test_hertz_cylinder_face_carries_its_axis(ws):
+    # review #1: the curved face is a real cylinder descriptor, and it follows a radius change
+    cid = C.create_case("hertz-cylinder", {}, "en")["case"]["case_id"]
+    f = next(f for f in store.load(cid)["geometry"]["faces"] if f["key"] == "cyl_surface")
+    assert f["type"] == "Cylinder" and f["axis"] == [0.0, 0.0, 1.0]
+    c = store.load(cid)
+    C.update_case(cid, c["revision"], {"geometry.params.radius": "30 mm"}, "en")
+    f = next(f for f in store.load(cid)["geometry"]["faces"] if f["key"] == "cyl_surface")
+    assert f["radius"] == pytest.approx(0.03) and f["axis_point"][1] == pytest.approx(f["radius"] + c["geometry"]["params"]["height"]["value"] / 1e3)

@@ -68,3 +68,18 @@ def test_strength_overrides_keep_the_metal(tmp_path, monkeypatch):
                                                      "materials.solid.E": {"value": 200, "unit": "GPa"}}, "en")
     mat = fatigue.material(store.load(cid))
     assert mat["su"] == pytest.approx(500) and mat["se"] == pytest.approx(200) and mat["endurance"]
+
+
+def test_life_card_and_study_use_the_point_away_from_a_fixed_face():
+    # review #13/#37: the SF and life cards describe the same node, and the mesh study does not chase the singularity
+    from novastudio import run_worker
+    x = np.linspace(0, 0.1, 41)
+    nodes = np.c_[x, np.zeros_like(x), np.zeros_like(x)]
+    fixed = [np.array([[0, 1, 2]])]                                   # the support is at x = 0
+    s = np.where(x < 0.006, 900e6, 250e6 + 1e9 * x)                    # a singular peak at the support
+    _, m = run_worker.fatigue_fields(case_of(-1), nodes, fixed, np.c_[s, np.zeros((len(x), 5))])
+    assert m["fatigue_on_support"] and m["fatigue_life_min"] < m["fatigue_life_min_away"]
+    life = fatigue.evaluate(np.array([[s[x > 0.006].max(), 0, 0, 0, 0, 0]]), case_of(-1), fatigue.material(case_of(-1)))
+    assert m["fatigue_life_min_away"] == pytest.approx(life["life"][0])
+    assert run_worker.primary_quantity({"template": "fatigue-bar"}, {"kind": "structural", "metrics": m})[1] == \
+        m["fatigue_sf_min_away"]

@@ -255,6 +255,8 @@ def fatigue_fields(case, nodes, fixed, stress):
     m['fatigue_on_support'] = bool(away.get('peak_on_support'))  # where the fatigue minimum is, not the vm peak
     if away.get('max_vm_away_pa') is not None:
         m['fatigue_sf_min_away'] = float(-away['max_vm_away_pa'])
+        # the life card must describe the same place as the SF card
+        m['fatigue_life_min_away'] = float(-support_peak(nodes, fixed, -f['life'])['max_vm_away_pa'])
     return {'fatigue_sf': sf, 'fatigue_life': f['life']}, m
 
 
@@ -712,6 +714,8 @@ def primary_quantity(case: dict, res: dict) -> tuple[str, float, str]:
                     'rubber-tension':('axial_stress','axial_stress_pa','Pa'),
                     'hertz-cylinder':('contact_pressure','contact_pressure_pa','Pa'),
                     'fatigue-bar':('fatigue_sf','fatigue_sf_min','-')}.get(case['template'])
+        if response and response[0] == 'fatigue_sf' and m.get('fatigue_on_support') and 'fatigue_sf_min_away' in m:
+            return 'fatigue_sf', m['fatigue_sf_min_away'], '-'      # a fixed x0 face is a singularity: never converges
         if response and response[1] in m:
             return response[0],m[response[1]],response[2]
         return ("max_disp", m["max_disp_m"], "m")
@@ -832,7 +836,8 @@ def run_study(req: dict, jd: Path, prog) -> dict:
         fine["reference"] = {"applicable": True, "kind": "convergence", "quantity": name,
                              "reference": g["f_ext"] if g["f_ext"] is not None else levels[-1]["value"],
                              "computed": levels[-1]["value"], "unit": unit, "error_pct": g["gci_pct"],
-                             "tolerance_pct": tol, "pass": passed, "metric": "GCI (fine mesh)"}
+                             "tolerance_pct": tol, "pass": passed, "metric": "GCI (fine mesh)",
+                             "extrapolated": g["f_ext"] is not None}
     return fine
 
 ENGINES = {"builtin-fem": run_structural_builtin, "builtin-cavity": run_cavity_builtin,

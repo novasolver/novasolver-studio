@@ -538,7 +538,11 @@ export function StartScreen() {
                       {c.gates && (
                         <Chip className={c.gates.verified ? "text-green" : undefined}>
                           {c.gates.verified ? <ShieldCheck size={12} /> : null}
-                          {t(c.gates.verified ? "gate.verified" : c.gates.converged ? "gate.converged" : c.gates.ran ? "gate.ran" : "status.todo")}
+                          {t(
+                            c.gates.verified
+                              ? c.gates.verified_by === "reference" ? "gate.reference" : "gate.mesh"
+                              : c.gates.converged ? "gate.converged" : c.gates.ran ? "gate.ran" : "status.todo",
+                          )}
                         </Chip>
                       )}
                       {d && (

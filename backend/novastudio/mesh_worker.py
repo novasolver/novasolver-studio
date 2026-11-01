@@ -145,7 +145,7 @@ def import_stl(gmsh, path: str, scale: float, target: float | None = None, facto
     surfs = [t for _, t in gmsh.model.getEntities(2)]
     if not surfs:
         raise RuntimeError("NO_SOLID: the STL contains no surface")
-    groups = stl_face_groups(gmsh, surfs)
+    groups = split_blended_faces(gmsh, stl_face_groups(gmsh, surfs))
     loop = gmsh.model.geo.addSurfaceLoop([s for g in groups for s in g])
     gmsh.model.geo.addVolume([loop])
     gmsh.model.geo.synchronize()
@@ -594,6 +594,165 @@ def stl_face_groups(gmsh, surfs: list[int]) -> list[list[int]]:
     for s in surfs:
         groups.setdefault(find(s), []).append(s)
     return sorted((sorted(g) for g in groups.values()), key=lambda g: g[0])
+
+def plane_and_blend_labels(xyz: np.ndarray, tris: np.ndarray, group: np.ndarray) -> np.ndarray:
+    """Split smooth STL regions into CAD-like faces. A fillet meets its planes tangentially, so the feature angle
+    sees no edge there and a rounded box came in as one face. Here every coplanar patch that is clearly wider than
+    the facet strips of a curved surface (or a large share of its region) becomes its own face; what is left of the
+    region splits into its connected curved parts (each fillet, a hole). Returns a label per triangle."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    def components(a, b):
+        g = coo_matrix((np.ones(len(a)), (a, b)), shape=(len(tris), len(tris)))
+        return connected_components(g, directed=False)[1]
+    n = np.cross(xyz[tris[:, 1]] - xyz[tris[:, 0]], xyz[tris[:, 2]] - xyz[tris[:, 0]])
+    area = 0.5 * np.linalg.norm(n, axis=1)
+    unit = n / np.maximum(2 * area, 1e-300)[:, None]
+    total = float(area.sum())
+    e = np.sort(np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]), axis=1)
+    owner = np.tile(np.arange(len(tris)), 3)
+    order = np.lexsort((e[:, 1], e[:, 0]))
+    e, owner = e[order], owner[order]
+    same = np.all(e[1:] == e[:-1], axis=1)
+    a, b, ev = owner[:-1][same], owner[1:][same], e[:-1][same]       # triangles a, b share edge ev
+    keep = group[a] == group[b]                                        # never across a feature edge
+    a, b, ev = a[keep], b[keep], ev[keep]
+    # coplanar: same normal within 1 degree and the far vertex of the smaller triangle on the larger one's plane
+    swap = area[a] < area[b]
+    a, b = np.where(swap, b, a), np.where(swap, a, b)
+    far = tris[b].sum(1) - ev.sum(1)
+    tol = 1e-6 * float(np.linalg.norm(np.ptp(xyz, axis=0)))
+    flat = (np.einsum('ij,ij->i', unit[a], unit[b]) > np.cos(np.radians(1))) & \
+           (np.abs(np.einsum('ij,ij->i', xyz[far] - xyz[ev[:, 0]], unit[a])) < tol)
+    patch = components(a[flat], b[flat])
+    npatch = int(patch.max()) + 1
+    s = np.bincount(patch, weights=area, minlength=npatch)
+    pg = np.zeros(npatch, np.int64)
+    pg[patch] = group
+    # width of a patch across its long direction. A strip of a curved surface is one facet wide, so the widest
+    # triangle height in it is a cheap stand-in; only patches large enough to be a face get the exact value.
+    edge = np.max([np.linalg.norm(xyz[tris[:, i]] - xyz[tris[:, (i + 1) % 3]], axis=1) for i in range(3)], axis=0)
+    w = np.zeros(npatch)
+    np.maximum.at(w, patch, 2 * area / np.maximum(edge, 1e-300))
+    cand = np.flatnonzero(s >= 0.002 * total)
+    if len(cand):
+        order = np.argsort(patch, kind="stable")
+        start = np.searchsorted(patch[order], np.arange(npatch + 1))
+        for p in cand:
+            P = xyz[np.unique(tris[order[start[p]:start[p + 1]]])]
+            P = P - P.mean(0)
+            if len(P) >= 3:
+                w[p] = float(np.ptp(P @ np.linalg.svd(P, full_matrices=False)[2][1]))
+    plane_patch = np.zeros(npatch, bool)
+    for g in np.unique(group):
+        ids = np.flatnonzero(pg == g)
+        if len(ids) < 2:
+            continue
+        # facet strips of one curved surface all have about the same width; a plane is far wider (or large)
+        ref, gs = float(np.median(w[ids])), float(s[ids].sum())
+        plane_patch[ids] = (s[ids] >= 0.002 * total) & ((w[ids] >= 2.5 * ref) | (s[ids] >= 0.2 * gs))
+    # Where a fillet meets its plane the surface turns at once (by the fillet's facet angle). A flat patch whose
+    # surroundings continue almost in its plane over most of its outline is the flattest part of a gently curved
+    # or warped face, and cutting it out leaves a jagged seam: keep it in the surrounding face.
+    cut = plane_patch[patch[a]] & (patch[a] != patch[b]) | plane_patch[patch[b]] & (patch[a] != patch[b])
+    if cut.any():
+        own = np.where(plane_patch[patch[a]], a, b)[cut]
+        other = np.where(plane_patch[patch[a]], b, a)[cut]
+        length = np.linalg.norm(xyz[ev[cut, 0]] - xyz[ev[cut, 1]], axis=1)
+        smooth = np.einsum('ij,ij->i', unit[own], unit[other]) > np.cos(np.radians(2))
+        frac = np.bincount(patch[own], weights=length * smooth, minlength=npatch) / \
+            np.maximum(np.bincount(patch[own], weights=length, minlength=npatch), 1e-300)
+        # where the surface does continue (a boss top running into a gentle slope) the seam is straight; where
+        # flatness merely ends on a warped face it bends from triangle to triangle
+        pv = np.r_[patch[own][smooth], patch[own][smooth]]
+        sv = ev[cut][smooth]
+        v, w_ = np.r_[sv[:, 0], sv[:, 1]], np.r_[sv[:, 1], sv[:, 0]]           # vertex, its neighbour on the seam
+        o = np.lexsort((v, pv))
+        pv, v, w_ = pv[o], v[o], w_[o]
+        two = (pv[1:] == pv[:-1]) & (v[1:] == v[:-1])
+        two[1:] &= ~two[:-1]                                            # a vertex with two seam edges
+        i = np.flatnonzero(two)
+        d1, d2 = xyz[v[i]] - xyz[w_[i]], xyz[w_[i + 1]] - xyz[v[i]]
+        bent = np.einsum('ij,ij->i', d1, d2) < np.cos(np.radians(5)) * np.linalg.norm(d1, axis=1) * \
+            np.linalg.norm(d2, axis=1)
+        bendy = np.bincount(pv[i], weights=bent, minlength=npatch) / np.maximum(np.bincount(pv[i], minlength=npatch), 1)
+        plane_patch &= ~((frac > 0.2) & (bendy > 0.5))
+    plane = plane_patch[patch]
+    if not plane.any():
+        return group.astype(np.int64)
+    # each plane keeps its patch; the rest of a region splits into its connected curved parts
+    join = (plane[a] == plane[b]) & (~plane[a] | (patch[a] == patch[b]))
+    comp = components(a[join], b[join])
+    # a "curved" part that barely turns is a gently curved or slightly warped face whose flat patches were split
+    # off along a jagged line, not a fillet: it rejoins its neighbours (a fillet turns by tens of degrees)
+    ncomp = int(comp.max()) + 1
+    mean = np.zeros((ncomp, 3))
+    np.add.at(mean, comp, unit * area[:, None])
+    mean /= np.maximum(np.linalg.norm(mean, axis=1), 1e-300)[:, None]
+    lowest = np.ones(ncomp)
+    np.minimum.at(lowest, comp, np.einsum('ij,ij->i', unit, mean[comp]))
+    flatish = (lowest > np.cos(np.radians(10))) & ~np.bincount(comp[plane], minlength=ncomp).astype(bool)
+    rejoin = (comp[a] != comp[b]) & (flatish[comp[a]] | flatish[comp[b]])
+    if rejoin.any():
+        join |= rejoin
+        comp = components(a[join], b[join])
+    # a sliver between two planes is not a face of its own: it joins the neighbour it shares most edges with
+    for _ in range(3):
+        csum = np.bincount(comp, weights=area)
+        small = (csum > 0) & (csum < 0.002 * total)
+        x, y = np.r_[a, b], np.r_[b, a]
+        m = small[comp[x]] & (comp[x] != comp[y])
+        if not m.any():
+            break
+        pair, count = np.unique(np.c_[comp[x[m]], comp[y[m]]], axis=0, return_counts=True)
+        pair = pair[np.lexsort((-count, pair[:, 0]))]                  # per small part, most shared edges first
+        first = np.r_[True, pair[1:, 0] != pair[:-1, 0]]
+        to = np.arange(len(csum))
+        to[pair[first, 0]] = pair[first, 1]
+        comp = to[comp]
+    return np.unique(comp, return_inverse=True)[1].astype(np.int64)
+
+
+def split_blended_faces(gmsh, groups: list[list[int]]) -> list[list[int]]:
+    """Rebuild the STL surface with one surface per face of plane_and_blend_labels when that finds more faces than
+    the feature angle did. Returns the groups for the surface loop (unchanged when nothing splits)."""
+    ntags, coords, _ = gmsh.model.mesh.getNodes()
+    ntags = np.asarray(ntags, np.int64)
+    xyz = np.asarray(coords).reshape(-1, 3)
+    pos = np.full(int(ntags.max()) + 1, -1, np.int64)
+    pos[ntags] = np.arange(len(ntags))
+    tris, group = [], []
+    for g, surfs in enumerate(groups):
+        for s in surfs:
+            for et, nodes in zip(*gmsh.model.mesh.getElements(2, s)[::2]):
+                if et == 2:
+                    t = pos[np.asarray(nodes, np.int64).reshape(-1, 3)]
+                    tris.append(t)
+                    group.append(np.full(len(t), g))
+    tris, group = np.concatenate(tris), np.concatenate(group)
+    labels = plane_and_blend_labels(xyz, tris, group)
+    if labels.max() + 1 <= len(groups):
+        return groups
+    gmsh.model.remove()
+    gmsh.model.add("stl")
+    first = None
+    for key in range(int(labels.max()) + 1):
+        s = gmsh.model.addDiscreteEntity(2)
+        if first is None:
+            gmsh.model.mesh.addNodes(2, s, list(range(1, len(xyz) + 1)), xyz.ravel().tolist())
+            first = s
+        idx = np.flatnonzero(labels == key)
+        gmsh.model.mesh.addElementsByType(s, 2, (idx + 1).tolist(), (tris[idx].ravel() + 1).tolist())
+    gmsh.model.mesh.createTopology()                  # boundary curves and points between the faces; may renumber
+    by_key = {}
+    for _, s in gmsh.model.getEntities(2):
+        _, etags, _ = gmsh.model.mesh.getElements(2, s)
+        if len(etags) and len(etags[0]):
+            ks, counts = np.unique(labels[np.asarray(etags[0], np.int64) - 1], return_counts=True)
+            by_key.setdefault(int(ks[np.argmax(counts)]), []).append(s)
+    return [sorted(v) for _, v in sorted(by_key.items())]
+
 
 def face_area_centroid(gmsh, tag: int, discrete: bool):
     """Area [m2] and centroid of a face: exact from the CAD kernel, or from its triangles for STL input."""

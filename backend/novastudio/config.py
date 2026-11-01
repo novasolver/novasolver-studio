@@ -67,20 +67,70 @@ def _windows_scratch_roots() -> list[Path]:
     return roots
 
 
+def _scratch_roots() -> list[Path]:
+    import tempfile
+    if sys.platform == "win32":
+        return _windows_scratch_roots()
+    return [Path.home() / ".novasolver-studio", Path(tempfile.gettempdir()) / "novasolver-studio"]
+
+
+def _scratch_run(pointer: Path) -> Path | None:
+    """The scratch run folder named in an of_location.txt, or None when it is not one of ours (never delete
+    anything outside <scratch root>/runs/)."""
+    try:
+        wd = Path(pointer.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    run = wd.parent
+    if wd.name != "of" or run.parent.name != "runs":
+        return None
+    roots = {str(r.resolve()).lower() for r in _scratch_roots()}
+    return run if str(run.parent.parent.resolve()).lower() in roots else None
+
+
+def remove_scratch(folder: Path) -> None:
+    """Delete the OpenFOAM scratch folders of the jobs under folder (a case being deleted)."""
+    for pointer in folder.rglob("of_location.txt"):
+        run = _scratch_run(pointer)
+        if run is not None:
+            shutil.rmtree(run, ignore_errors=True)
+
+
+def sweep_scratch(min_age_days: float = 7.0) -> int:
+    """Delete scratch runs that no case in this workspace points at any more and that nothing touched for a week
+    (another workspace on this computer may still use a younger one). Returns how many were removed."""
+    import time
+    keep = {str(r.resolve()).lower() for p in (workspace() / "cases").rglob("of_location.txt")
+            if (r := _scratch_run(p)) is not None}
+    removed, cutoff = 0, time.time() - min_age_days * 86400
+    for root in _scratch_roots():
+        runs = root / "runs"
+        if not runs.is_dir():
+            continue
+        for run in runs.iterdir():
+            try:
+                newest = max([run.stat().st_mtime, *(f.stat().st_mtime for f in run.rglob("*"))])
+            except OSError:
+                continue
+            if run.is_dir() and str(run.resolve()).lower() not in keep and newest < cutoff:
+                shutil.rmtree(run, ignore_errors=True)
+                removed += 1
+    return removed
+
+
 def foam_workdir(jd: Path) -> Path:
     """Empty OpenFOAM case folder for the job folder jd. MinGW OpenFOAM is fragile with non-ASCII paths, so such jobs
     solve in an ASCII scratch folder (pointer in of_location.txt), named uniquely per job: convergence levels are all
     called coarse/normal/fine, and a shared folder once made a run read an older run's latest time step."""
     import hashlib
     import re
-    import tempfile
     # POSIX OpenFOAM also strips spaces and quotes from -case (fileName::validate), so "safe" is ASCII without them;
     # the macOS data dir itself ("Application Support") has a space, so it cannot be the scratch root there
     safe = lambda p: str(p).isascii() and not re.search(r"[\s'\"]", str(p))
     wd = jd / "of"
     if not safe(wd):
         tag = hashlib.sha1(str(jd.resolve()).encode("utf-8")).hexdigest()[:10]
-        roots = _windows_scratch_roots() if sys.platform == "win32" else [Path.home() / ".novasolver-studio", Path(tempfile.gettempdir()) / "novasolver-studio"]
+        roots = _scratch_roots()
         root = next((r for r in roots if safe(r)), roots[-1])
         wd = root / "runs" / f"{jd.name}_{tag}" / "of"
         (jd / "of_location.txt").write_text(str(wd), encoding="utf-8")

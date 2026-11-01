@@ -57,9 +57,23 @@ def studio_program():
     return [cmd] if cmd else None
 
 
+def open_in_program(program, path, physics, lang):
+    """Studio 0.7.1+ imports the file and opens one window on it, starting itself if needed; FreeCAD does not
+    wait for it. False when the installed Studio is older and rejects --import (argparse exits with 2 at once)."""
+    p = subprocess.Popen([*program, "--import", str(path), "--physics", physics, "--units", "mm", "--lang", lang],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        return p.wait(timeout=5) != 2
+    except subprocess.TimeoutExpired:
+        return True
+
+
 def send_step(path, physics=PHYSICS, lang="ja"):
-    """Hand a STEP file to Studio (starting it if needed); returns the new case id."""
+    """Hand a STEP file to Studio (starting it if needed); returns the new case id, or None when Studio took the
+    file itself and opens it on its own."""
     port, program = running_port(), studio_program()
+    if program and open_in_program(program, path, physics, lang):
+        return None
     if port is None:
         if program is None:
             webbrowser.open("https://novasolver.jp/studio/")
@@ -103,7 +117,8 @@ def main():
     Import.export(objs, str(step))                    # FreeCAD works in millimetres; Studio is told units=mm
     lang = "ja" if FreeCAD.ParamGet("User parameter:BaseApp/Preferences/General").GetString("Language", "").startswith("Japan") else "en"
     cid = send_step(step, PHYSICS, lang)
-    FreeCAD.Console.PrintMessage(f"NovaSolver Studio: opened as {cid}\n")
+    FreeCAD.Console.PrintMessage(f"NovaSolver Studio: opened as {cid}\n" if cid else
+                                 "NovaSolver Studio: opening the part in Studio's window\n")
 
 
 if __name__ == "__main__":

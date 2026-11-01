@@ -206,7 +206,7 @@ export interface Job {
   message?: string;
   engine?: string;
   mode?: string;
-  gates?: { ran: boolean; converged: boolean; verified: boolean };
+  gates?: Gates;
   first_error?: string | null;
   /** set by this GUI when the job is a mesh convergence study (the backend does not echo it) */
   study?: "convergence";
@@ -250,9 +250,19 @@ export interface ResultCard {
   unit: string;
 }
 
+/** The third gate says what it checked: "mesh" = mesh convergence (GCI) of this model, "reference" = an example's
+ *  textbook or published answer. Neither covers the boundary conditions or the design. */
+export interface Gates {
+  ran: boolean;
+  converged: boolean;
+  verified: boolean;
+  verified_by?: "mesh" | "reference" | null;
+}
+
 export interface Verification {
   label: string;
-  reference: number;
+  /** null for a mesh study whose levels allow no Richardson extrapolation */
+  reference: number | null;
   computed: number;
   unit: string;
   error_pct: number;
@@ -304,7 +314,9 @@ export interface ResultsPayload {
   revision?: number;
   stale?: boolean;
   wall_s?: number;
-  gates: { ran: boolean; converged: boolean; verified: boolean };
+  gates: Gates;
+  /** the third gate in words, e.g. "Mesh convergence: checked (GCI 1.9%)" */
+  gate_label?: string;
   gates_detail?: { converged?: unknown; verified?: string | null } | null;
   cards: ResultCard[];
   verification?: Verification | null;

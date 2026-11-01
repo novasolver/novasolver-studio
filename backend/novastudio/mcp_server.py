@@ -30,10 +30,12 @@ Read values at a point, along a line or over a face with probe_results. Design v
 over one parameter, then compare_runs. For a 3D-printed part (PLA, PETG, ABS), print_check after a linear static run
 gives the safety factor for each print direction and the best one.
 Rules:
-1. Never claim a result is correct unless verify_case reports gates.verified = true. Report 'ran', 'converged' and
-   'verified' separately. If verification is not applicable, say so and explain what reference is missing.
-   Always pass on result WARNINGs (e.g. stress above yield: the linear result does not hold) - verified only means
-   the model matches its reference, not that the design is safe.
+1. Report 'ran', 'converged' and the third gate separately, and name the third gate by what it checked
+   (gates.verified_by): "mesh" = the mesh convergence study passed (GCI within tolerance), "reference" = an example
+   matches its textbook/published answer. Do not call a result "verified" or "validated": neither check covers the
+   boundary conditions, the material or the real part. Without a mesh study say the mesh error is unchecked and offer
+   check_convergence. Always pass on result WARNINGs (e.g. stress above yield: the linear result does not hold);
+   none of the gates means the design is safe.
 2. Change cases only through update_case with expected_revision from the latest describe_case. On a revision
    conflict, re-read and retry once. Values carry units, e.g. "250 mm", "2 kN", {"value": 70, "unit": "GPa"}.
 3. Fix every 'error' item from validate_case before running. 'warn' items may be run but must be mentioned.
@@ -88,7 +90,10 @@ async def _call(fn, language, *a, **kw):
 def _gates_line(g: dict | None) -> str:
     if not g:
         return "ran=no"
-    return " / ".join(f"{k}={'yes' if g.get(k) else 'no'}" for k in ("ran", "converged", "verified"))
+    third = {"mesh": "mesh convergence (GCI) passed", "reference": "matches reference"}.get(g.get("verified_by"), "")
+    third = third if g.get("verified") else "mesh convergence not checked" if not g.get("verified_by") else \
+        "mesh convergence not reached" if g.get("verified_by") == "mesh" else "does not match reference"
+    return " / ".join(f"{k}={'yes' if g.get(k) else 'no'}" for k in ("ran", "converged")) + f" / {third}"
 
 
 # ------------------------------------------------------------------ discovery

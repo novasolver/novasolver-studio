@@ -134,6 +134,8 @@ def delete(case_id: str) -> int:
     import shutil
     d = case_dir(case_id)
     size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+    from .config import remove_scratch
+    remove_scratch(d)                         # OpenFOAM runs moved out of a non-ASCII path live outside the case
     shutil.rmtree(d)
     return size
 

@@ -24,7 +24,7 @@ def test_units_roundtrip():
 def test_cantilever_preview_verified():
     cid = C.create_case("cantilever")["case"]["case_id"]
     r = C.run_simulation(cid, "preview", wait_s=120)
-    assert r["done"] and r["results"]["gates"] == {"ran": True, "converged": True, "verified": True}
+    assert r["done"] and r["results"]["gates"] == {"ran": True, "converged": True, "verified": True, "verified_by": "reference"}
     v = r["results"]["verification"]
     assert abs(v["error_pct"]) < 2.0
 

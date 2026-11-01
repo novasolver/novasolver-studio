@@ -7,6 +7,7 @@ import type {
   UpdateInfo,
   UpdateJob,
   FieldPayload,
+  Gates,
   GeometryPayload,
   Job,
   Lang,
@@ -117,7 +118,7 @@ export interface CaseSummary {
   template?: string;
   revision?: number;
   /** optional extras some backends include */
-  gates?: { ran: boolean; converged: boolean; verified: boolean } | null;
+  gates?: Gates | null;
   physics?: string;
   source_file?: string;
 }
