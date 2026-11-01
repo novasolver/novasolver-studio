@@ -89,7 +89,7 @@ def check_mcp(command: str, env: dict) -> None:
                 assert status["state"] not in ("failed", "stopped"), status
                 if status["state"] == "done":
                     result = {"done": True, "results": tool("get_results", case_id=cid, language="en")}
-            assert result["results"]["gates"] == {"ran": True, "converged": True, "verified": True}, result
+            assert result["results"]["gates"] == {"ran": True, "converged": True, "verified": True, "verified_by": "reference"}, result
             env_check = tool("environment_check", language="en")
             # the installed package starts the MCP server with its own interpreter (uvx is only an alternative)
             assert env_check["mcp_command"]["args"] == ["-m", "novastudio", "mcp"], env_check

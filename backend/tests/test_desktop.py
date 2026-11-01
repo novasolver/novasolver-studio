@@ -108,7 +108,7 @@ def test_window_started_detects_a_browser_that_quits(tmp_path, monkeypatch):
 def test_import_cad_opens_the_new_case_with_its_material(tmp_path):
     # what `novastudio --import` does for the Blender add-on / FreeCAD macro: one process imports and opens one window
     from novastudio import store
-    q = desktop.import_cad(BACKEND / "novastudio" / "samples" / "l_bracket.step", "structural", "mm", "en", "petg")
+    q = desktop.import_cad(BACKEND.parent / "samples" / "l_bracket.step", "structural", "mm", "en", "petg")
     assert q.startswith("?case=c_")
     assert store.load(q[len("?case="):])["materials"]["solid"]["preset"] == "petg"
     bad = tmp_path / "broken.step"
