@@ -31,6 +31,7 @@ Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
     --add-data "$root\backend\novastudio\i18n;novastudio\i18n" `
     --add-data "$root\frontend\dist;frontend\dist" `
     --add-data "$root\samples;samples" `
+    --add-data "$root\integrations;integrations" `
     (Join-Path $root "backend\launcher.py")
 if ($LASTEXITCODE) { throw "PyInstaller failed" }
 

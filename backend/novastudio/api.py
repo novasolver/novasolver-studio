@@ -114,6 +114,25 @@ async def open_sample(name: str, physics: str | None = None, lang: str = "ja"):
     return await call(C.open_sample, name, physics, lang)
 
 
+@app.get("/api/addons")
+async def addons_status():
+    """Blender / FreeCAD found on this computer and whether Studio's add-on / macro is installed in them."""
+    from . import addons
+    return await call(addons.status)
+
+
+@app.post("/api/addons/blender")
+async def addons_blender(body: dict = Body(...)):
+    from . import addons
+    return await call(addons.install_blender, str(body.get("path", "")))
+
+
+@app.post("/api/addons/freecad")
+async def addons_freecad():
+    from . import addons
+    return await call(addons.install_freecad)
+
+
 @app.get("/api/update")
 async def update_check(force: bool = False, passive: bool = False, lang: str = "ja"):
     from . import updates

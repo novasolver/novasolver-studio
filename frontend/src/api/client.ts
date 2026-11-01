@@ -4,6 +4,7 @@
 import type {
   CasePayload,
   ExamplesPayload,
+  AddonsStatus,
   UpdateInfo,
   UpdateJob,
   FieldPayload,
@@ -167,6 +168,9 @@ export const api = {
   updateDownload: () => request<UpdateJob>("POST", "/api/update/download"),
   updateStatus: () => request<UpdateJob>("GET", "/api/update/status"),
   updateApply: () => request<UpdateJob>("POST", "/api/update/apply"),
+  addons: () => request<AddonsStatus>("GET", "/api/addons"),
+  installBlender: (path: string) => request<{ version: string }>("POST", "/api/addons/blender", { path }),
+  installFreecad: () => request<{ path: string }>("POST", "/api/addons/freecad"),
   examples: () => request<ExamplesPayload>("GET", "/api/examples"),
   openExample: (name: string) => request<CasePayload>("POST", `/api/examples/${encodeURIComponent(name)}`),
   exampleProgress: (name: string) =>

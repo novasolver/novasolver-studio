@@ -372,3 +372,10 @@ export interface RunResponse {
 export type WsMessage =
   | { type: "job"; job: Job }
   | { type: "case"; case_id: string; revision: number };
+
+/** Blender / FreeCAD on this computer and Studio's add-on / macro in them (GET /api/addons). */
+export interface AddonsStatus {
+  addon_version: string;
+  blender: { path: string; version: string | null; supported: boolean; installed: string | null }[];
+  freecad: { installs: { path: string }[]; macro_dir: string; installed: "current" | "other" | null };
+}

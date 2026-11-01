@@ -1,11 +1,12 @@
-import { useState } from "react";
-import { ArrowUpCircle, ExternalLink, RefreshCw, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpCircle, Download, ExternalLink, RefreshCw, X } from "lucide-react";
+import { api, isMock } from "../api/client";
 import { Dialog } from "./ui/Dialog";
 import { Button } from "./ui/Button";
 import { Spinner } from "./ui/misc";
 import { applyUpdate, checkUpdate, setUpdateAuto, startUpdate, ui, useStore, useT } from "../state/store";
 import { communityUrl } from "./StartScreen";
-import type { Lang, UpdateInfo } from "../api/types";
+import type { AddonsStatus, Lang, UpdateInfo } from "../api/types";
 
 const SITE: Record<Lang, string> = { ja: "https://novasolver.jp/studio/", en: "https://novasolver.jp/en/studio/", zh: "https://novasolver.jp/zh/studio/" };
 const GITHUB = "https://github.com/novasolver/novasolver-studio";
@@ -70,6 +71,85 @@ function UpdateAction({ u }: { u: UpdateInfo }) {
   );
 }
 
+type AddonMsg = { key: string; ok: boolean; text: string };
+
+/** One row per program: name and version, the add-on state, and one button. */
+function AddonRow({ name, state, action, busy, onClick }: {
+  name: string; state: React.ReactNode; action?: string; busy: boolean; onClick?: () => void;
+}) {
+  return (
+    <div className="flex min-h-8 items-center gap-3">
+      <span className="min-w-0 flex-1 truncate text-body text-fg">{name}</span>
+      <span className="text-label text-fg-3">{state}</span>
+      {action && onClick && (
+        <Button variant="secondary" disabled={busy} onClick={onClick}>
+          {busy ? <Spinner /> : <Download size={14} strokeWidth={1.5} />}
+          {action}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** Blender add-on and FreeCAD macro: found programs, installed or not, install in one click. */
+function ConnectApps({ open }: { open: boolean }) {
+  const t = useT();
+  const [s, setS] = useState<AddonsStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<AddonMsg | null>(null);
+  const load = () => {
+    if (isMock()) return;
+    setLoading(true);
+    api.addons().then(setS).catch(() => setS(null)).finally(() => setLoading(false));
+  };
+  useEffect(() => { if (open) load(); }, [open]);
+  if (isMock()) return null;
+  const run = (key: string, p: Promise<unknown>, done: string) => {
+    setBusy(key);
+    setMsg(null);
+    p.then(() => setMsg({ key, ok: true, text: done }))
+      .catch((e: Error) => setMsg({ key, ok: false, text: e.message }))
+      .finally(() => { setBusy(null); load(); });
+  };
+  const blenderState = (b: AddonsStatus["blender"][number]) =>
+    !b.supported ? t("addons.tooOld")
+      : !b.installed ? t("addons.notInstalled")
+        : b.installed === s?.addon_version ? t("addons.installed", { version: b.installed })
+          : t("addons.old");
+  const fc = s?.freecad;
+  return (
+    <section className="space-y-2">
+      <h3 className="text-label font-medium text-fg-2">{t("addons.title")}</h3>
+      <p className="prose-ui text-label text-fg-3">{t("addons.lead")}</p>
+      {!s ? (
+        loading && <p className="flex items-center gap-2 text-body text-fg-2"><Spinner />{t("addons.searching")}</p>
+      ) : (
+        <div className="divide-y divide-line rounded-[8px] border border-line px-3">
+          {s.blender.length === 0 && (
+            <AddonRow name="Blender" busy={false} state={<a href="https://www.blender.org/download/" target="_blank" rel="noreferrer" className="text-accent-text hover:underline">{t("addons.noBlender")} · {t("addons.get")}</a>} />
+          )}
+          {s.blender.map((b) => (
+            <AddonRow key={b.path} name={`Blender ${b.version ?? ""}`} busy={busy === b.path} state={blenderState(b)}
+              action={b.supported && b.installed !== s.addon_version ? t(b.installed ? "addons.update" : "addons.install") : undefined}
+              onClick={() => run(b.path, api.installBlender(b.path), t("addons.blenderDone"))} />
+          ))}
+          {fc && (
+            <AddonRow name={`FreeCAD · ${t("addons.macro")}`} busy={busy === "freecad"}
+              state={fc.installs.length === 0
+                ? <a href="https://www.freecad.org/downloads.php" target="_blank" rel="noreferrer" className="text-accent-text hover:underline">{t("addons.noFreecad")} · {t("addons.get")}</a>
+                : fc.installed === "current" ? t("addons.installed", { version: s.addon_version })
+                  : fc.installed === "other" ? t("addons.old") : t("addons.notInstalled")}
+              action={fc.installs.length > 0 && fc.installed !== "current" ? t(fc.installed ? "addons.update" : "addons.install") : undefined}
+              onClick={() => run("freecad", api.installFreecad(), t("addons.freecadDone"))} />
+          )}
+        </div>
+      )}
+      {msg && <p role="status" className={`prose-ui text-body ${msg.ok ? "text-fg-2" : "text-red"}`}>{msg.text}</p>}
+    </section>
+  );
+}
+
 export function HelpDialog() {
   const t = useT();
   const open = useStore((s) => s.help);
@@ -129,6 +209,7 @@ export function HelpDialog() {
           </label>
           <p className="prose-ui text-label text-fg-3">{t("update.privacy")}</p>
         </section>
+        <ConnectApps open={open} />
       </div>
     </Dialog>
   );

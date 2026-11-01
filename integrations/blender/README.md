@@ -8,7 +8,9 @@ Check whether a model will hold before you print or make it. The add-on sends th
 ## Install
 
 1. Install NovaSolver Studio (installer or zip from the download page).
-2. Blender 4.2 or later: Edit > Preferences > Get Extensions > Install from Disk, choose `novasolver_studio-<version>.zip`.
+2. Blender 4.2 or later. Easiest: in Studio 0.7.2 or later open Help (?) > Connect other apps and click Install next to your Blender.
+   Studio finds Blender and installs and enables the add-on itself. By hand: Edit > Preferences > Get Extensions > Install from Disk,
+   choose `novasolver_studio-<version>.zip`.
 3. 3D View sidebar (N) > **NovaSolver** tab.
 
 ## Use

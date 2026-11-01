@@ -11,8 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def stage_resources() -> None:
     package = ROOT / "backend" / "novastudio"
-    # These two ignored folders contain only generated package data.
-    for name, source in (("frontend_dist", ROOT / "frontend" / "dist"), ("samples", ROOT / "samples")):
+    # These ignored folders contain only generated package data.
+    for name, source in (("frontend_dist", ROOT / "frontend" / "dist"), ("samples", ROOT / "samples"),
+                         ("integrations", ROOT / "integrations")):
         target = (package / name).resolve()
         if target.parent != package.resolve():
             raise RuntimeError(f"unexpected staging path: {target}")
@@ -22,6 +23,8 @@ def stage_resources() -> None:
             target.mkdir()
             for sample in [*source.glob("*.step"), *source.glob("*.stl")]:
                 shutil.copy2(sample, target / sample.name)
+        elif name == "integrations":                  # the Blender add-on and FreeCAD macro (addons.py installs them)
+            shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "README.md"))
         else:
             shutil.copytree(source, target)
 
