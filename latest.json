@@ -1,11 +1,11 @@
 {
  "payload": {
-  "version": "0.7.0",
+  "version": "0.7.1",
   "date": "2026-11-01",
   "notes": {
-   "en": "• Buckling, contact and fatigue.\n• 3D-print strength check.\n• Studio now installs like other Windows programs: a per-user installer (no administrator rights), its own window.\n• Blender add-on and FreeCAD macro: send the selected part to Studio with one click and open it as a new case.\n• Privacy: an offline mode (no update check or downloads at all), a statement of what is stored and sent, and a.",
-   "ja": "・座屈・接触・疲労に対応しました。\n・3Dプリント強度チェックを追加しました。\n・ほかの Windows ソフトと同じようにインストールできるようになりました。\n・Blender アドオンと FreeCAD マクロを追加しました。\n・プライバシー：更新確認やダウンロードを一切行わないオフラインモード、保存・送信する情報の説明、AI アシスタントへの返答にモデルの画像を含めない「数値のみ」モードを追加しました。",
-   "zh": "・支持屈曲、接触和疲劳。\n・新增 3D 打印强度检查。\n・现在可以像其他 Windows 软件一样安装：按用户安装的安装程序（无需管理员权限）、独立窗口（不再是浏览器标签页）、开始菜单项，双击保存的算例（.nscase）即可打开。\n・新增 Blender 插件和 FreeCAD 宏：一键将所选零件发送到 Studio，并作为新算例打开。\n・隐私：新增离线模式（完全不检查更新、不下载），说明保存和发送哪些信息，并新增“仅数值”模式，回复 AI 助手时不包含模型图像。"
+   "en": "• The third check on a result now says what it checked.\n• More results to colour by: stress components (σx … τzx), principal stresses σ1 and σ3, Tresca stress and.\n• STL parts keep their faces.\n• Elastoplastic and other nonlinear runs on larger meshes are much faster: they use a direct solver up to about.\n• Blender and FreeCAD: when Studio was not running, sending a part opened two windows; it now opens one, and FreeCAD.",
+   "ja": "・結果の3つ目の判定を、何を確かめたかがわかる表示にしました。\n・色分けで見られる量を増やしました。\n・STL の部品が CAD に近い面に分かれるようになりました。\n・塑性などの非線形解析が、大きめのメッシュで大幅に速くなりました。\n・Blender・FreeCAD 連携：Studio が起動していないときに送ると窓が2つ開いていたのを1つにしました。",
+   "zh": "・结果的第三项判定现在说明检查了什么：不再显示“已验证”，而是“网格收敛：已确认（GCI 1.9%）”“网格收敛：未确认”，自带例题则显示“与参考解一致”。\n・可着色显示的物理量增加：除米塞斯应力和位移外，还可在同一下拉框中选择应力分量（σx…τzx）、最大与最小主应力（σ1、σ3）、Tresca 应力以及 x、y 方向位移（剖面显示同样支持）。\n・STL 零件可以保留接近 CAD 的面。\n・塑性等非线性分析在较大网格上大幅提速：未知数约 12 万以内改用直接法（崩溃载荷例题的细网格：两个多小时 → 11 分钟）。\n・Blender 与 FreeCAD：Studio 未运行时发送零件会打开两个窗口，现在只打开一个；FreeCAD 也不再等到 Studio 启动完毕（最多等待几秒）。"
   },
   "page": {
    "ja": "https://novasolver.jp/studio/",
@@ -14,15 +14,15 @@
   },
   "windows_zip": {
    "urls": [
-    "https://github.com/novasolver/novasolver-studio/releases/download/v0.7.0/NovaSolverStudio-0.7.0-win64.zip",
-    "https://novasolver.jp/dl/studio/NovaSolverStudio-0.7.0-win64.zip"
+    "https://github.com/novasolver/novasolver-studio/releases/download/v0.7.1/NovaSolverStudio-0.7.1-win64.zip",
+    "https://novasolver.jp/dl/studio/NovaSolverStudio-0.7.1-win64.zip"
    ],
-   "sha256": "aaf92601ac26c1d7a7e46743c2f424c916eb8b4cd0c61ec93159f4d98021afa7",
-   "size": 175281410
+   "sha256": "ec83a35a23158007977fb67a7b3a7ceca501e87c4610a66d585fce7a0e39acb1",
+   "size": 175274250
   },
   "python": {
-   "command": "uvx --from https://github.com/novasolver/novasolver-studio/releases/download/v0.7.0/novasolver_studio-0.7.0-py3-none-any.whl novasolver-studio"
+   "command": "uvx --from https://github.com/novasolver/novasolver-studio/releases/download/v0.7.1/novasolver_studio-0.7.1-py3-none-any.whl novasolver-studio"
   }
  },
- "signature": "2eOgcwvq8OGwLlPWUbuDAQzeiWmTS2jDnha4lZhTXwdXSk3Asn05GRmzmDEQUcu7HbcvU42taFVZqFXQIVHHAg=="
+ "signature": "8+hJWG8PeV0jzUgFgjv5c9eAMoGXP1AJNeGh24NKEnhxhQz8viXzGJSe9uOCWXtF4S10+A2nEUFD7eJW/wpAAQ=="
 }
