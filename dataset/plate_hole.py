@@ -79,6 +79,7 @@ def boundary_changes(faces: list[dict], p: dict, scale: float = 1.0, force: floa
 
 
 DEPTHS = (0.005, 0.01)        # probe depths / r; the surface value is extrapolated linearly from the two
+VIEW = (50, -148)                    # picture.py: the hole edge faces the camera
 
 
 def probe_points(p: dict, scale: float = 1.0, n: int = 21) -> dict:

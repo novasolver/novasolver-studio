@@ -101,6 +101,8 @@ def boundary_changes(faces: list[dict], p: dict, scale: float = 1.0, force: floa
 
 
 DEPTHS = (0.005, 0.01)        # probe depths / r; the surface value is extrapolated linearly from the two
+VIEW = (24, 122)                     # picture.py: the fillet faces the camera
+PICTURE_CROP = 0.14
 
 
 def fillet_arc(p: dict, scale: float = 1.0, phi_deg: float = 45.0, depth: float = 0.005,

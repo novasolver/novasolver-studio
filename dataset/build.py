@@ -38,7 +38,8 @@ def point_job(family: str, idx: int, p: dict) -> dict:
     lv = getattr(fam, "LEVELS", LEVELS)
     row = {"id": idx, "params": p, "studio": __version__, "status": "ok", "refine_levels": lv}
     try:
-        row["standard"] = core.solve(fam, p, lv["standard"])
+        pics = os.environ.get("NSS_PICTURES")
+        row["standard"] = core.solve(fam, p, lv["standard"], picture=Path(pics) / f"{idx}.webp" if pics else None)
         if idx % GCI_EVERY == 0:
             row["gci"] = {"coarser": core.solve(fam, p, lv["coarser"]), "finer": core.solve(fam, p, lv["finer"])}
         if idx % SIM_EVERY == 0:
@@ -78,6 +79,7 @@ def main():
     os.environ.setdefault("NOVASTUDIO_WORKSPACE", str(out / "_work"))
     # Studio runs one solver job per machine unless told otherwise: without this the workers just queue
     os.environ.setdefault("NOVASTUDIO_SOLVER_SLOTS", str(a.workers))
+    os.environ.setdefault("NSS_PICTURES", str(out / "pictures"))   # one small stress picture per point (explorer)
     log = out / "points.jsonl"
     done = set()
     if log.exists():

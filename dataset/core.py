@@ -19,8 +19,10 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "backend"))
 
 
-def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = None, mode: str = "preview") -> dict:
-    """Coarse global mesh with the family's critical face refined to level * refine_length. The case is deleted."""
+def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = None, mode: str = "preview",
+          picture: Path | None = None) -> dict:
+    """Coarse global mesh with the family's critical face refined to level * refine_length. The case is deleted;
+    with picture, a small stress picture of it is kept (picture.py)."""
     from novastudio import commands as C, jobs
     force = fam.F if force is None else force
     size = os.environ.get("NSS_MESH_SIZE") or getattr(fam, "MESH_SIZE", "coarse")
@@ -53,6 +55,12 @@ def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = 
                     "reaction_n": cards.get("reaction"), "nodes": int(cards["nodes"]),
                     "elements": int(cards["elements"]), "converged": bool(res["gates"].get("converged")),
                     "engine": res.get("engine"), "wall_s": round(time.time() - t0, 1)})
+        if picture:
+            try:
+                import picture as pic
+                out["picture"] = pic.save(cid, picture, getattr(fam, "VIEW", pic.VIEW), getattr(fam, "PICTURE_CROP", None))
+            except Exception as e:                                  # a missing picture never loses the numbers
+                out["picture"] = {"error": f"{type(e).__name__}: {e}"[:200]}
         return out
     finally:
         try:

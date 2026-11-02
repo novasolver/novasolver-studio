@@ -91,6 +91,7 @@ def meridian(p: dict, scale: float, phi_deg: float, depth: float, n: int = 31) -
 
 
 DEPTHS = (0.005, 0.01)        # probe depths / a; the surface value is extrapolated linearly from the two
+VIEW = (24, -148)                    # picture.py: the cavity faces the camera
 
 
 def measure(C, cid: str, p: dict, scale: float, refine_key: str) -> dict:
