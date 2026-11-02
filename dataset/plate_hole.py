@@ -78,25 +78,33 @@ def boundary_changes(faces: list[dict], p: dict, scale: float = 1.0, force: floa
             f"boundaries.{end[0]}.direction": "+x"}
 
 
+DEPTHS = (0.005, 0.01)        # probe depths / r; the surface value is extrapolated linearly from the two
+
+
 def probe_points(p: dict, scale: float = 1.0, n: int = 21) -> dict:
-    """Where the dataset reads the answers: the hole edge on the x = 0 section through the half thickness (0.5 % of r
-    inside the material), the end face (mean axial displacement) and two mirror points on the end face."""
+    """Where the dataset reads the answers: the hole edge on the x = 0 section through the half thickness at two depths
+    (0.5 and 1 % of r inside the material), the end face (mean axial displacement) and mirror points on the end face."""
     d = dims(p, scale)
-    y = d["r"] * 1.005
-    edge = [[0.0, y, d["t"] / 2 * i / (n - 1) * 0.999] for i in range(n)]
+    edges = [[[0.0, d["r"] * (1 + dp), d["t"] / 2 * i / (n - 1) * 0.999] for i in range(n)] for dp in DEPTHS]
     end = [[d["Lh"], d["W"] / 2 * f, d["t"] / 2 * g] for f in (0.1, 0.5, 0.9) for g in (0.0, 0.5, 1.0)]
-    return {"edge": edge, "end": end}
+    return {"edge": edges[0], "edge2": edges[1], "end": end}
 
 
 def measure(C, cid: str, p: dict, scale: float, refine_key: str) -> dict:
+    """The hole-edge stress is extrapolated to the surface from the two depths: 0.5 % of r inside, Kirsch's field
+    has already fallen by about 1 %."""
     pts = probe_points(p, scale)
-    pr = C.probe_results(cid, pts["edge"] + pts["end"], None, [refine_key], None, "en", 1, None)
+    n = len(pts["edge"])
+    pr = C.probe_results(cid, pts["edge"] + pts["edge2"] + pts["end"], None, [refine_key], None, "en", 1, None)
     vals = [pt["values"] for pt in pr["points"]]
-    edge, end = vals[:len(pts["edge"])], vals[len(pts["edge"]):]
-    sxx = [v["sxx"] for v in edge]
+    e1, e2, end = vals[:n], vals[n:2 * n], vals[2 * n:]
+    w = DEPTHS[0] / (DEPTHS[1] - DEPTHS[0])
+    sxx = [a["sxx"] + w * (a["sxx"] - b["sxx"]) for a, b in zip(e1, e2)]
+    edge = e1
     return {"edge_sxx_mid_mpa": sxx[0], "edge_sxx_max_mpa": max(sxx),
             "edge_sxx_max_z_frac": round(sxx.index(max(sxx)) / (len(sxx) - 1), 3),
-            "edge_inside": sum(pt["inside"] for pt in pr["points"][:len(pts["edge"])]) / len(edge),
+            "edge_sxx_mid_probe_mpa": e1[0]["sxx"],
+            "edge_inside": sum(pt["inside"] for pt in pr["points"][:2 * n]) / (2 * n),
             "end_ux_mm": sum(v["ux"] for v in end) / len(end),
             "end_ux_spread": (max(v["ux"] for v in end) - min(v["ux"] for v in end)),
             "hole_face_max_vm_mpa": pr["faces"][0]["max"]["vm"]}

@@ -5,12 +5,16 @@ measure(C, cid, p, scale, refine_key) -> dimensional numbers, nondim(s, p, scale
 NORMALISED, QUANTITIES, PARAMS, EXPECTED_DIRECTIONS, F, E, mirror_err(s)."""
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# Studio scales a face size by 1.6 / 1.0 / 0.625 for coarse / normal / fine meshes; these keep the face size the same
+# whatever the global size (a family picks a finer global mesh with MESH_SIZE for a gentler size transition)
+SIZE_COMP = {"coarse": 1.0, "normal": 1.6, "fine": 2.56}
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "backend"))
 
@@ -19,6 +23,7 @@ def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = 
     """Coarse global mesh with the family's critical face refined to level * refine_length. The case is deleted."""
     from novastudio import commands as C, jobs
     force = fam.F if force is None else force
+    size = os.environ.get("NSS_MESH_SIZE") or getattr(fam, "MESH_SIZE", "coarse")
     with tempfile.TemporaryDirectory(prefix="nss_ds_") as tmp:
         step = Path(tmp) / "part.step"
         fam.write_step(p, step, scale)
@@ -29,14 +34,16 @@ def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = 
         key = fam.refine_face(faces)
         ch = fam.boundary_changes(faces, p, scale, force)
         ch.update({"materials.solid.preset": "custom", "materials.solid.E": f"{fam.E / 1e9} GPa",
-                   "materials.solid.nu": p["nu"], "mesh.size": "coarse", "run.mode": mode,
-                   f"mesh.refine.{key}": f"{level * fam.refine_length(p, scale):.6g} mm"})
+                   "materials.solid.nu": p["nu"], "mesh.size": size, "run.mode": mode,
+                   f"mesh.refine.{key}": f"{level * fam.refine_length(p, scale) * SIZE_COMP[size]:.6g} mm"})
         if hasattr(fam, "extra_changes"):                           # e.g. elastic-plastic material, load steps
             ch.update(fam.extra_changes(p, scale, force))
         C.update_case(cid, c["revision"], ch, "en", source="ai")
         t0 = time.time()
         job = C.run_simulation(cid, mode, 1.0, "en", source="ai")["job"]["job_id"]
-        j = jobs.wait(job, 3600)
+        j = jobs.wait(job, getattr(fam, "TIMEOUT_S", 3600))
+        if j["state"] not in ("done", "failed", "error", "stopped"):
+            jobs.stop(job)                                          # do not leave a solver running behind a timeout
         if j["state"] != "done":
             raise RuntimeError(f"solver {j['state']}: {C.job_status(job, 'en').get('message')}")
         res = C.get_results(cid, None, "en")

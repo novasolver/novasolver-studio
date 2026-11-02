@@ -101,7 +101,12 @@ def main():
     for r in ok:
         s = r["standard"]
         v = nd(r, s)
-        row = {"id": r["id"], **r["params"], **v, **{f"{q}_band": band(r["params"], q) for q in Q},
+        bands = {f"{q}_band": band(r["params"], q) for q in Q}
+        # where the family's own symmetry check measures the same answer twice (e.g. two meridian planes of an
+        # axisymmetric part), their disagreement is a direct, per-point measure of the discretisation error
+        for q in getattr(fam, "MIRROR_BOUNDS", ()):
+            bands[f"{q}_band"] = max(bands[f"{q}_band"] or 0.0, fam.mirror_err(s))
+        row = {"id": r["id"], **r["params"], **v, **bands,
                **fam.references(r["params"], s, v),
                "equilibrium_err": (abs(s["reaction_n"] - fam.F) / fam.F
                                    if getattr(fam, "CHECK_EQUILIBRIUM", False) and s.get("reaction_n") is not None else None),
@@ -145,15 +150,31 @@ def main():
                     band_q = t[f"{q}_band"] or 0.0
                     t[f"{q}_flag_resolved"] = bool(abs(t[f"{q}_recheck_diff"]) <= band_q)
 
-    # ---- direction checks (the operator's idea: the response must move the physically right way)
+    # ---- direction checks (the operator's idea: the response must move the physically right way). Judged on the
+    # partial slope, the others held: a smooth fit of all points (log space) is differentiated in one parameter at
+    # every point. A marginal correlation over the sample is not enough: where the parameters are coupled (a fillet
+    # must fit its step) it can come out with the wrong sign for a correct answer. ok = at least 95 % of the points
+    # slope the expected way; for "should hardly matter" (0) the median |d ln q / d unit| must be below 0.05.
     directions = {}
     if len(table) >= 30:
+        from scipy.interpolate import RBFInterpolator
         from scipy.stats import spearmanr
+        X = np.array([unit(t) for t in table])
         for q, signs in getattr(fam, "EXPECTED_DIRECTIONS", {}).items():
+            y = np.log(np.abs(np.array([t[q] for t in table])))
+            fit = RBFInterpolator(X, y, kernel="thin_plate_spline", degree=1, smoothing=1e-4)
             for k, sign in signs.items():
+                j = names.index(k)
+                hi_, lo_ = X.copy(), X.copy()
+                hi_[:, j] = np.minimum(X[:, j] + 0.05, 1.0)
+                lo_[:, j] = np.maximum(X[:, j] - 0.05, 0.0)
+                slope = (fit(hi_) - fit(lo_)) / (hi_[:, j] - lo_[:, j])
+                share = float(np.mean(np.sign(slope) == sign)) if sign else None
                 rho = float(spearmanr([t[k] for t in table], [t[q] for t in table]).statistic)
-                directions[f"{q} vs {k}"] = {"expected": sign, "spearman": round(rho, 3),
-                                             "ok": bool(rho > 0.1) if sign > 0 else bool(rho < -0.1) if sign < 0 else bool(abs(rho) < 0.3)}
+                directions[f"{q} vs {k}"] = {
+                    "expected": sign, "share_expected_sign": None if share is None else round(share, 3),
+                    "median_abs_slope": round(float(np.median(np.abs(slope))), 4), "spearman": round(rho, 3),
+                    "ok": bool(share >= 0.95) if sign else bool(np.median(np.abs(slope)) < 0.05)}
 
     # ---- similarity and CalculiX
     sim_rows, ccx_rows = [], []

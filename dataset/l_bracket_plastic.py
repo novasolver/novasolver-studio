@@ -24,6 +24,7 @@ STEPS = 16                    # 0.2 F_y per step
 # coarser fillet mesh: a plastic zone smooths the peak, and the collapse load depends on the yielded section, not on
 # the elastic peak.
 LEVELS = {"coarser": 1 / 2, "standard": 1 / 4, "finer": 1 / 8}
+TIMEOUT_S = 4 * 3600          # one load curve at R/8 can take hours next to other solves
 
 
 def write_step(p: dict, path: Path, scale: float = 1.0) -> None:
@@ -52,17 +53,23 @@ QUANTITIES = ("lam_limit", "amp_15")
 NORMALISED = {"lam_limit": "lam_over_hinge", "amp_15": "amp_15"}
 EXPECTED_DIRECTIONS = {"lam_limit": {"r_over_t": -1}}            # a larger fillet concentrates less: less reserve
 CHECK_EQUILIBRIUM = False
-LINEAR = Path(__file__).resolve().parent / "out" / "l_bracket" / "points.csv"
+# F_y is fixed to the v2 linear answers (fillet stress read 0.5 % of R inside), so later linear rebuilds cannot shift
+# the load scale of points already solved; the surface-extrapolated sigma* is about 1 % higher
+LINEAR = Path(__file__).resolve().parent / "out" / "l_bracket_v2_probe" / "points.csv"
 
 
 @lru_cache(maxsize=1)
-def _linear() -> dict:
+def _linear() -> list:
     with LINEAR.open(encoding="utf-8") as f:
-        return {tuple(round(float(r[k]), 6) for k in PARAMS): float(r["sigma_star"]) for r in csv.DictReader(f)}
+        return [([float(r[k]) for k in PARAMS], float(r["sigma_star"])) for r in csv.DictReader(f)]
 
 
 def sigma_star(p: dict) -> float:
-    return _linear()[tuple(round(p[k], 6) for k in PARAMS)]
+    """The linear answer at the same point (the CSV holds 6 significant digits, so match the nearest row)."""
+    x = [p[k] for k in PARAMS]
+    q, s = min(_linear(), key=lambda row: max(abs(a - b) / abs(b) for a, b in zip(row[0], x)))
+    assert max(abs(a - b) / abs(b) for a, b in zip(q, x)) < 1e-4, (x, q)
+    return s
 
 
 def first_yield(p: dict, scale: float = 1.0, force: float = F) -> float:

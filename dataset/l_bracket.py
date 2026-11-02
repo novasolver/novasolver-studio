@@ -63,14 +63,17 @@ def write_step(p: dict, path: Path, scale: float = 1.0) -> None:
         gmsh.finalize()
 
 
-def fillet_arc(p: dict, scale: float = 1.0, n: int = 61) -> list[list[float]]:
+DEPTHS = (0.005, 0.01)        # probe depths / R; the surface value is extrapolated linearly from the two
+
+
+def fillet_arc(p: dict, scale: float = 1.0, depth: float = 0.005, n: int = 61) -> list[list[float]]:
     """Points on the fillet surface along its arc at mid-width, from the horizontal flange (0 deg) to the vertical one
-    (90 deg), 0.5 % of R inside the material. The peak of these is the fillet stress the dataset reports: a single
+    (90 deg), depth x R inside the material. The peak of these is the fillet stress the dataset reports: a single
     curve sampled with the element's own interpolation, steadier than the largest nodal value over the whole face."""
     import math
     d = dims(p, scale)
     cx = cz = d["t"] + d["R"]                       # arc centre (in the empty corner); the material is beyond R
-    r = d["R"] * 1.005
+    r = d["R"] * (1 + depth)
     out = []
     for i in range(n):
         a = math.radians(90 * i / (n - 1))
@@ -98,13 +101,19 @@ def refine_length(p: dict, scale: float = 1.0) -> float:
 def measure(C, cid: str, p: dict, scale: float, refine_key: str) -> dict:
     d = dims(p, scale)
     pts = [[d["L"], d["W"] / 2, d["t"]], [d["L"], 0.2 * d["W"], d["t"]], [d["L"], 0.8 * d["W"], d["t"]]]
-    arc = fillet_arc(p, scale)
-    pr = C.probe_results(cid, pts + arc, None, [refine_key], None, "en", 1, None)
+    # the fillet stress is extrapolated to the surface from two depths (0.5 % of R inside it reads ~1 % low)
+    arc, arc2 = (fillet_arc(p, scale, dp) for dp in DEPTHS)
+    pr = C.probe_results(cid, pts + arc + arc2, None, [refine_key], None, "en", 1, None)
     uz = [pt["values"]["uz"] for pt in pr["points"][:3]]
-    arc_vm = [pt["values"]["vm"] for pt in pr["points"][3:]]
+    n = len(arc)
+    v1 = [pt["values"]["vm"] for pt in pr["points"][3:3 + n]]
+    v2 = [pt["values"]["vm"] for pt in pr["points"][3 + n:]]
+    w = DEPTHS[0] / (DEPTHS[1] - DEPTHS[0])
+    arc_vm = [a + w * (a - b) for a, b in zip(v1, v2)]
     k = max(range(len(arc_vm)), key=arc_vm.__getitem__)
-    return {"fillet_arc_vm_mpa": arc_vm[k], "fillet_arc_deg": round(90 * k / (len(arc_vm) - 1), 1),
-            "arc_inside": sum(pt["inside"] for pt in pr["points"][3:]) / len(arc),
+    return {"fillet_arc_vm_mpa": arc_vm[k], "fillet_arc_probe_vm_mpa": v1[k],
+            "fillet_arc_deg": round(90 * k / (len(arc_vm) - 1), 1),
+            "arc_inside": sum(pt["inside"] for pt in pr["points"][3:]) / (2 * n),
             "fillet_face_max_vm_mpa": pr["faces"][0]["max"]["vm"], "tip_uz_mm": uz[0], "mirror_uz_mm": uz[1:]}
 
 
