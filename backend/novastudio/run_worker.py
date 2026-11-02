@@ -844,16 +844,26 @@ ENGINES = {"builtin-fem": run_structural_builtin, "builtin-cavity": run_cavity_b
            "builtin-thermal": run_thermal_builtin, "builtin-electric": run_electric_builtin}
 
 
+def solver_slots() -> int:
+    """How many solver jobs may run at once on this machine: 1 unless NOVASTUDIO_SOLVER_SLOTS says otherwise (the
+    mesher and the solvers use one core each, so a batch run on a PC with enough memory can use one per core)."""
+    import os
+    try:
+        return max(1, min(64, int(os.environ.get("NOVASTUDIO_SOLVER_SLOTS", "1"))))
+    except ValueError:
+        return 1
+
+
 def _acquire_solver_slot(jd: Path) -> Path:
-    """One solver job at a time on this machine (meshes and solvers can each use many GB on a 16 GB PC).
-    The slot is a directory created atomically; a slot left by a dead process is reclaimed."""
+    """One solver job at a time on this machine (meshes and solvers can each use many GB on a 16 GB PC), or
+    solver_slots() of them. A slot is a directory created atomically; a slot left by a dead process is reclaimed."""
     import os
     import psutil
     # machine-wide (not per workspace): every Studio workspace on this PC shares the same memory
     from .osdirs import data_dir
     base = data_dir()
     base.mkdir(parents=True, exist_ok=True)
-    slot = base / "solver.lock"
+    slots = [base / ("solver.lock" if i == 0 else f"solver.lock.{i}") for i in range(solver_slots())]
     # First come, first served: waiters used to race for the slot, and a job queued for an hour lost every race
     # to jobs started after it. Each waiter holds a ticket; only the oldest live ticket may take the slot.
     queue = base / "solver.queue"
@@ -896,10 +906,18 @@ def _acquire_solver_slot(jd: Path) -> Path:
                 update(jd, state="queued", message_key="job.waiting", message_args={"other": other})
                 time.sleep(1.0)
                 continue
-            try:
-                os.mkdir(slot)
-            except FileExistsError:
-                _wait_for_owner(jd, slot, psutil)
+            slot = None
+            for s in slots:
+                try:
+                    os.mkdir(s)
+                    slot = s
+                    break
+                except FileExistsError:
+                    pass
+            if slot is None:
+                # all taken: reclaim any left by a dead owner (no wait), else wait on the first one
+                if not any(_reclaim_dead_slot(s, psutil) for s in slots):
+                    _wait_for_owner(jd, slots[0], psutil)
                 continue
             # the slot is ours: nothing after this point may lose it
             drop(ticket)
@@ -908,6 +926,23 @@ def _acquire_solver_slot(jd: Path) -> Path:
             return slot
     finally:
         drop(ticket)
+
+
+def _reclaim_dead_slot(slot: Path, psutil) -> bool:
+    """True when the slot was free or held by a dead process (and is now removed)."""
+    try:
+        o = json.loads((slot / "owner.json").read_text())
+        alive = psutil.pid_exists(o["pid"]) and abs(psutil.Process(o["pid"]).create_time() - o["ctime"]) < 1
+    except Exception:
+        try:
+            alive = (time.time() - slot.stat().st_mtime) < 10
+        except OSError:
+            return True
+    if alive:
+        return False
+    import shutil
+    shutil.rmtree(slot, ignore_errors=True)
+    return True
 
 
 def _wait_for_owner(jd: Path, slot: Path, psutil) -> None:
