@@ -152,6 +152,12 @@ def main():
                     # the stated error can't be smaller than what the finer solve just showed at this very point
                     t[f"{q}_band"] = max(band_q, 1.25 * abs(t[f"{q}_recheck_diff"]))
 
+    # ---- where the exact answer is known at every point, the stated error can't be smaller than the difference from it
+    if getattr(fam, "EXACT_NORMALISED", False):
+        for t in table:
+            for q in Q:
+                t[f"{q}_band"] = max(t[f"{q}_band"] or 0.0, 1.25 * abs(t[fam.NORMALISED[q]] - 1))
+
     # ---- direction checks (the operator's idea: the response must move the physically right way). Judged on the
     # partial slope, the others held: a smooth fit of all points (log space) is differentiated in one parameter at
     # every point. A marginal correlation over the sample is not enough: where the parameters are coupled (a fillet

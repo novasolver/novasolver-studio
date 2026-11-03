@@ -23,6 +23,7 @@ PARAMS = {
 EXPECTED_DIRECTIONS = {"hoop_star": {"b_over_a": -1, "nu": 0}, "ur_star": {"b_over_a": -1}}
 QUANTITIES = ("hoop_star", "ur_star")
 NORMALISED = {"hoop_star": "hoop_over_lame", "ur_star": "ur_over_lame"}
+EXACT_NORMALISED = True       # NORMALISED divides by the exact answer: every point's difference from it is known
 CHECK_EQUILIBRIUM = False      # pressure against symmetry planes: no single reaction to compare with the load
 
 

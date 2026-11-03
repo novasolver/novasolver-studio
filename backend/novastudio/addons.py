@@ -4,6 +4,7 @@ Studio installation itself (integrations/)."""
 from __future__ import annotations
 
 import hashlib
+import html
 import os
 import re
 import shutil
@@ -191,7 +192,7 @@ def macro_dir() -> Path:
         except OSError:
             continue
         if m and m.group(1).strip():
-            return Path(m.group(1).strip())
+            return Path(html.unescape(m.group(1).strip()))        # user.cfg is XML: "&" is stored as "&amp;"
         return root / "Macro"
     roots = _freecad_config_roots()
     return roots[0] / "Macro"

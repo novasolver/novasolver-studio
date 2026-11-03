@@ -25,6 +25,8 @@ def test_freecad_macro_folder_from_user_cfg(tmp_path, monkeypatch):
     (base / "user.cfg").write_text('<FCParameters><FCText Name="MacroPath">D:\\my macros</FCText></FCParameters>',
                                    encoding="utf-8")
     assert str(addons.macro_dir()) == "D:\\my macros"
+    (base / "user.cfg").write_text('<FCParameters><FCText Name="MacroPath">D:\\CAD &amp; FEA</FCText></FCParameters>', encoding="utf-8")
+    assert str(addons.macro_dir()) == "D:\\CAD & FEA"                  # user.cfg is XML
     v11 = base / "v1-1"                                                 # FreeCAD 1.1 keeps a folder per version
     v11.mkdir()
     (v11 / "user.cfg").write_text("<FCParameters/>", encoding="utf-8")

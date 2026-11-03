@@ -1,4 +1,4 @@
-﻿# Build the portable Windows release: release/NovaSolverStudio-<version>-win64.zip (+ .sha256)
+# Build the portable Windows release: release/NovaSolverStudio-<version>-win64.zip (+ .sha256)
 # Usage:  powershell -ExecutionPolicy Bypass -File build_release.ps1 [-SkipFrontend] [-Stage all|app|package]
 #   app      build the program folder only (build\dist\NovaSolverStudio): CI signs the exe in between
 #   package  zip + installer from that folder (after signing)
@@ -29,6 +29,7 @@ Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
     --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp.types --collect-submodules mcp_types --exclude-module mcp.cli `
     --collect-submodules pyamg --hidden-import scipy.sparse.linalg --hidden-import matplotlib.backends.backend_agg `
     --add-data "$root\backend\novastudio\i18n;novastudio\i18n" `
+    --add-data "$root\backend\novastudio\estimate_data;novastudio\estimate_data" `
     --add-data "$root\frontend\dist;frontend\dist" `
     --add-data "$root\samples;samples" `
     --add-data "$root\integrations;integrations" `

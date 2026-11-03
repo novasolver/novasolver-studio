@@ -546,7 +546,7 @@ async def instant_estimate(shape: Literal["l_bracket", "plate_hole", "stepped_sh
     size (optional; without it only the dimensionless answers come back):
     l_bracket: L_mm, F_N, E_GPa; plate_hole: W_mm, F_N; stepped_shaft, grooved_shaft, flat_shoulder: d_mm, F_N;
     thick_cylinder: p_MPa, a_mm, E_GPa; sphere_cavity: D_mm, F_N.
-    Linear elastic, the standard supports and load only. The error bar covers the numerics, not the real part."""
+    Linear elastic, these supports and loads only: l_bracket has the back of the upright fixed and F as the total force spread evenly over the top of the flange beyond the fillet (not a force at the tip); thick_cylinder is plane strain (ends held axially; for open or capped ends run a simulation); the shafts and bars are in plain tension. The error bar covers the numerics, not the real part."""
     from . import estimate
     r, e = await _call(estimate.estimate, language, shape, ratios, size)
     if e:

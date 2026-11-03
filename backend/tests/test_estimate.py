@@ -2,6 +2,7 @@
 import asyncio
 import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -97,3 +98,22 @@ def test_fast_enough_for_a_design_loop():
     for f in np.linspace(0.05, 0.14, 100):
         E.estimate("l_bracket", {"h_over_L": 0.7, "t_over_L": float(f), "w_over_L": 0.5, "r_over_t": 0.9})
     assert (time.perf_counter() - t0) / 100 < 0.05
+
+def test_stored_cylinder_answers_stay_within_their_band_of_lame():
+    sp = E._space("thick_cylinder")
+    for i, x in enumerate(dict(zip(sp["names"], row)) for row in sp["X"]):
+        for q, exact in zip(sp["q"], (E._lame_hoop(x), E._lame_u(x))):
+            assert abs(q["y"][i] / exact - 1) <= q["band"][i]
+
+
+def test_titles_say_what_was_actually_solved():
+    assert "spread evenly" in E.SHAPES["l_bracket"]["title"] and "tip" not in E.SHAPES["l_bracket"]["title"]
+    assert "plane strain" in E.SHAPES["thick_cylinder"]["title"]
+    doc = asyncio.run(mcp_server.mcp.list_tools())
+    text = next(t.description for t in doc if t.name == "instant_estimate")
+    assert "not a force at the tip" in text and "plane strain" in text
+
+
+def test_the_desktop_build_bundles_the_data():
+    build = (Path(__file__).parents[2] / "build_release.ps1").read_text(encoding="utf-8")
+    assert "novastudio\\estimate_data;novastudio\\estimate_data" in build

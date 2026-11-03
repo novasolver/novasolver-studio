@@ -50,7 +50,7 @@ def _round_kt(key):
 # the fit divides out (None = 1), dimensional value from (q, inputs, ratios)
 SHAPES = {
     "l_bracket": {
-        "title": "L-bracket, wall-fixed, tip load", "inputs": ("L_mm", "F_N", "E_GPa"),
+        "title": "L-bracket, back of the upright fixed, F spread evenly over the top of the flange beyond the fillet", "inputs": ("L_mm", "F_N", "E_GPa"),
         "out": (("peak_von_mises_at_fillet", "sigma*L^2/F", "MPa", _lb_stress, lambda q, I, x: q * I["F_N"] / I["L_mm"] ** 2),
                 ("tip_deflection", "delta*E*L/F", "mm", _lb_deflection, lambda q, I, x: q * I["F_N"] / (I["E_GPa"] * 1000 * I["L_mm"])))},
     "plate_hole": {
@@ -68,7 +68,7 @@ SHAPES = {
         "out": (("peak_principal_at_fillet_midthickness", "Kt", "MPa", None,
                  lambda q, I, x: q * I["F_N"] / (I["d_mm"] ** 2 * x["t_over_d"])),)},
     "thick_cylinder": {
-        "title": "Thick cylinder, internal pressure", "inputs": ("p_MPa", "a_mm", "E_GPa"),
+        "title": "Thick cylinder, internal pressure, plane strain (ends held axially; open or capped ends differ)", "inputs": ("p_MPa", "a_mm", "E_GPa"),
         "out": (("hoop_stress_at_bore", "sigma_hoop/p", "MPa", _lame_hoop, lambda q, I, x: q * I["p_MPa"]),
                 ("radial_displacement_at_bore", "u*E/(p*a)", "mm", _lame_u, lambda q, I, x: q * I["p_MPa"] * I["a_mm"] / (I["E_GPa"] * 1000)))},
     "sphere_cavity": {
