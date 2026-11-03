@@ -63,6 +63,8 @@ jobs:
         run: |
           build\dist\NovaSolverStudio\NovaSolverStudio.exe env | Tee-Object -Variable envout
           if (-not ($envout -match '"calculix"')) { throw "env check failed" }
+      - name: Smoke test (large models and a surrogate build, in the built exe)
+        run: .venv\Scripts\python.exe tools/smoke_exe.py build/dist/NovaSolverStudio/NovaSolverStudio.exe
       - uses: actions/upload-artifact@v4
         id: unsigned
         with:
