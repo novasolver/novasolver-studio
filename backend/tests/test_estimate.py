@@ -34,6 +34,7 @@ def test_error_bar_holds_on_points_the_fit_never_saw(shape, tmp_path, monkeypatc
     d = points(shape)
     names = [p[0] for p in d["params"]]
     held, kept = d["points"][::10], [r for i, r in enumerate(d["points"]) if i % 10]
+    d = {k: v for k, v in d.items() if k != "gp"}                      # its settings are learned from the kept points alone
     (tmp_path / f"{shape}.json").write_text(json.dumps({**d, "points": kept}), encoding="utf-8")
     monkeypatch.setattr(E, "DATA", tmp_path)
     E._space.cache_clear()
@@ -48,6 +49,22 @@ def test_error_bar_holds_on_points_the_fit_never_saw(shape, tmp_path, monkeypatc
         assert inside / total >= 0.9, (shape, inside, total)
     finally:
         E._space.cache_clear()
+
+
+@pytest.mark.parametrize("shape", E.SHAPES)
+def test_stored_settings_cover_every_quantity(shape):
+    d = points(shape)
+    assert len(d["gp"]) == len(E.SHAPES[shape]["out"])
+    for h in d["gp"]:
+        assert len(h["lengths"]) == len(d["params"]) and h["signal"] > 0 and h["noise"] > 0
+
+
+def test_bar_widens_away_from_the_points():
+    """A left-out constant says nothing about where the points are: the corner of the box is further from them."""
+    centre = {"h_over_L": 0.7, "t_over_L": 0.095, "w_over_L": 0.5, "r_over_t": 0.9, "nu": 0.3}
+    corner = {k: E.ranges("l_bracket")[k][0] for k in centre}
+    interp = [E.estimate("l_bracket", x)["results"][1]["interpolation_error_pct"] for x in (centre, corner)]
+    assert interp[1] > interp[0]
 
 
 def test_thick_cylinder_matches_lame_between_the_points():

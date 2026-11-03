@@ -1,8 +1,8 @@
 """Blind test of the surrogates on one family: predictions are frozen and hashed first, then the points are solved.
 
-    python dataset/blind_check.py plan                 write predictions.json (refuses to overwrite)
-    python dataset/blind_check.py solve --workers 3    solve every planned point (append-only log, safe to resume)
-    python dataset/blind_check.py score                compare, write score.json
+    python dataset/blind_check.py <family> plan                 write predictions.json (refuses to overwrite)
+    python dataset/blind_check.py <family> solve --workers 3    solve every planned point (append-only log, safe to resume)
+    python dataset/blind_check.py <family> score                compare, write score.json
 
 Points: the next points of the dataset's own Sobol sequence, hard points near the ends of several ranges at once,
 reruns of two dataset points (does this Studio version still give the same answer?) and twins moved a tiny step from a
@@ -23,56 +23,67 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-FAMILY = "l_bracket"
-OUT = HERE / "out" / f"{FAMILY}_blind"
 MODELS = ("tps", "tps_ard", "gp_m52_ard", "gp_rbf_ard")
 N_SOBOL, N_HARD, N_TWIN = 20, 12, 4
-RERUN_IDS = (1, 2)
 TWIN_STEP = 0.002              # of each range
+HARD = {"l_bracket": ("t_over_L", "w_over_L", "r_over_t")}     # the ranges pushed to their ends; default: all but nu
 
 
-def plan_points(fam) -> list[dict]:
+def out_dir(family: str) -> Path:
+    return HERE / "out" / f"{family}_blind"
+
+
+def solved_rows(family: str) -> dict:
+    rows = {}
+    for line in (HERE / "out" / family / "points.jsonl").read_text(encoding="utf-8").splitlines():
+        r = json.loads(line)
+        if r.get("status") == "ok":
+            rows[r["id"]] = r
+    return rows
+
+
+def plan_points(family: str, fam) -> list[dict]:
     import build
+    rows = solved_rows(family)
+    design = max(rows) + 1
     names = list(fam.PARAMS)
     lo = np.array([fam.PARAMS[k][0] for k in names])
     hi = np.array([fam.PARAMS[k][1] for k in names])
     to_p = lambda u: {k: round(float(v), 6) for k, v in zip(names, lo + np.clip(u, 0, 1) * (hi - lo))}
-    pts = [{"key": f"sobol{i}", "kind": "sobol", "params": p} for i, p in enumerate(build.sobol_points(fam, 300 + N_SOBOL)[300:])]
+    pts = [{"key": f"sobol{i}", "kind": "sobol", "params": p} for i, p in enumerate(build.sobol_points(fam, design + N_SOBOL)[design:])]
     rng = np.random.default_rng(20261104)
-    free = [names.index(k) for k in ("t_over_L", "w_over_L", "r_over_t")]
+    free = [names.index(k) for k in HARD.get(family, [k for k in names if k != "nu"])]
+    if len(free) < 2:
+        free = list(range(len(names)))
     for i in range(N_HARD):
         u = rng.random(len(names))
-        for d in rng.choice(free, size=int(rng.integers(2, 4)), replace=False):
+        for d in rng.choice(free, size=min(int(rng.integers(2, 4)), len(free)), replace=False):
             u[d] = rng.uniform(0, 0.05) if rng.random() < 0.5 else rng.uniform(0.95, 1)
         pts.append({"key": f"hard{i}", "kind": "hard", "params": to_p(u)})
     for i in range(N_TWIN):
         base = pts[i]["params"]
         u = (np.array([base[k] for k in names]) - lo) / (hi - lo) + TWIN_STEP * rng.choice([-1, 1], len(names))
         pts.append({"key": f"twin{i}", "kind": "twin", "base": pts[i]["key"], "params": to_p(u)})
-    rows = {}
-    for line in (HERE / "out" / FAMILY / "points.jsonl").read_text(encoding="utf-8").splitlines():
-        r = json.loads(line)
-        rows[r["id"]] = r
-    for i in RERUN_IDS:
+    for i in sorted(rows)[1:3]:
         pts.append({"key": f"rerun{i}", "kind": "rerun", "id": i, "params": rows[i]["params"]})
     return pts
 
 
-def plan():
+def plan(family: str):
     import compare_surrogates as cs
-    fam = importlib.import_module(FAMILY)
-    OUT.mkdir(parents=True, exist_ok=True)
-    f = OUT / "predictions.json"
+    fam = importlib.import_module(family)
+    out_dir(family).mkdir(parents=True, exist_ok=True)
+    f = out_dir(family) / "predictions.json"
     if f.exists():
         sys.exit(f"{f} exists: predictions are frozen once written")
-    D = cs.load(FAMILY)
+    D = cs.load(family)
     names = D["names"]
-    d = json.loads((cs.DATA / f"{FAMILY}.json").read_text(encoding="utf-8"))
+    d = json.loads((cs.DATA / f"{family}.json").read_text(encoding="utf-8"))
     lo, hi = np.array([p[1] for p in d["params"]], float), np.array([p[2] for p in d["params"]], float)
-    pts = plan_points(fam)
+    pts = plan_points(family, fam)
     Us = (np.array([[p["params"][k] for k in names] for p in pts]) - lo) / (hi - lo)
     assert names == list(fam.PARAMS)
-    out = {"family": FAMILY, "points": pts, "pred": {}}
+    out = {"family": family, "points": pts, "pred": {}}
     for qi, q in enumerate(D["q"]):
         out["pred"][q["name"]] = {}
         for t in ("norm", "raw"):
@@ -90,7 +101,7 @@ def plan():
         out["pred"][q["name"]]["mesh_band"] = ((w * q["band"][near]).sum(1) / w.sum(1)).tolist()
     # the answer a user gets today, from Studio's own code
     from novastudio import estimate as E
-    flash = [E.estimate(FAMILY, p["params"]) for p in pts]
+    flash = [E.estimate(family, p["params"]) for p in pts]
     out["flash"] = [[r["dimensionless_value"] for r in x["results"]] for x in flash]
     out["flash_error_pct"] = [[r["error_pct"] for r in x["results"]] for x in flash]
     b = json.dumps(out, sort_keys=True).encode("utf-8")
@@ -98,11 +109,11 @@ def plan():
     print("frozen", len(pts), "points, sha256", hashlib.sha256(b).hexdigest())
 
 
-def job(key: str, p: dict) -> dict:
+def job(family: str, key: str, p: dict) -> dict:
     os.environ.setdefault("NOVASTUDIO_MCP_NO_IMAGES", "1")
     import build
     import core
-    fam = importlib.import_module(FAMILY)
+    fam = importlib.import_module(family)
     lv = getattr(fam, "LEVELS", build.LEVELS)
     try:
         s = core.solve(fam, p, lv["standard"])
@@ -111,7 +122,8 @@ def job(key: str, p: dict) -> dict:
         return {"key": key, "status": "failed", "error": f"{type(e).__name__}: {e}"[:400]}
 
 
-def solve(workers: int):
+def solve(family: str, workers: int):
+    OUT = out_dir(family)
     from novastudio import __version__
     pred = json.loads((OUT / "predictions.json").read_text(encoding="utf-8"))
     os.environ.setdefault("NOVASTUDIO_WORKSPACE", str(OUT / "_work"))
@@ -121,7 +133,7 @@ def solve(workers: int):
     todo = [p for p in pred["points"] if p["key"] not in done]
     print(f"studio {__version__}: {len(todo)} to solve", flush=True)
     with ProcessPoolExecutor(workers) as ex, log.open("a", encoding="utf-8") as f:
-        futs = [ex.submit(job, p["key"], p["params"]) for p in todo]
+        futs = [ex.submit(job, family, p["key"], p["params"]) for p in todo]
         for k, fut in enumerate(as_completed(futs), 1):
             r = fut.result()
             f.write(json.dumps(r) + "\n")
@@ -129,9 +141,10 @@ def solve(workers: int):
             print(f"[{k}/{len(todo)}] {r['key']} {r['status']} {r.get('standard', {}).get('wall_s', r.get('error'))}", flush=True)
 
 
-def score():
+def score(family: str):
     import compare_surrogates as cs
-    fam = importlib.import_module(FAMILY)
+    OUT = out_dir(family)
+    fam = importlib.import_module(family)
     pred = json.loads((OUT / "predictions.json").read_text(encoding="utf-8"))
     print("predictions sha256", hashlib.sha256((OUT / "predictions.json").read_bytes()).hexdigest())
     got = {}
@@ -141,12 +154,9 @@ def score():
     pts = pred["points"]
     failed = [p["key"] for p in pts if got.get(p["key"], {}).get("status") != "ok"]
     print("failed or missing:", failed)
-    D = cs.load(FAMILY)
+    D = cs.load(family)
     res = {"failed": failed, "q": {}}
-    rows = {}
-    for line in (HERE / "out" / FAMILY / "points.jsonl").read_text(encoding="utf-8").splitlines():
-        r = json.loads(line)
-        rows[r["id"]] = r
+    rows = solved_rows(family)
     print("--- reruns of dataset points: relative change against the stored answer")
     for p in pts:
         if p["kind"] == "rerun" and p["key"] not in failed:
@@ -156,7 +166,7 @@ def score():
     names = D["names"]
     for qi, q in enumerate(D["q"]):
         name, nd_key = q["name"], fam.QUANTITIES[qi]
-        ref = cs.SHAPES[FAMILY]["out"][qi][3]
+        ref = cs.SHAPES[family]["out"][qi][3] or (lambda x: 1.0)
         ly = np.array([np.log(got[p["key"]]["nd"][nd_key]) if p["key"] not in failed else np.nan for p in pts])
         lnorm = np.array([np.log(ref(dict(zip(names, [p["params"][k] for k in names])))) for p in pts])
         band = np.array(pred["pred"][name]["mesh_band"])
@@ -200,7 +210,8 @@ def score():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
+    ap.add_argument("family")
     ap.add_argument("cmd", choices=("plan", "solve", "score"))
     ap.add_argument("--workers", type=int, default=3)
     a = ap.parse_args()
-    {"plan": plan, "solve": lambda: solve(a.workers), "score": score}[a.cmd]()
+    {"plan": lambda: plan(a.family), "solve": lambda: solve(a.family, a.workers), "score": lambda: score(a.family)}[a.cmd]()

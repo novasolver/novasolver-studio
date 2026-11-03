@@ -1,9 +1,10 @@
 """Instant answers for standard shapes, looked up from solved points instead of solved anew (milliseconds, no mesh).
 
 Every point in estimate_data/ was solved by Studio and checked (three-mesh study, CalculiX, similarity on subsets; see
-dataset/ in the source tree). Between points the answer comes from one smooth fit: a thin-plate spline on the log of
-answer / hand formula. Its error is measured by leaving each point out in turn (Rippa's formula, 95th percentile) and
-added to the mesh error bar of the nearest points. Same method as novasolver.jp/studio/verified/ (explore.js).
+dataset/ in the source tree). Between points the answer comes from a Gaussian process on the log of answer / hand formula
+(surrogate.Fit, settings learned ahead of time by dataset/flash_hyper.py). Its bar is the larger of the left-out 95th
+percentile and the process's own sigma stretched to reach 95 % on left-out points, so it widens where the points are far,
+and is added to the mesh error bar of the nearest points. Same method as novasolver.jp/studio/verified/ (explore.js).
 Outside the solved ranges it refuses: there is no data there to say how wrong a guess would be."""
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from .store import StudioError
+from .surrogate import NOISE_FLOOR, Fit
 
 DATA = Path(__file__).parent / "estimate_data"
 PAGE = "https://novasolver.jp/en/studio/verified/"
@@ -77,10 +79,6 @@ SHAPES = {
 }
 
 
-def _tps(r2: np.ndarray) -> np.ndarray:
-    return 0.5 * r2 * np.log(np.where(r2 > 0, r2, 1.0))
-
-
 @lru_cache(maxsize=None)
 def _space(shape: str) -> dict:
     d = json.loads((DATA / f"{shape}.json").read_text(encoding="utf-8"))
@@ -92,29 +90,14 @@ def _space(shape: str) -> dict:
     X = np.array([r[1:1 + np_] for r in pts], float)
     U = (X - lo) / (hi - lo)
     n, dim = U.shape
-    R2 = ((U[:, None, :] - U[None, :, :]) ** 2).sum(-1)
-    M = np.zeros((n + dim + 1, n + dim + 1))
-    M[:n, :n] = _tps(R2) + 1e-6 * np.eye(n)                     # the dataset fit's smoothing
-    M[:n, n] = M[n, :n] = 1
-    M[:n, n + 1:] = U
-    M[n + 1:, :n] = U.T
-    Mi = np.linalg.inv(M)
     xs = [dict(zip(names, row)) for row in X]
     qs = []
     for i, (*_, ref, _f) in enumerate(SHAPES[shape]["out"]):
         y = np.array([r[1 + np_ + 2 * i] for r in pts], float)
-        norm = np.array([ref(x) for x in xs]) if ref else np.ones(n)
-        c = Mi[:, :n] @ np.log(y / norm)
-        loo = np.abs(c[:n] / np.diag(Mi)[:n])                   # Rippa: the left-out residual without refitting
-        qs.append({"y": y, "c": c, "band": np.array([r[2 + np_ + 2 * i] for r in pts], float),
-                   "loo": float(math.expm1(np.sort(loo)[min(n - 1, int(0.95 * n))]))})
+        norm = np.array([ref(x) for x in xs]) if ref else np.ones(len(pts))
+        qs.append({"y": y, "fit": Fit(U, np.log(y / norm), NOISE_FLOOR, d["gp"][i] if "gp" in d else None),
+                   "band": np.array([r[2 + np_ + 2 * i] for r in pts], float)})
     return {"names": names, "lo": lo, "hi": hi, "U": U, "ids": [r[0] for r in pts], "X": X, "checks": [r[-1] for r in pts], "q": qs}
-
-
-def _value(sp: dict, q: dict, u: np.ndarray) -> float:
-    r2 = ((sp["U"] - u) ** 2).sum(1)
-    n, dim = sp["U"].shape
-    return float(q["c"][:n] @ _tps(r2) + q["c"][n] + q["c"][n + 1:n + 1 + dim] @ u)
 
 
 def _number(v, name: str) -> float:
@@ -161,8 +144,9 @@ def estimate(shape: str, ratios: dict, size: dict | None = None) -> dict:
     out = []
     for (name, sym, unit, ref, dim), q in zip(spec["out"], sp["q"]):
         mesh = float(q["band"][near[0]]) if exact else float((w * q["band"][near]).sum() / w.sum())
-        interp = 0.0 if exact else q["loo"]
-        v = float(q["y"][near[0]]) if exact else math.exp(_value(sp, q, u)) * (ref(x) if ref else 1.0)
+        mean, bar = (float(q["y"][near[0]]), 0.0) if exact else (float(a[0]) for a in q["fit"].predict(u))
+        interp = math.expm1(bar)
+        v = mean if exact else math.exp(mean) * (ref(x) if ref else 1.0)
         row = {"name": name, "dimensionless": sym, "dimensionless_value": v, "error_pct": 100 * (mesh + interp),
                "mesh_error_pct": 100 * mesh, "interpolation_error_pct": 100 * interp}
         if I:

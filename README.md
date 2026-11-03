@@ -31,9 +31,10 @@ with a hand calculation. Real app, real numbers.*
   sweep, render). The AI fills a case schema; Studio writes the solver input. Your AI's edits appear live in the
   window, and you can undo them.
 - **Instant answers for your own case.** `build_surrogate` solves about 60 variants of a case in the background (loads, materials, template dimensions; a Gaussian process, checked on points held out of the fit). `surrogate_predict` then answers in milliseconds with an error bar for the interpolation, and refuses outside the ranges. An imported CAD shape has no dimensions to vary yet.
-- **NovaSolver Flash: answers in under a second, with an error bar.** For seven standard shapes, the `instant_estimate` tool looks up the peak stress or
-  deflection from 1,396 solved points, without a mesh or a solve. It gives the error bar and refuses outside the solved
-  ranges. [See the data](https://novasolver.jp/en/studio/verified/).
+- **NovaSolver Flash: answers in under a second, with an error bar.** For seven standard shapes, the `instant_estimate` tool predicts the peak stress or
+  deflection, including for dimensions never solved, from a Gaussian process fitted to 1,396 solved points. No mesh, no
+  solve. It gives the error bar and refuses outside the solved ranges. On 224 new solves it had never seen, 287 of 288
+  answers landed inside the bar. [See the data](https://novasolver.jp/en/studio/verified/).
 
 | | |
 |---|---|

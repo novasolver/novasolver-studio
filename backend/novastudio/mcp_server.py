@@ -538,8 +538,8 @@ async def print_check(case_id: str, strength_xy_mpa: float | None = None, streng
 @mcp.tool(annotations=RO)
 async def instant_estimate(shape: Literal["l_bracket", "plate_hole", "stepped_shaft", "grooved_shaft", "flat_shoulder", "thick_cylinder", "sphere_cavity"],
                            ratios: dict[str, float], size: dict[str, float] | None = None, language: Lang = "ja") -> CallToolResult:
-    """NovaSolver Flash: peak stress or deflection of a standard shape in milliseconds, looked up from points Studio solved and checked,
-    with an error bar (mesh + interpolation). No case, mesh or solve. Refuses outside the solved ranges.
+    """NovaSolver Flash: peak stress or deflection of a standard shape in milliseconds, from a Gaussian process fitted to points Studio solved and checked,
+    so dimensions never solved get an answer too, with an error bar (mesh + interpolation). No case, mesh or solve. Refuses outside the solved ranges.
     ratios by shape (nu may be left out: 0.3):
     l_bracket: h_over_L, t_over_L, w_over_L, r_over_t, nu; plate_hole: d_over_W, t_over_W, nu;
     stepped_shaft: D_over_d, r_over_h, nu; grooved_shaft: D_over_d, r_over_h, nu; flat_shoulder: D_over_d, r_over_h, t_over_d, nu;
@@ -557,7 +557,7 @@ async def instant_estimate(shape: Literal["l_bracket", "plate_hole", "stepped_sh
              + f"(mesh {q['mesh_error_pct']:.2g} %, interpolation {q['interpolation_error_pct']:.2g} %)" for q in r["results"]]
     how = "a solved point itself" if r["exact_point"] else "interpolated between solved points"
     s = (f"{r['title']}: " + "; ".join(lines) + f". {how.capitalize()}, {r['solved_points']} points in this shape's data.\n"
-         "No solve was run: this is a look-up for the standard shape and load, linear elastic. Run a case for any other "
+         "No solve was run: this is a fitted model of the standard shape and load, linear elastic. Run a case for any other "
          "shape, support or load. The error bar covers the numerics, not the real part or its material.")
     return _ok(s, r)
 
