@@ -26,6 +26,9 @@ electrostatics, DC current and Joule heating) on this computer.
 Workflow: list_templates -> create_case (or import_geometry for the user's CAD file) -> describe_case -> update_case (fill the schema) -> validate_case
 -> run_simulation(mode="preview") -> job_status until done -> get_results / verify_case -> render_view.
 To show a checked result at once, list_examples -> open_example (solved cases, no run needed).
+For a standard shape (L-bracket, plate with a hole, stepped or grooved shaft, flat bar with shoulders, thick cylinder,
+spherical cavity) inside the solved ranges, instant_estimate answers in milliseconds with an error bar, no case or mesh:
+use it first in a design loop, and run a case for the chosen design or for anything it does not cover.
 Read values at a point, along a line or over a face with probe_results. Design variants: clone_case, or run_sweep
 over one parameter, then compare_runs. For a 3D-printed part (PLA, PETG, ABS), print_check after a linear static run
 gives the safety factor for each print direction and the best one.
@@ -528,6 +531,33 @@ async def print_check(case_id: str, strength_xy_mpa: float | None = None, streng
          + "\n".join(lines)
          + f"\nPeak von Mises next to fixed faces (support artefact, not used): {r['support_peak_mpa']:.3g} MPa."
          + "\nScreening estimate for a solid print (100 % infill), not a certification.")
+    return _ok(s, r)
+
+
+@mcp.tool(annotations=RO)
+async def instant_estimate(shape: Literal["l_bracket", "plate_hole", "stepped_shaft", "grooved_shaft", "flat_shoulder", "thick_cylinder", "sphere_cavity"],
+                           ratios: dict[str, float], size: dict[str, float] | None = None, language: Lang = "ja") -> CallToolResult:
+    """Peak stress or deflection of a standard shape in milliseconds, looked up from points Studio solved and checked,
+    with an error bar (mesh + interpolation). No case, mesh or solve. Refuses outside the solved ranges.
+    ratios by shape (nu may be left out: 0.3):
+    l_bracket: h_over_L, t_over_L, w_over_L, r_over_t, nu; plate_hole: d_over_W, t_over_W, nu;
+    stepped_shaft: D_over_d, r_over_h, nu; grooved_shaft: D_over_d, r_over_h, nu; flat_shoulder: D_over_d, r_over_h, t_over_d, nu;
+    thick_cylinder: b_over_a, nu; sphere_cavity: a_over_R, nu.
+    size (optional; without it only the dimensionless answers come back):
+    l_bracket: L_mm, F_N, E_GPa; plate_hole: W_mm, F_N; stepped_shaft, grooved_shaft, flat_shoulder: d_mm, F_N;
+    thick_cylinder: p_MPa, a_mm, E_GPa; sphere_cavity: D_mm, F_N.
+    Linear elastic, the standard supports and load only. The error bar covers the numerics, not the real part."""
+    from . import estimate
+    r, e = await _call(estimate.estimate, language, shape, ratios, size)
+    if e:
+        return e
+    lines = [(f"{q['name']}: {q['value']:.4g} {q['unit']}, " if "value" in q else f"{q['name']}: ")
+             + f"{q['dimensionless']} = {q['dimensionless_value']:.4g} +- {q['error_pct']:.2g} % "
+             + f"(mesh {q['mesh_error_pct']:.2g} %, interpolation {q['interpolation_error_pct']:.2g} %)" for q in r["results"]]
+    how = "a solved point itself" if r["exact_point"] else "interpolated between solved points"
+    s = (f"{r['title']}: " + "; ".join(lines) + f". {how.capitalize()}, {r['solved_points']} points in this shape's data.\n"
+         "No solve was run: this is a look-up for the standard shape and load, linear elastic. Run a case for any other "
+         "shape, support or load. The error bar covers the numerics, not the real part or its material.")
     return _ok(s, r)
 
 

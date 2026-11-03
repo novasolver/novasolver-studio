@@ -149,6 +149,8 @@ def main():
                     t[f"{q}_recheck_diff"] = t[q] / v[q] - 1
                     band_q = t[f"{q}_band"] or 0.0
                     t[f"{q}_flag_resolved"] = bool(abs(t[f"{q}_recheck_diff"]) <= band_q)
+                    # the stated error can't be smaller than what the finer solve just showed at this very point
+                    t[f"{q}_band"] = max(band_q, 1.25 * abs(t[f"{q}_recheck_diff"]))
 
     # ---- direction checks (the operator's idea: the response must move the physically right way). Judged on the
     # partial slope, the others held: a smooth fit of all points (log space) is differentiated in one parameter at

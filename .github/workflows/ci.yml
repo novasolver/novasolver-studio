@@ -49,3 +49,31 @@ jobs:
         with:
           name: python-dist-${{ matrix.os }}
           path: dist-py/
+
+  # Every change re-solves the structural and thermal reference problems; the table goes on the run page.
+  accuracy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      LOCALAPPDATA: ${{ github.workspace }}/.tmp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y libglu1-mesa libgl1 libxrender1 libxcursor1 libxft2 libxinerama1 calculix-ccx
+      - run: python -m pip install -e ".[dev]"
+      - name: Solve the reference problems
+        run: python validation/suite.py --quick --out validation/results/ci.json
+      - name: Publish the table
+        if: always()
+        run: |
+          last=$(ls validation/results/[0-9]*.json | sort -V | tail -1)
+          python validation/ci_summary.py validation/results/ci.json --compare "$last" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: accuracy-results
+          path: validation/results/ci.json

@@ -33,3 +33,4 @@ web_demo/dist/
 # agent_eval logs (local paths, model transcripts)
 validation/results/agent_eval/
 dataset/out/
+validation/results/ci.json

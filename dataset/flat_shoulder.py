@@ -96,24 +96,29 @@ def fillet_arc(p: dict, scale: float, y: float, depth: float, n: int = 61) -> li
 
 
 def measure(C, cid: str, p: dict, scale: float, refine_key: str) -> dict:
-    """Peak first principal stress along the fillet at the mid-thickness and near the free face, each extrapolated to
-    the surface. The answer is the mid-thickness value (as in the plate with a hole)."""
+    """Peak first principal stress along the fillet near the mid-thickness and near the free face, each extrapolated to
+    the surface. The answer is the mid-thickness value (as in the plate with a hole). It is read as the mean of three
+    arcs just off the symmetry plane: an arc exactly on y = 0 can fall outside the mesh and pick up nearest-node values
+    (7 % low on one point), and a single arc carries about 1 % of mesh noise."""
     g = dims(p, scale)
-    ys = (0.0, 0.25 * g["t"], 0.49 * g["t"])
+    mid = (0.02, 0.06, 0.1)
+    ys = [f * g["t"] for f in mid + (0.25, 0.49)]
     arcs = [fillet_arc(p, scale, y, dp) for y in ys for dp in DEPTHS]
-    pr = C.probe_results(cid, [q for arc in arcs for q in arc], None, [refine_key], None, "en", 1, None)
-    s1 = [pt["values"]["s1"] for pt in pr["points"]]
+    pts = [pt for i in range(0, len(arcs), 4)
+           for pt in C.probe_results(cid, [q for arc in arcs[i:i + 4] for q in arc], None, [refine_key], None, "en", 1, None)["points"]]
+    s1 = [pt["values"]["s1"] for pt in pts]
     n = len(arcs[0])
     w = DEPTHS[0] / (DEPTHS[1] - DEPTHS[0])
     surf = []
     for j in range(len(ys)):
         a1, a2 = s1[2 * j * n:(2 * j + 1) * n], s1[(2 * j + 1) * n:(2 * j + 2) * n]
         surf.append([x + w * (x - y) for x, y in zip(a1, a2)])
-    k = max(range(n), key=surf[0].__getitem__)
-    end = [[g["D"] / 2 * f, g["t"] / 2 * h, g["Ls"] + g["Ll"]] for f in (0.1, 0.5, 0.9) for h in (0.0, 0.5, 1.0)]
+    centre = [sum(a[i] for a in surf[:len(mid)]) / len(mid) for i in range(n)]
+    k = max(range(n), key=centre.__getitem__)
+    end = [[g["D"] / 2 * f, g["t"] / 2 * h, g["Ls"] + g["Ll"]] for f in (0.1, 0.5, 0.9) for h in (0.05, 0.5, 0.95)]
     uz = [pt["values"]["uz"] for pt in C.probe_results(cid, end, None, None, None, "en", 1, None)["points"]]
-    return {"fillet_s1_mpa": surf[0][k], "fillet_s1_max_mpa": max(max(a) for a in surf),
-            "fillet_deg": round(90 * k / (n - 1), 1), "arc_inside": sum(pt["inside"] for pt in pr["points"]) / len(pr["points"]),
+    return {"fillet_s1_mpa": centre[k], "fillet_s1_max_mpa": max(centre[k], *(max(a) for a in surf[len(mid):])),
+            "fillet_deg": round(90 * k / (n - 1), 1), "arc_inside": sum(pt["inside"] for pt in pts) / len(pts),
             "end_uz_mm": sum(uz) / len(uz), "end_uz_spread": max(uz) - min(uz)}
 
 
