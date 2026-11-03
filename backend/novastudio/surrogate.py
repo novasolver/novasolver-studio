@@ -5,7 +5,8 @@ The model is a Gaussian process (Matern 5/2, one length scale per parameter, a l
 seven NovaSolver Flash data sets it beat the thin-plate spline, and dataset/blind_check.py confirmed it on new solves.
 The error bar is the larger of Flash's left-out 95th percentile and the process's own sigma stretched to reach 95 % on
 left-out points, so it widens where the data are far. It covers interpolation only: mesh error shows up separately, as
-the convergence studies run at a few design points. Outside the ranges it refuses.
+the convergence studies run at a few design points, reported for the mesh the model was trained on (the GCI alone
+describes the fine mesh). Outside the ranges it refuses.
 
 The builder is a detached process like a solver job, so it survives the AI client or the window closing, and every
 finished point is on disk, so a stopped or interrupted build resumes where it was."""
@@ -35,6 +36,8 @@ MAX_MESH_CHECKS = 5
 MAX_FAILED_SHARE = 0.2
 NOISE_FLOOR = 3e-5              # relative: below this the covariance is numerics and the bars collapse
 JOB_TIMEOUT_S = 6 * 3600
+RESUME_LOCK_S = 60
+FRACTION = 0.37123              # a value inside the ranges no whole-number field accepts
 SEED = 20261103
 DEFAULT_OUTPUTS = {
     "structural": ("max_vm_pa", "max_disp_m"), "thermal": ("t_max_k", "t_min_k", "q_in_w"), "modal": ("frequency_hz",),
@@ -44,9 +47,12 @@ DEFAULT_OUTPUTS = {
     "cavity_of": ("umin_center", "max_speed"), "channel_of": ("umax_outlet", "max_speed")}
 UNITS = {"pa": "Pa", "m": "m", "k": "K", "n": "N", "hz": "Hz", "w": "W", "a": "A", "ohm": "ohm", "f": "F", "j": "J",
          "m3s": "m3/s", "a_m2": "A/m2", "v_m": "V/m", "speed": "m/s"}
+NAMED_UNITS = {"umin_center": "m/s", "umax_outlet": "m/s"}     # no suffix to read the unit from
 
 
 def _unit(key: str) -> str:
+    if key in NAMED_UNITS:
+        return NAMED_UNITS[key]
     for suffix, unit in sorted(UNITS.items(), key=lambda kv: -len(kv[0])):
         if key.endswith("_" + suffix):
             return unit
@@ -225,6 +231,23 @@ def _spawn(d: Path) -> None:
     _state(d, state="running", pid=p.pid, pid_ctime=ctime, message=None)
 
 
+def _claim(d: Path) -> bool:
+    """One resume at a time: two builders on one study would solve the same points and delete the case under each other."""
+    lock = d / "resume.lock"
+    for _ in range(2):
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            return True
+        except (FileExistsError, PermissionError):
+            try:
+                if time.time() - lock.stat().st_mtime < RESUME_LOCK_S:
+                    return False
+                lock.unlink(missing_ok=True)       # left by a process that died holding it
+            except OSError:
+                pass
+    return False
+
+
 def _changes(study: dict, x) -> dict:
     return {p["path"]: ({"value": float(v), "unit": p["unit"]} if p.get("unit") else float(v))
             for p, v in zip(study["parameters"], x)}
@@ -262,16 +285,19 @@ def build(case_id: str, parameters: list[dict], outputs: list[str] | None = None
     if len({p["path"] for p in params}) != len(params):
         raise StudioError("err.surrogate_spec", 400, detail="each path once")
     spec = {"parameters": params}
-    # both ends of every range must at least be a valid case; a wrong path or unit fails here, not 60 solves later
-    made = []
+    # both ends of every range and a point between them must be valid cases; a wrong path, a unit or a whole-number field
+    # fails here, not 60 solves later. Warnings stay with the study: a load a modal solve ignores varies nothing.
+    made, setup_warnings = [], {}
     try:
-        for u in (0.0, 1.0):
+        for u in (0.0, 1.0, FRACTION):
             pl = C.clone_case(case_id, {**_changes(spec, [_value_at(p, u) for p in params]), **({"run.mode": mode} if mode else {})},
                               "surrogate range check", lang, source="ai")
             made.append(pl["case"]["case_id"])
-            items = [i["message"] for i in checks.run(store.load(made[-1]), lang) if i["level"] == "error"]
+            found = checks.run(store.load(made[-1]), lang)
+            items = [i["message"] for i in found if i["level"] == "error"]
             if items:
                 raise StudioError("err.blocked", 400, items=items)
+            setup_warnings.update({i["code"]: i["message"] for i in found if i["level"] == "warn"})
         frozen = C.clone_case(case_id, {"run.mode": mode} if mode else None, f"{base['title'][C.lang_of(lang)]} [surrogate base]", lang, source="ai")
     finally:
         for cid in made:
@@ -282,7 +308,7 @@ def build(case_id: str, parameters: list[dict], outputs: list[str] | None = None
     from . import __version__
     study = {"study_id": sid, "base_case": case_id, "base_revision": base["revision"], "frozen_case": frozen["case"]["case_id"],
              "title": base["title"][C.lang_of(lang)], "parameters": params, "outputs": outputs, "n": n, "hold": max(5, n // 10),
-             "mesh_checks": mesh_checks, "language": lang, "design": _design(n, len(params)).tolist(),
+             "mesh_checks": mesh_checks, "language": lang, "design": _design(n, len(params)).tolist(), "setup_warnings": setup_warnings,
              "created_at": time.time(), "studio_version": __version__}
     _write_json(d / "study.json", study)
     _write_json(d / "state.json", {"state": "starting", "pid": None, "pid_ctime": None, "updated_at": time.time()})
@@ -305,7 +331,7 @@ def status(study_id: str | None = None) -> dict:
         state = "interrupted"
     out = {"study_id": study_id, "title": st["title"], "state": state, "base_case": st["base_case"], "parameters": st["parameters"],
            "n": st["n"], "solved": len(ok), "failed": len(design) - len(ok), "message": sv.get("message"),
-           "mesh_checks_done": sum(p["kind"] == "mesh" for p in pts), "mesh_checks": st["mesh_checks"],
+           "mesh_checks_done": sum(p["kind"] == "mesh" for p in pts), "mesh_checks": st["mesh_checks"], "setup_warnings": st["setup_warnings"],
            "failures": [p.get("error") for p in design if p["status"] != "ok"][-3:]}
     if state == "running" and ok:
         out["eta_s"] = round(np.mean([p["wall_s"] for p in ok]) * (st["n"] - len(design) + st["mesh_checks"] * 3))
@@ -323,10 +349,15 @@ def control(study_id: str, action: str, confirm: str | None = None, lang: str = 
         (d / "STOP").write_text("1")
         return status(study_id)
     if action == "resume":
-        if sv["state"] in ("done",) or _alive(sv):
+        if not _claim(d):
             return status(study_id)
-        (d / "STOP").unlink(missing_ok=True)
-        _spawn(d)
+        try:
+            sv = _read(d / "state.json")           # as it is now that nobody else can start one
+            if sv["state"] != "done" and not _alive(sv):
+                (d / "STOP").unlink(missing_ok=True)
+                _spawn(d)
+        finally:
+            (d / "resume.lock").unlink(missing_ok=True)
         return status(study_id)
     if action == "delete":
         if confirm != study_id:
@@ -381,6 +412,10 @@ def predict(study_id: str, values: dict, outputs: list[str] | None = None) -> di
         if not p["min"] <= v <= p["max"]:
             raise StudioError("err.estimate_range", 400, name=p["path"], value=v, lo=p["min"], hi=p["max"])
         u.append((v - p["min"]) / (p["max"] - p["min"]))
+    available = [o["key"] for o in m["outputs"]]
+    unknown = sorted(set(outputs or ()) - set(available))
+    if unknown:
+        raise StudioError("err.surrogate_outputs", 400, names=", ".join(unknown), available=", ".join(available))
     rows = []
     for o in m["outputs"]:
         if outputs and o["key"] not in outputs:
@@ -430,9 +465,11 @@ def _solve(d: Path, study: dict, x, title: str, convergence: bool = False) -> di
     _state(d, current_case=cid)
     try:
         case = store.load(cid)
-        items = [i["message"] for i in checks.run(case, lang) if i["level"] == "error"]
+        found = checks.run(case, lang)
+        items = [i["message"] for i in found if i["level"] == "error"]
         if items:
             raise RuntimeError("; ".join(items))
+        ready_warnings = {i["code"] for i in found if i["level"] == "warn"}
         t0 = time.time()
         job = jobs.start(case, case["run"]["mode"], checks.engine_for(case), **({"study": "convergence"} if convergence else {}))["job_id"]
         end = t0 + JOB_TIMEOUT_S
@@ -449,9 +486,24 @@ def _solve(d: Path, study: dict, x, title: str, convergence: bool = False) -> di
         if not pay["gates"]["converged"]:
             return {"status": "failed", "error": "not converged"}
         return {"status": "ok", "metrics": _numbers(raw["metrics"]), "result_kind": raw["kind"], "wall_s": round(time.time() - t0, 2),
-                "warnings": sorted({w["code"] for w in pay["warnings"]}), "convergence": pay["convergence"]}
+                "warnings": sorted(ready_warnings | {w["code"] for w in pay["warnings"]}), "convergence": pay["convergence"],
+                "mesh_size": case["mesh"]["size"]}
     finally:
         _drop(cid, lang)
+
+
+def training_error(conv: dict, size: str) -> float | None:
+    """How far the mesh the model learned from sits from the best estimate of that study, in percent. The GCI describes
+    the fine mesh, and training usually runs on normal. None when there is nothing better than that mesh to compare with."""
+    levels = {l["size"]: l["value"] for l in conv["levels"]}
+    ref = conv.get("extrapolated")
+    if ref is None:
+        ref = conv["levels"][-1]["value"]
+        if conv["levels"][-1]["size"] == size:
+            return None
+    if size not in levels or ref == 0:
+        return None
+    return abs(levels[size] - ref) / abs(ref) * 100
 
 
 def _append(d: Path, row: dict) -> None:
@@ -484,11 +536,13 @@ def _finish_model(d: Path, study: dict) -> None:
     if not checks_:
         warn.append("mesh_unchecked")
     gci = [p["gci_pct"] for p in checks_ if p.get("gci_pct") is not None]
+    trained = [p["training_error_pct"] for p in checks_ if p.get("training_error_pct") is not None]
     model = {"study_id": study["study_id"], "title": study["title"], "base_case": study["base_case"], "base_revision": study["base_revision"],
              "studio_version": study["studio_version"], "built_at": time.time(), "parameters": study["parameters"], "U": U, "outputs": outs,
              "warnings": warn, "failed_points": failed,
              "mesh": {"checks": len(checks_), "quantity": next((p.get("gci_quantity") for p in checks_), None),
-                      "gci_max_pct": max(gci) if gci else None, "passed": sum(bool(p.get("mesh_pass")) for p in checks_)}}
+                      "gci_max_pct": max(gci) if gci else None, "passed": sum(bool(p.get("mesh_pass")) for p in checks_),
+                      "training_size": ok[0].get("mesh_size"), "training_error_max_pct": max(trained) if trained else None}}
     _write_json(d / "model.json", model)
 
 
@@ -535,7 +589,8 @@ def main(folder: str) -> None:
                 return
             v = r.get("convergence") or {}
             _append(d, {"kind": "mesh", "i": i, "x": x, "status": r["status"], "error": r.get("error"), "gci_pct": v.get("gci_pct"),
-                        "gci_quantity": v.get("label"), "mesh_pass": bool(v.get("pass"))})
+                        "gci_quantity": v.get("label"), "mesh_pass": bool(v.get("pass")),
+                        "training_error_pct": training_error(v, r["mesh_size"]) if v else None})
         if not any(p["kind"] == "design" and p["status"] == "ok" for p in _points(d)):
             _state(d, state="failed", pid=None, message="no point was solved")
             return

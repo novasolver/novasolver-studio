@@ -657,17 +657,26 @@ async def run_sweep(case_id: str, path: str, values: list[Any], mode: Literal["p
                f"then compare_runs.", r)
 
 
+def _surrogate_mesh(m: dict) -> str:
+    if m["gci_max_pct"] is None:
+        return "Mesh error unchecked."
+    trained = f"The {m['training_size']} mesh the model learned from is up to {m['training_error_max_pct']:.2g} % from the extrapolated value; " if m["training_error_max_pct"] is not None else ""
+    return f"Mesh check at {m['checks']} points ({m['quantity']}): {trained}largest GCI of the fine mesh {m['gci_max_pct']:.2g} %."
+
+
 def _surrogate_summary(r: dict) -> str:
     s = f"{r['study_id']} {r['title']}: {r['state']}, {r['solved']}/{r['n']} solved, {r['failed']} failed, mesh checks {r['mesh_checks_done']}/{r['mesh_checks']}."
     if r.get("eta_s") is not None:
         s += f" About {r['eta_s']} s left."
     if r.get("message"):
         s += f" {r['message']}"
+    for w in r["setup_warnings"].values():
+        s += f"\nWarning: {w}"
     for o in (r.get("model") or {}).get("outputs", []):
         h = o.get("holdout")
         s += f"\n{o['key']} [{o['unit']}]: " + (f"{h['inside']}/{h['points']} held-out points inside the bar. " if h else "")
     if r.get("model"):
-        s += f"\nWarnings: {', '.join(r['model']['warnings']) or 'none'}. The error bars cover interpolation only, not mesh error, the material or the real part."
+        s += f"\nWarnings: {', '.join(r['model']['warnings']) or 'none'}. The error bars cover interpolation only, not mesh error, the material or the real part. {_surrogate_mesh(r['model']['mesh'])}"
     return s
 
 
@@ -706,9 +715,7 @@ async def surrogate_predict(study_id: str, values: dict[str, float], outputs: li
     if e:
         return e
     fmt = lambda q: f"{q['key']}: {q['value']:.5g} {q['unit']} +- " + (f"{q['error_pct']:.2g} %" if "error_pct" in q else f"{q['error_abs']:.3g} {q['unit']}")
-    m = r["mesh"]
-    mesh = f"Mesh check at {m['checks']} points: largest GCI {m['gci_max_pct']:.2g} % ({m['quantity']})." if m["gci_max_pct"] is not None else "Mesh error unchecked."
-    return _ok("; ".join(fmt(q) for q in r["results"]) + f". Interpolated between {r['solved_points']} solved variants, no solve was run. {mesh}"
+    return _ok("; ".join(fmt(q) for q in r["results"]) + f". Interpolated between {r['solved_points']} solved variants, no solve was run. {_surrogate_mesh(r['mesh'])}"
                + (f" Warnings: {', '.join(r['warnings'])}." if r["warnings"] else ""), r)
 
 

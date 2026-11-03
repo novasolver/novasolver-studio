@@ -3,8 +3,12 @@ import asyncio
 import json
 import math
 import os
+import secrets
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+import psutil
 import pytest
 
 from novastudio import commands as C, jobs, mcp_server, store, surrogate as S
@@ -76,6 +80,88 @@ def test_units_from_the_metric_name():
     assert [S._unit(k) for k in ("max_vm_pa", "max_disp_m", "t_max_k", "flow_rate_m3s", "j_max_a_m2", "cd")] == ["Pa", "m", "K", "m3/s", "A/m2", "-"]
 
 
+def test_every_default_output_has_its_unit():
+    """umin_center and umax_outlet are velocities with no suffix to read it from; only the drag coefficient has no unit."""
+    assert S._unit("umin_center") == S._unit("umax_outlet") == "m/s"
+    assert [k for keys in S.DEFAULT_OUTPUTS.values() for k in keys if S._unit(k) == "-"] == ["cd"]
+
+
+def test_mesh_error_is_for_the_mesh_the_model_learned_from():
+    """112, 103, 100 extrapolate to 98.5: the fine mesh's GCI is 1.875 %, but a model trained on normal is off by 4.57 %."""
+    conv = {"levels": [{"size": "coarse", "value": 112.0}, {"size": "normal", "value": 103.0}, {"size": "fine", "value": 100.0}],
+            "extrapolated": 98.5, "gci_pct": 1.875}
+    assert S.training_error(conv, "normal") == pytest.approx(4.5685, abs=1e-3)
+    assert S.training_error(conv, "fine") == pytest.approx(1.5228, abs=1e-3)
+    no_ext = {**conv, "extrapolated": None}
+    assert S.training_error(no_ext, "normal") == pytest.approx(3.0)
+    assert S.training_error(no_ext, "fine") is None
+
+
+def test_a_load_a_modal_solve_ignores_is_reported_at_the_start_and_in_every_point(tmp_path):
+    cid = C.create_case("cantilever-modal", None, lang="en")["case"]["case_id"]
+    C.update_case(cid, store.load(cid)["revision"], {"boundaries.x1.role": "load", "boundaries.x1.force": "100 N", "boundaries.x1.direction": "-y"}, "en", source="ai")
+    r = S.build(cid, [{"path": "boundaries.x1.force", "min": 100, "max": 200, "unit": "N"}], None, 20, 0, None, "en")
+    try:
+        assert "modal_loads_ignored" in r["setup_warnings"] and r["setup_warnings"]["modal_loads_ignored"]
+        text = asyncio.run(mcp_server.surrogate_status(r["study_id"], "en")).content[0].text
+        assert r["setup_warnings"]["modal_loads_ignored"] in text
+    finally:
+        S.control(r["study_id"], "delete", r["study_id"], "en")
+    (tmp_path / "state.json").write_text("{}", encoding="utf-8")
+    study = {"frozen_case": cid, "language": "en", "parameters": [{"path": "boundaries.x1.force", "unit": "N"}]}
+    p = S._solve(tmp_path, study, [150.0], "modal point")
+    assert p["status"] == "ok" and "modal_loads_ignored" in p["warnings"]
+
+
+def test_a_whole_number_field_is_refused_before_anything_starts():
+    """Both ends of physics.modes are valid; the first design point, 1.54 modes, is not."""
+    cid = C.create_case("cantilever-modal", None, lang="en")["case"]["case_id"]
+    before = set(p.name for p in store.cases_dir().iterdir())
+    with pytest.raises(StudioError):
+        S.build(cid, [{"path": "physics.modes", "min": 1, "max": 3}], None, 20, 0, None, "en")
+    assert set(p.name for p in store.cases_dir().iterdir()) == before
+
+
+def fake_study(state):
+    sid = "s_" + secrets.token_hex(4)
+    d = S.studies_dir() / sid
+    d.mkdir(parents=True)
+    (d / "study.json").write_text(json.dumps({"title": "t", "base_case": "c", "parameters": [], "n": 20, "mesh_checks": 0,
+                                              "setup_warnings": {}}), encoding="utf-8")
+    (d / "state.json").write_text(json.dumps({"state": state, "pid": None, "pid_ctime": None}), encoding="utf-8")
+    return sid, d
+
+
+def test_simultaneous_resumes_start_one_builder(monkeypatch):
+    sid, d = fake_study("stopped")
+    started = []
+
+    def spawn(folder):
+        started.append(folder)
+        time.sleep(0.2)
+        S._state(folder, state="running", pid=os.getpid(), pid_ctime=psutil.Process().create_time())
+
+    monkeypatch.setattr(S, "_spawn", spawn)
+    with ThreadPoolExecutor(8) as ex:
+        list(ex.map(lambda _: S.control(sid, "resume"), range(8)))
+    assert len(started) == 1 and not (d / "resume.lock").exists()
+    S.control(sid, "resume")
+    assert len(started) == 1
+
+
+def test_a_lock_left_by_a_dead_process_does_not_block_resume(monkeypatch):
+    sid, d = fake_study("stopped")
+    started = []
+    monkeypatch.setattr(S, "_spawn", started.append)
+    (d / "resume.lock").touch()
+    S.control(sid, "resume")
+    assert not started                                              # someone may still be starting it
+    old = time.time() - 2 * S.RESUME_LOCK_S
+    os.utime(d / "resume.lock", (old, old))
+    S.control(sid, "resume")
+    assert started == [d] and not (d / "resume.lock").exists()
+
+
 def test_constant_output_does_not_break_the_fit():
     U = design(30, 2)
     r = S.fit_output("reaction_n", U, np.full(30, 1000.0), 5)
@@ -117,7 +203,6 @@ def test_unknown_study():
 
 
 def wait_state(sid, states, seconds=900):
-    import time
     end = time.time() + seconds
     while time.time() < end:
         s = S.status(sid)
@@ -136,7 +221,6 @@ def built():
               {"path": "boundaries.x1.force", "min": 500, "max": 2000, "unit": "N"}]
     r = S.build(cid, params, None, 24, 1, None, "en")
     sid = r["study_id"]
-    import time
     end = time.time() + 300
     while S.status(sid)["solved"] < 2 and time.time() < end:
         time.sleep(0.5)
@@ -181,6 +265,7 @@ def test_flags_too_few_points_and_reports_the_mesh_check(built):
     assert "few_points" in done["model"]["warnings"]
     mesh = done["model"]["mesh"]
     assert done["mesh_checks_done"] == 1 and mesh["checks"] == 1 and mesh["gci_max_pct"] > 0
+    assert mesh["training_size"] == "normal" and mesh["training_error_max_pct"] > 0
     assert "beam theory" not in mesh["quantity"]                    # the mesh study itself, not the template's reference
     for o in done["model"]["outputs"]:
         assert o["holdout"]["points"] == 4 and "bar_95" in o
@@ -202,12 +287,21 @@ def test_mcp_tools_say_what_the_bar_covers(built):
     _, sid, _, _ = built
     v = {"geometry.params.length": 200, "geometry.params.height": 20, "boundaries.x1.force": 1000}
     r = asyncio.run(mcp_server.surrogate_predict(sid, v, None, "en"))
-    assert not r.is_error and "no solve was run" in r.content[0].text and "GCI" in r.content[0].text
+    assert not r.is_error and "no solve was run" in r.content[0].text and "GCI" in r.content[0].text and "normal mesh" in r.content[0].text
     st = asyncio.run(mcp_server.surrogate_status(sid, "en"))
     assert "interpolation only" in st.content[0].text
     assert not asyncio.run(mcp_server.surrogate_status(None, "en")).is_error
     bad = asyncio.run(mcp_server.surrogate_predict(sid, {**v, "geometry.params.length": 9999}, None, "en"))
     assert bad.is_error and "300" in bad.content[0].text
+
+
+def test_an_output_it_does_not_have_is_an_error(built):
+    _, sid, _, _ = built
+    v = {"geometry.params.length": 200, "geometry.params.height": 20, "boundaries.x1.force": 1000}
+    with pytest.raises(StudioError) as e:
+        S.predict(sid, v, ["max_vm_mpa", "max_vm_pa"])
+    assert e.value.key == "err.surrogate_outputs" and "max_vm_mpa" in e.value.kw["names"] and "max_vm_pa" in e.value.kw["available"]
+    assert [q["key"] for q in S.predict(sid, v, ["max_vm_pa"])["results"]] == ["max_vm_pa"]
 
 
 def test_a_model_is_portable_numbers_only(built):
@@ -217,7 +311,6 @@ def test_a_model_is_portable_numbers_only(built):
 
 
 def test_answer_is_fast(built):
-    import time
     _, sid, _, _ = built
     v = {"geometry.params.length": 200, "geometry.params.height": 20, "boundaries.x1.force": 1000}
     S.predict(sid, v)
