@@ -115,5 +115,7 @@ def test_titles_say_what_was_actually_solved():
 
 
 def test_the_desktop_build_bundles_the_data():
-    build = (Path(__file__).parents[2] / "build_release.ps1").read_text(encoding="utf-8")
+    path = Path(__file__).parents[2] / "build_release.ps1"
+    assert path.read_bytes().startswith(b"\xef\xbb\xbf")               # Windows PowerShell misreads its Japanese text without a BOM
+    build = path.read_text(encoding="utf-8")
     assert "novastudio\\estimate_data;novastudio\\estimate_data" in build

@@ -1,4 +1,4 @@
-# Build the portable Windows release: release/NovaSolverStudio-<version>-win64.zip (+ .sha256)
+﻿# Build the portable Windows release: release/NovaSolverStudio-<version>-win64.zip (+ .sha256)
 # Usage:  powershell -ExecutionPolicy Bypass -File build_release.ps1 [-SkipFrontend] [-Stage all|app|package]
 #   app      build the program folder only (build\dist\NovaSolverStudio): CI signs the exe in between
 #   package  zip + installer from that folder (after signing)
