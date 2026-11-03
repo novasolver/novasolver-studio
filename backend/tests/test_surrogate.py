@@ -113,6 +113,23 @@ def test_a_load_a_modal_solve_ignores_is_reported_at_the_start_and_in_every_poin
     assert p["status"] == "ok" and "modal_loads_ignored" in p["warnings"]
 
 
+def test_a_design_of_one_repeated_point_is_refused(monkeypatch):
+    """Sobol without its data file returns the same point every time; the model then looks perfect and answers wrongly."""
+    from scipy.stats import qmc
+
+    class Stuck:
+        def __init__(self, d, **_):
+            self.d = d
+
+        def random(self, n):
+            return np.full((n, self.d), 0.27)
+
+    assert len(np.unique(S._design(20, 3)[:, 2])) == 20
+    monkeypatch.setattr(qmc, "Sobol", Stuck)
+    with pytest.raises(StudioError):
+        S._design(20, 3)
+
+
 def test_a_whole_number_field_is_refused_before_anything_starts():
     """Both ends of physics.modes are valid; the first design point, 1.54 modes, is not."""
     cid = C.create_case("cantilever-modal", None, lang="en")["case"]["case_id"]

@@ -27,7 +27,7 @@ Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
     --paths (Join-Path $root "backend") `
     --collect-all gmsh --collect-all pymeshlab --collect-submodules novastudio --collect-submodules uvicorn `
     --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp.types --collect-submodules mcp_types --exclude-module mcp.cli `
-    --collect-submodules pyamg --copy-metadata pyamg --hidden-import scipy.sparse.linalg --hidden-import matplotlib.backends.backend_agg `
+    --collect-submodules pyamg --copy-metadata pyamg --collect-data scipy.stats --hidden-import scipy.sparse.linalg --hidden-import matplotlib.backends.backend_agg `
     --add-data "$root\backend\novastudio\i18n;novastudio\i18n" `
     --add-data "$root\backend\novastudio\estimate_data;novastudio\estimate_data" `
     --add-data "$root\frontend\dist;frontend\dist" `

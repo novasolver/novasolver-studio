@@ -261,7 +261,11 @@ def _design(n: int, dim: int) -> np.ndarray:
     from scipy.stats import qmc
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")            # a Sobol run that is not a power of two: fine for this use
-        return qmc.Sobol(d=dim, scramble=True, seed=SEED).random(n)
+        u = qmc.Sobol(d=dim, scramble=True, seed=SEED).random(n)
+    # without its data file scipy prints a note and returns the same point n times, and a model of one point looks perfect
+    if any(len(np.unique(u[:, k])) < n for k in range(dim)):
+        raise StudioError("err.surrogate_spec", 500, detail="the sampling plan repeated points")
+    return u
 
 
 def build(case_id: str, parameters: list[dict], outputs: list[str] | None = None, n: int | None = None,

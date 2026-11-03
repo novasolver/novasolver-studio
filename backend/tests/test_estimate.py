@@ -136,5 +136,6 @@ def test_the_desktop_build_bundles_the_data():
     assert path.read_bytes().startswith(b"\xef\xbb\xbf")               # Windows PowerShell misreads its Japanese text without a BOM
     build = path.read_text(encoding="utf-8")
     assert "novastudio\\estimate_data;novastudio\\estimate_data" in build
+    assert "--collect-data scipy.stats" in build                       # Sobol's data file: without it every design point is the same
     assert "--copy-metadata pyamg" in build                            # without it every solve above the direct limit fails, only in the exe
     assert "tools/smoke_exe.py" in (path.parent / ".github" / "workflows" / "release-windows.yml").read_text(encoding="utf-8")

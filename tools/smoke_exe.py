@@ -1,10 +1,12 @@
 """Exercise the built exe over MCP in a private workspace: models above the direct-solver limit, which need the bundled AMG
-(a package missing from the bundle shows only here, never from source), and a surrogate build through the frozen worker.
+(a package missing from the bundle shows only here, never from source), Flash, and a surrogate build through the frozen
+worker whose answers must scale as the physics says.
 
     python tools/smoke_exe.py build/dist/NovaSolverStudio/NovaSolverStudio.exe"""
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -50,6 +52,8 @@ async def check(exe: str, folder: str) -> None:
                 assert sc.get("done") or sc["state"] == "done", (template, sc)
                 print(f"{template} fine mesh: solved in {time.time() - t0:.0f} s", flush=True)
 
+            flash = await call("instant_estimate", shape="plate_hole", ratios={"d_over_W": 0.3, "t_over_W": 0.2})
+            print(flash.content[0].text[:200], flush=True)
             t0 = time.time()
             built = await call("build_surrogate", case_id=await new_case("cantilever"),
                                parameters=[{"path": "boundaries.x1.force", "min": 500, "max": 2000, "unit": "N"}], n=20, mesh_checks=1)
@@ -66,6 +70,17 @@ async def check(exe: str, folder: str) -> None:
             answer = await call("surrogate_predict", study_id=sid, values={"boundaries.x1.force": 1000})
             print(answer.content[0].text, flush=True)
             assert "normal mesh" in answer.content[0].text
+            study = os.path.join(env["NOVASTUDIO_WORKSPACE"], "surrogates", sid)
+            with open(os.path.join(study, "study.json"), encoding="utf-8") as f:
+                design = json.load(f)["design"]
+            assert len({tuple(u) for u in design}) == len(design), "the design repeats points"
+            with open(os.path.join(study, "worker.log"), encoding="utf-8", errors="replace") as f:
+                log = f.read()
+            assert "Traceback" not in log and "Exception ignored" not in log, log[-1500:]
+            low, high = [(await call("surrogate_predict", study_id=sid, values={"boundaries.x1.force": v})).structured_content["results"]
+                         for v in (500, 2000)]
+            for a, b in zip(low, high):                                 # small-strain beam: four times the load, four times the answer
+                assert abs(b["value"] / a["value"] / 4 - 1) < 0.02, (a, b)
 
 
 def main() -> None:
