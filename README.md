@@ -30,7 +30,7 @@ with a hand calculation. Real app, real numbers.*
 - **Typed MCP tools, no shell.** 31 tools (create/import, set conditions, mesh, run, convergence, verify, probe,
   sweep, render). The AI fills a case schema; Studio writes the solver input. Your AI's edits appear live in the
   window, and you can undo them.
-- **Instant answers with an error bar.** For seven standard shapes, `instant_estimate` looks up the peak stress or
+- **NovaSolver Flash: answers in under a second, with an error bar.** For seven standard shapes, the `instant_estimate` tool looks up the peak stress or
   deflection from 1,396 solved points, without a mesh or a solve. It gives the error bar and refuses outside the solved
   ranges. [See the data](https://novasolver.jp/en/studio/verified/).
 
@@ -188,6 +188,9 @@ Hで選択した面を隠し、Alt+Hですべて表示。Ctrl+ドラッグで矩
 
 GPL-3.0 — see [`LICENSE`](LICENSE). Programs called by Studio keep their own licenses — see
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+The license covers the code, not the name. If you distribute a modified version, please give it a different name and
+do not present it as NovaSolver Studio or NovaSolver Flash.
 
 This offering is not approved or endorsed by OpenCFD Limited, producer and distributor of the OpenFOAM software via
 www.openfoam.com, and owner of the OPENFOAM® and OpenCFD® trade marks.

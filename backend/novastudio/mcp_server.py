@@ -537,7 +537,7 @@ async def print_check(case_id: str, strength_xy_mpa: float | None = None, streng
 @mcp.tool(annotations=RO)
 async def instant_estimate(shape: Literal["l_bracket", "plate_hole", "stepped_shaft", "grooved_shaft", "flat_shoulder", "thick_cylinder", "sphere_cavity"],
                            ratios: dict[str, float], size: dict[str, float] | None = None, language: Lang = "ja") -> CallToolResult:
-    """Peak stress or deflection of a standard shape in milliseconds, looked up from points Studio solved and checked,
+    """NovaSolver Flash: peak stress or deflection of a standard shape in milliseconds, looked up from points Studio solved and checked,
     with an error bar (mesh + interpolation). No case, mesh or solve. Refuses outside the solved ranges.
     ratios by shape (nu may be left out: 0.3):
     l_bracket: h_over_L, t_over_L, w_over_L, r_over_t, nu; plate_hole: d_over_W, t_over_W, nu;
