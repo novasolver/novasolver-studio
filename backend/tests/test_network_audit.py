@@ -13,6 +13,8 @@ ALLOWED = {
     "updates.py": {"urllib.request"},          # signed update notice and the release zip (GitHub / novasolver.jp)
     "examples.py": {"urllib.request"},         # solved examples from the GitHub release
     "__main__.py": {"socket"},                 # finds a free port on 127.0.0.1 (binds locally, connects nowhere)
+    # the Blender add-on runs inside Blender and talks to Studio on this computer: see the test below
+    "integrations/blender/novasolver_studio/__init__.py": {"socket", "urllib.request"},
 }
 # addresses Studio itself may contact; other https:// strings in the code are links shown to the user
 CONTACTED = ("https://novasolver.jp/studio/latest.json", "https://raw.githubusercontent.com/novasolver/novasolver-studio/",
@@ -34,10 +36,16 @@ def test_only_the_update_and_example_modules_use_the_network():
     found = {}
     for f in PKG.rglob("*.py"):
         used = {m for m in imports(ast.parse(f.read_text(encoding="utf-8"))) if m in NETWORK_MODULES}
-        extra = used - ALLOWED.get(f.name, set())
+        extra = used - ALLOWED.get(f.relative_to(PKG).as_posix(), set())
         if extra:
             found[f.name] = sorted(extra)
     assert not found, f"network libraries outside updates/examples: {found}"
+
+
+def test_the_blender_addon_only_connects_to_this_computer():
+    src = (PKG / "integrations/blender/novasolver_studio/__init__.py").read_text(encoding="utf-8")
+    assert re.findall(r"create_connection\(\(\s*([^,]+),", src) == ['"127.0.0.1"']
+    assert re.findall(r"urllib\.request\.Request\(\s*(f?\"[^\"]*\")", src) == ['f"http://127.0.0.1:{port}{path}"']
 
 
 def test_requests_go_only_to_the_listed_addresses():

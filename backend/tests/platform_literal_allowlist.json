@@ -13,5 +13,10 @@
   "desktop.py:121": "Windows-only app window (Edge/Chrome location), only reached when sys.platform == win32.",
   "updates.py:301": "Windows-only: in-place update of the portable zip (install_kind portable is win32 only)",
   "updates.py:357": "Windows-only: in-place update of the portable zip (install_kind portable is win32 only)",
-  "updates.py:9": "Windows-only: in-place update of the portable zip (install_kind portable is win32 only)"
+  "updates.py:9": "Windows-only: in-place update of the portable zip (install_kind portable is win32 only)",
+  "integrations/blender/novasolver_studio/__init__.py:40": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio.",
+  "integrations/blender/novasolver_studio/__init__.py:41": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio.",
+  "integrations/blender/novasolver_studio/__init__.py:70": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio.",
+  "integrations/blender/novasolver_studio/__init__.py:71": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio.",
+  "integrations/blender/novasolver_studio/__init__.py:74": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio."
 }
