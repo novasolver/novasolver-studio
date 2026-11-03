@@ -27,9 +27,10 @@ with a hand calculation. Real app, real numbers.*
   away from the AI. See [docs/PRIVACY.md](docs/PRIVACY.md).
 - **Real solvers, no licence fee.** CalculiX for structural/thermal, OpenFOAM® for flow and water cooling, a built-in
   tet10 FEM for answers in seconds. Japanese, English and Chinese UI.
-- **Typed MCP tools, no shell.** 31 tools (create/import, set conditions, mesh, run, convergence, verify, probe,
+- **Typed MCP tools, no shell.** 35 tools (create/import, set conditions, mesh, run, convergence, verify, probe,
   sweep, render). The AI fills a case schema; Studio writes the solver input. Your AI's edits appear live in the
   window, and you can undo them.
+- **Instant answers for your own case.** `build_surrogate` solves about 60 variants of a case in the background (loads, materials, template dimensions; a Gaussian process, checked on points held out of the fit). `surrogate_predict` then answers in milliseconds with an error bar for the interpolation, and refuses outside the ranges. An imported CAD shape has no dimensions to vary yet.
 - **NovaSolver Flash: answers in under a second, with an error bar.** For seven standard shapes, the `instant_estimate` tool looks up the peak stress or
   deflection from 1,396 solved points, without a mesh or a solve. It gives the error bar and refuses outside the solved
   ranges. [See the data](https://novasolver.jp/en/studio/verified/).

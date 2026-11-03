@@ -42,6 +42,10 @@ def main() -> None:
         from .mesh_worker import main as mesh_main
         mesh_main(argv[1])
         return
+    if argv and argv[0] == "surrogate":
+        from .surrogate import main as surrogate_main
+        surrogate_main(argv[1])
+        return
     if len(argv) == 1 and argv[0].lower().endswith(".nscase"):  # a double-clicked case file (file association)
         _app(argv[0])
         return

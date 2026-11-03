@@ -29,6 +29,7 @@ To show a checked result at once, list_examples -> open_example (solved cases, n
 For a standard shape (L-bracket, plate with a hole, stepped or grooved shaft, flat bar with shoulders, thick cylinder,
 spherical cavity) inside the solved ranges, instant_estimate answers in milliseconds with an error bar, no case or mesh:
 use it first in a design loop, and run a case for the chosen design or for anything it does not cover.
+For the person's own case, build_surrogate solves many variants in the background; surrogate_predict then answers in milliseconds.
 Read values at a point, along a line or over a face with probe_results. Design variants: clone_case, or run_sweep
 over one parameter, then compare_runs. For a 3D-printed part (PLA, PETG, ABS), print_check after a linear static run
 gives the safety factor for each print direction and the best one.
@@ -654,6 +655,71 @@ async def run_sweep(case_id: str, path: str, values: list[Any], mode: Literal["p
                                                        "BLOCKED: " + "; ".join(c["blocked"])) for c in r["cases"])
     return _ok(f"Sweep of {path} on {case_id} ({r['study']}):\n{s}\nCall job_status on each job (it waits up to {JOB_WAIT_S:.0f} s), "
                f"then compare_runs.", r)
+
+
+def _surrogate_summary(r: dict) -> str:
+    s = f"{r['study_id']} {r['title']}: {r['state']}, {r['solved']}/{r['n']} solved, {r['failed']} failed, mesh checks {r['mesh_checks_done']}/{r['mesh_checks']}."
+    if r.get("eta_s") is not None:
+        s += f" About {r['eta_s']} s left."
+    if r.get("message"):
+        s += f" {r['message']}"
+    for o in (r.get("model") or {}).get("outputs", []):
+        h = o.get("holdout")
+        s += f"\n{o['key']} [{o['unit']}]: " + (f"{h['inside']}/{h['points']} held-out points inside the bar. " if h else "")
+    if r.get("model"):
+        s += f"\nWarnings: {', '.join(r['model']['warnings']) or 'none'}. The error bars cover interpolation only, not mesh error, the material or the real part."
+    return s
+
+
+@mcp.tool(annotations=WRITE)
+async def build_surrogate(case_id: str, parameters: list[dict[str, Any]], outputs: list[str] | None = None, n: int | None = None,
+                          mesh_checks: int = 3, mode: Literal["preview", "final"] | None = None, language: Lang = "ja") -> CallToolResult:
+    """Build an instant-answer model of this case: Studio solves n variants (default 60, one at a time, in the background,
+    surviving this client closing), holds some out to check the fit, then surrogate_predict answers in milliseconds with an error bar.
+    parameters: 1 to 5 of {"path": "boundaries.x1.force", "min": 100, "max": 1000, "unit": "N"}; any number update_case can change
+    (omit unit for a plain number such as materials.solid.nu). An imported CAD shape has no dimensions to vary: template
+    dimensions (geometry.params.*) can vary, an imported STEP cannot. outputs: names in the results' metrics, e.g. max_vm_pa,
+    max_disp_m, t_max_k, dp_pa; left out = the main ones for this physics. Below 60 solves the error bar is less reliable.
+    mesh_checks: mesh convergence studies at that many design points (each takes about three solves). Poll surrogate_status."""
+    from . import surrogate
+    r, e = await _call(surrogate.build, language, case_id, parameters, outputs, n, mesh_checks, mode, language)
+    return e or _ok(_surrogate_summary(r), r)
+
+
+@mcp.tool(annotations=RO)
+async def surrogate_status(study_id: str | None = None, language: Lang = "ja") -> CallToolResult:
+    """Progress of a surrogate build, and once done the check on held-out points and any warnings. Without study_id: all of them."""
+    from . import surrogate
+    r, e = await _call(surrogate.status, language, study_id)
+    if e:
+        return e
+    return _ok("\n".join(_surrogate_summary(x) for x in r["studies"]) or "No surrogate models yet." if study_id is None else _surrogate_summary(r), r)
+
+
+@mcp.tool(annotations=RO)
+async def surrogate_predict(study_id: str, values: dict[str, float], outputs: list[str] | None = None, language: Lang = "ja") -> CallToolResult:
+    """Answer from a finished surrogate in milliseconds, no solve: values = {parameter path: number} in the units given at
+    build time. Refuses outside the built ranges. The error bar covers interpolation only; the answer also carries the
+    mesh error of the solves (see mesh in the result), and nothing here checks the material, the supports or the real part."""
+    from . import surrogate
+    r, e = await _call(surrogate.predict, language, study_id, values, outputs)
+    if e:
+        return e
+    fmt = lambda q: f"{q['key']}: {q['value']:.5g} {q['unit']} +- " + (f"{q['error_pct']:.2g} %" if "error_pct" in q else f"{q['error_abs']:.3g} {q['unit']}")
+    m = r["mesh"]
+    mesh = f"Mesh check at {m['checks']} points: largest GCI {m['gci_max_pct']:.2g} % ({m['quantity']})." if m["gci_max_pct"] is not None else "Mesh error unchecked."
+    return _ok("; ".join(fmt(q) for q in r["results"]) + f". Interpolated between {r['solved_points']} solved variants, no solve was run. {mesh}"
+               + (f" Warnings: {', '.join(r['warnings'])}." if r["warnings"] else ""), r)
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+async def control_surrogate(study_id: str, action: Literal["stop", "resume", "delete"], confirm: str | None = None, language: Lang = "ja") -> CallToolResult:
+    """Stop a build (finished points are kept), resume a stopped or interrupted one, or delete it (confirm = study_id)."""
+    from . import surrogate
+    r, e = await _call(surrogate.control, language, study_id, action, confirm, language)
+    if e:
+        return e
+    return _ok(f"Deleted {study_id}." if "deleted" in r else _surrogate_summary(r), r)
 
 
 @mcp.tool(annotations=RO)
