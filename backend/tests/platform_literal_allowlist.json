@@ -1,11 +1,11 @@
 {
-  "addons.py:162": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
   "addons.py:163": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
   "addons.py:164": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
-  "addons.py:57": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
+  "addons.py:165": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
   "addons.py:58": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
   "addons.py:59": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
   "addons.py:60": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
+  "addons.py:61": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
   "config.py:184": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
   "config.py:226": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
   "config.py:244": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
