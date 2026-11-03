@@ -1,11 +1,11 @@
 {
  "payload": {
-  "version": "0.7.1",
-  "date": "2026-11-01",
+  "version": "0.7.2",
+  "date": "2026-11-03",
   "notes": {
-   "en": "• The third check on a result now says what it checked.\n• More results to colour by: stress components (σx … τzx), principal stresses σ1 and σ3, Tresca stress and.\n• STL parts keep their faces.\n• Elastoplastic and other nonlinear runs on larger meshes are much faster: they use a direct solver up to about.\n• Blender and FreeCAD: when Studio was not running, sending a part opened two windows; it now opens one, and FreeCAD.",
-   "ja": "・結果の3つ目の判定を、何を確かめたかがわかる表示にしました。\n・色分けで見られる量を増やしました。\n・STL の部品が CAD に近い面に分かれるようになりました。\n・塑性などの非線形解析が、大きめのメッシュで大幅に速くなりました。\n・Blender・FreeCAD 連携：Studio が起動していないときに送ると窓が2つ開いていたのを1つにしました。",
-   "zh": "・结果的第三项判定现在说明检查了什么：不再显示“已验证”，而是“网格收敛：已确认（GCI 1.9%）”“网格收敛：未确认”，自带例题则显示“与参考解一致”。\n・可着色显示的物理量增加：除米塞斯应力和位移外，还可在同一下拉框中选择应力分量（σx…τzx）、最大与最小主应力（σ1、σ3）、Tresca 应力以及 x、y 方向位移（剖面显示同样支持）。\n・STL 零件可以保留接近 CAD 的面。\n・塑性等非线性分析在较大网格上大幅提速：未知数约 12 万以内改用直接法（崩溃载荷例题的细网格：两个多小时 → 11 分钟）。\n・Blender 与 FreeCAD：Studio 未运行时发送零件会打开两个窗口，现在只打开一个；FreeCAD 也不再等到 Studio 启动完毕（最多等待几秒）。"
+   "en": "• NovaSolver Flash: AI tools can now get the peak stress or deflection of seven standard shapes in under a second, with an error bar and no mesh or solve (`instant_estimate`).\n• Connect other apps: Help (?) finds Blender and FreeCAD on your PC and installs or updates Studio's add-on or macro with one button.\n• Cheaper AI models can now drive Studio: in four fixed tasks, DeepSeek went from 0 of 4 to 4 of 4, and Haiku passed 4 of 4.\n• FreeCAD: a macro folder with `&` in its name no longer sends the macro to the wrong place.\n• Validation: every change now re-solves the structural and thermal reference problems on GitHub Actions and prints the table.",
+   "ja": "・NovaSolver Flash を追加しました。\n・他のアプリとの連携を追加しました。\n・安価な AI モデルでも Studio を操作できるようにしました。\n・FreeCAD のマクロフォルダ名に `&` があると、別の場所へ導入される不具合を直しました。\n・検証：変更のたびに、構造と熱の参照問題を GitHub Actions で解き直し、結果の表を出すようにしました。",
+   "zh": "・新增 NovaSolver Flash：AI 工具无需划分网格和求解，即可在 1 秒内得到 7 种标准形状的最大应力或挠度，并附带误差范围。\n・新增连接其他应用：在帮助（?）中查找电脑上的 Blender 和 FreeCAD，一键安装或更新 Studio 的插件或宏。\n・价格较低的 AI 模型也能操作 Studio：在 4 个固定任务中，DeepSeek 从 0/4 提升到 4/4，Haiku 为 4/4。\n・修复了 FreeCAD 宏文件夹名称含 `&` 时安装到错误位置的问题。\n・验证：每次修改都会在 GitHub Actions 上重新求解结构和热的参考问题，并输出结果表。"
   },
   "page": {
    "ja": "https://novasolver.jp/studio/",
@@ -14,15 +14,15 @@
   },
   "windows_zip": {
    "urls": [
-    "https://github.com/novasolver/novasolver-studio/releases/download/v0.7.1/NovaSolverStudio-0.7.1-win64.zip",
-    "https://novasolver.jp/dl/studio/NovaSolverStudio-0.7.1-win64.zip"
+    "https://github.com/novasolver/novasolver-studio/releases/download/v0.7.2/NovaSolverStudio-0.7.2-win64.zip",
+    "https://novasolver.jp/dl/studio/NovaSolverStudio-0.7.2-win64.zip"
    ],
-   "sha256": "ec83a35a23158007977fb67a7b3a7ceca501e87c4610a66d585fce7a0e39acb1",
-   "size": 175274250
+   "sha256": "bfe11cd755f6b301b7d1673b6d3fb5343988b51b4ff0757917a6c1dac9cbaa59",
+   "size": 175348461
   },
   "python": {
-   "command": "uvx --from https://github.com/novasolver/novasolver-studio/releases/download/v0.7.1/novasolver_studio-0.7.1-py3-none-any.whl novasolver-studio"
+   "command": "uvx --from https://github.com/novasolver/novasolver-studio/releases/download/v0.7.2/novasolver_studio-0.7.2-py3-none-any.whl novasolver-studio"
   }
  },
- "signature": "8+hJWG8PeV0jzUgFgjv5c9eAMoGXP1AJNeGh24NKEnhxhQz8viXzGJSe9uOCWXtF4S10+A2nEUFD7eJW/wpAAQ=="
+ "signature": "+GNt2j5RGl9QDG43vUx/XxvsrCOojBMpBQBI8q4MWqfM9n81SEk7HPUCpeU99At67glICEgIB3dvz52iriKTAA=="
 }
