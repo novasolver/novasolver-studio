@@ -27,6 +27,7 @@
   "role.fixed": "Fixed",
   "err.symmetry_plane": "Symmetry face {face} is not a flat plane normal to x, y or z. Only flat cut faces normal to a coordinate axis can be symmetry planes.",
   "err.symmetry_rbm": "Without a fixed face, symmetry planes are needed in all three directions (x, y and z), or the part can slide or spin. Add a fixed face or symmetry planes in the missing directions.",
+  "err.floating_body": "{count} of {total} bodies have no support and are not connected to anything (for example, the one centred near {where} mm), so the part cannot be solved. Add a fixed face on that body, or a bonded contact with another part.",
   "role.load": "Load",
   "role.pressure": "Pressure",
   "role.symmetry": "Symmetry",

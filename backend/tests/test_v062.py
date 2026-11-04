@@ -70,6 +70,19 @@ def test_straighten_inverted_follows_a_long_chain_and_stops_when_nothing_changes
     assert n == 1 and left == 1 and len(calls) == 3
 
 
+def test_a_body_without_support_is_refused_instead_of_solved():
+    from novastudio.run_worker import require_held_bodies
+    from novastudio.store import StudioError
+    one = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1.]]) * 0.01
+    nodes = np.vstack([one, one + 0.1])
+    tets = np.array([[0, 1, 2, 3], [4, 5, 6, 7]])
+    require_held_bodies(nodes, tets, [np.array([[0, 1, 2]]), np.array([[4, 5, 6]])], [])
+    require_held_bodies(nodes, tets, [np.array([[0, 1, 2]])], [(np.array([[4, 5, 6]]), 0)])
+    with pytest.raises(StudioError) as e:
+        require_held_bodies(nodes, tets, [np.array([[0, 1, 2]])], [])
+    assert e.value.key == "err.floating_body" and e.value.kw["count"] == 1 and e.value.kw["total"] == 2
+
+
 def test_canonical_tets_assigns_crowded_midside_nodes():
     corners = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1.]])
     mids = np.array([(corners[a] + corners[b]) / 2 for a, b in fem.EDGES])

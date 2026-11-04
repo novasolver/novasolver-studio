@@ -71,6 +71,12 @@ a [FreeCAD macro](integrations/freecad/) (send the selected part as STEP),
 a 3D-print strength check (safety factor for each print direction in PLA/PETG/ABS, layer lines included), ParaView VTU / CSV / printable HTML report export, and a Windows installer with `.nscase`
 file association.
 
+## Linux program (no Python needed)
+
+Download `NovaSolverStudio-<version>-linux-x86_64.tar.gz` from [Releases](https://github.com/novasolver/novasolver-studio/releases/latest),
+unpack it and run `./NovaSolverStudio`. Each build is started and test-solved on Ubuntu 22.04 (x86-64) before release.
+AI assistants connect with `./NovaSolverStudio mcp`.
+
 ## Install with Python (macOS / Linux / Windows)
 
 After the first PyPI release, launch the GUI with `uvx novasolver-studio`, or install once with

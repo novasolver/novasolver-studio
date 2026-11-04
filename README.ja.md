@@ -46,6 +46,7 @@ MCP に対応しているので、Claude などの AI が STEP/STL の読み込�
 ## 使い方
 
 - **Windows**: [Releases](https://github.com/novasolver/novasolver-studio/releases/latest) からインストーラか zip を入手。
+- **Linux**: Releases の `NovaSolverStudio-<version>-linux-x86_64.tar.gz` を展開して `./NovaSolverStudio` を実行します（Python は不要）。リリース前に Ubuntu 22.04（x86-64）で起動と試し解析を確認しています。
 - **Claude Desktop**: Releases の `.mcpb` を開くと拡張機能として入ります。MCP Registry にも `io.github.novasolver/novasolver-studio` で登録しています。
 - **Python（macOS / Linux / Windows）**、ソースからの起動、ほかの MCP クライアントの設定は [README（英語）](README.md#install-with-python-macos--linux--windows) を見てください。
 

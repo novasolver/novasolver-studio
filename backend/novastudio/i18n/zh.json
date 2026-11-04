@@ -27,6 +27,7 @@
   "role.fixed": "固定",
   "err.symmetry_plane": "对称面 {face} 不是垂直于 x、y 或 z 轴的平面。只有垂直于坐标轴的平整剖切面才能设为对称面。",
   "err.symmetry_rbm": "没有固定面时，x、y、z 三个方向都需要对称面，否则模型会滑动或转动。请添加一个固定面，或补齐缺少方向的对称面。",
+  "err.floating_body": "{total} 个实体中有 {count} 个没有约束，也未与其他实体连接（例如中心位于 {where} mm 附近的实体），因此无法求解。请为该实体添加固定面，或设置与其他零件的绑定接触。",
   "role.load": "载荷",
   "role.pressure": "压力",
   "role.symmetry": "对称",

@@ -168,6 +168,24 @@ def symmetry_rollers(case: dict, m: dict) -> list[tuple[np.ndarray, int]]:
     return out
 
 
+def require_held_bodies(nodes: np.ndarray, tets: np.ndarray, fixed: list, rollers: list) -> None:
+    """A body with no support and no shared nodes with one that has a support can move freely: the stiffness matrix is
+    singular and the iterative solver returns a huge meaningless displacement instead of failing."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    from .store import StudioError
+    a = np.repeat(tets[:, :1], tets.shape[1] - 1, axis=1).ravel()
+    graph = coo_matrix((np.ones(len(a)), (a, tets[:, 1:].ravel())), shape=(len(nodes), len(nodes)))
+    count, labels = connected_components(graph, directed=False)
+    used = np.unique(tets)
+    bodies = np.unique(labels[used])
+    held = np.concatenate([np.asarray(f).ravel() for f in fixed] + [np.asarray(t).ravel() for t, _ in rollers] + [np.empty(0, int)]).astype(int)
+    free = np.setdiff1d(bodies, labels[held])
+    if len(free):
+        at = nodes[used[labels[used] == free[0]]].mean(axis=0) * 1000
+        raise StudioError("err.floating_body", 400, count=len(free), total=len(bodies), where=f"{at[0]:.1f}, {at[1]:.1f}, {at[2]:.1f}")
+
+
 def support_peak(nodes: np.ndarray, fixed: list, vm: np.ndarray) -> dict:
     """Is the peak stress at the edge of a fully fixed face? There the stress is theoretically infinite (a rigid
     support is a singularity), so the peak means nothing. Also return the peak a couple of elements away from the
@@ -202,10 +220,12 @@ def run_structural_builtin(case: dict, jd: Path, prog) -> dict:
             b['role'] in ('displacement','spring') for b in case['boundaries'].values()):
         return run_incremental(case,jd,prog,m)
     fixed, tractions = structural_loads(case, m)
+    rollers = symmetry_rollers(case, m)
+    require_held_bodies(nodes, tets, fixed, rollers)
     from .structural import acceleration, temperatures
     T = temperatures(case, m, lambda k, f: prog(k, f))
     r = fem_tet10.solve(nodes, tets, E, nu, fixed, tractions, progress=lambda k, f: prog(k, f),
-                        rollers=symmetry_rollers(case, m), rho=element_prop(case, m, 'rho'), acceleration=acceleration(case),
+                        rollers=rollers, rho=element_prop(case, m, 'rho'), acceleration=acceleration(case),
                         alpha=element_prop(case, m, 'alpha'), temperature=T,
                         T_ref=units.to_si(case['physics'].get('T_ref', {'value': 20, 'unit': 'degC'})))
     U = r["u"]

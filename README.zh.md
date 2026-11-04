@@ -6,7 +6,7 @@
 
 [English](README.md) · [日本語](README.ja.md) ·
 **[在浏览器中试用（无需安装）](https://novasolver.jp/studio/demo/?lang=zh)** ·
-[下载 Windows 版](https://github.com/novasolver/novasolver-studio/releases/latest) ·
+[下载 Windows / Linux 版](https://github.com/novasolver/novasolver-studio/releases/latest) ·
 [novasolver.jp/zh/studio](https://novasolver.jp/zh/studio/)（GitHub 访问不稳定时，安装包也可从该页面下载）
 
 ![AI 设置齿轮轮齿算例、求解、三次加密网格并与手算比较](assets/readme/studio-demo.gif)
