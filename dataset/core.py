@@ -19,6 +19,12 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "backend"))
 
 
+def metrics(cid: str) -> dict:
+    """The run's unrounded numbers (the result cards hold 4 digits: too few for a small difference from a plain strip)."""
+    from novastudio import results
+    return results.load(cid, None)[1]["metrics"]
+
+
 def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = None, mode: str = "preview",
           picture: Path | None = None) -> dict:
     """Coarse global mesh with the family's critical face refined to level * refine_length. The case is deleted;
@@ -26,18 +32,32 @@ def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = 
     from novastudio import commands as C, jobs
     force = fam.F if force is None else force
     size = os.environ.get("NSS_MESH_SIZE") or getattr(fam, "MESH_SIZE", "coarse")
-    with tempfile.TemporaryDirectory(prefix="nss_ds_") as tmp:
-        step = Path(tmp) / "part.step"
-        fam.write_step(p, step, scale)
-        c = C.import_geometry("structural", step.name, None, str(step), "en", units="mm")["case"]
+    physics = getattr(fam, "PHYSICS", "structural")
+    if mode == "preview":
+        mode = getattr(fam, "MODE", mode)                           # a flow family runs its real solver at every level
+    if hasattr(fam, "make_case"):                                   # a built-in template with its own graded mesh
+        c, ch = fam.make_case(C, p, level, scale, force)
+        ch["run.mode"] = mode
+        key = None
+    else:
+        with tempfile.TemporaryDirectory(prefix="nss_ds_") as tmp:
+            step = Path(tmp) / "part.step"
+            fam.write_step(p, step, scale)
+            c = C.import_geometry(physics, step.name, None, str(step), "en", units="mm")["case"]
     cid = c["case_id"]
     try:
-        faces = [C.face_descriptor(c, f, "en") for f in c["geometry"]["faces"] if not f.get("interface")]
-        key = fam.refine_face(faces)
-        ch = fam.boundary_changes(faces, p, scale, force)
-        ch.update({"materials.solid.preset": "custom", "materials.solid.E": f"{fam.E / 1e9} GPa",
-                   "materials.solid.nu": p["nu"], "mesh.size": size, "run.mode": mode,
-                   f"mesh.refine.{key}": f"{level * fam.refine_length(p, scale) * SIZE_COMP[size]:.6g} mm"})
+        if not hasattr(fam, "make_case"):
+            faces = [C.face_descriptor(c, f, "en") for f in c["geometry"]["faces"] if not f.get("interface")]
+            key = fam.refine_face(faces)
+            ch = fam.boundary_changes(faces, p, scale, force)
+            if isinstance(level, str):                              # a level named by Studio's own mesh size (flow meshes)
+                ch.update({"mesh.size": level, "run.mode": mode})
+            else:
+                ch.update({"mesh.size": size, "run.mode": mode,
+                           f"mesh.refine.{key}": f"{level * fam.refine_length(p, scale) * SIZE_COMP[size]:.6g} mm"})
+            if physics == "structural":
+                ch.update({"materials.solid.preset": "custom", "materials.solid.E": f"{fam.E / 1e9} GPa",
+                           "materials.solid.nu": p["nu"]})
         if hasattr(fam, "extra_changes"):                           # e.g. elastic-plastic material, load steps
             ch.update(fam.extra_changes(p, scale, force))
         C.update_case(cid, c["revision"], ch, "en", source="ai")
@@ -52,8 +72,8 @@ def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = 
         cards = {x["key"]: x["value"] for x in res["cards"]}
         out = fam.measure(C, cid, p, scale, key)
         out.update({"max_vm_mpa": cards.get("max_vm"), "max_disp_mm": cards.get("max_disp"),
-                    "reaction_n": cards.get("reaction"), "nodes": int(cards["nodes"]),
-                    "elements": int(cards["elements"]), "converged": bool(res["gates"].get("converged")),
+                    "reaction_n": cards.get("reaction"), "nodes": int(cards.get("nodes") or 0),
+                    "elements": int(cards.get("elements") or 0), "converged": bool(res["gates"].get("converged")),
                     "engine": res.get("engine"), "wall_s": round(time.time() - t0, 1)})
         if picture:
             try:

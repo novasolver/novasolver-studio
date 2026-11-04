@@ -76,7 +76,7 @@ def main():
         row = {"id": r["id"], **r["params"]}
         for q in Q:
             vals = [abs(v[q]) for v in lv]
-            st = gci3(*vals)
+            st = gci3(*vals, r=getattr(fam, "GCI_RATIO", 2.0))
             row.update({f"{q}_coarser": vals[2], f"{q}_standard": vals[1], f"{q}_finer": vals[0],
                         f"{q}_order": st["order"], f"{q}_extrapolated": st["extrapolated"],
                         f"{q}_monotone": st["monotone"], f"{q}_order_confirmed": st["order_confirmed"],

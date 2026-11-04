@@ -40,11 +40,11 @@ def point_job(family: str, idx: int, p: dict) -> dict:
     try:
         pics = os.environ.get("NSS_PICTURES")
         row["standard"] = core.solve(fam, p, lv["standard"], picture=Path(pics) / f"{idx}.webp" if pics else None)
-        if idx % GCI_EVERY == 0:
+        if idx % getattr(fam, "GCI_EVERY", GCI_EVERY) == 0:
             row["gci"] = {"coarser": core.solve(fam, p, lv["coarser"]), "finer": core.solve(fam, p, lv["finer"])}
-        if idx % SIM_EVERY == 0:
+        if idx % getattr(fam, "SIM_EVERY", SIM_EVERY) == 0:
             row["similarity"] = core.solve(fam, p, lv["standard"], scale=2.0, force=fam.F * 4)
-        if idx % CCX_EVERY == 0:
+        if idx % CCX_EVERY == 0 and getattr(fam, "CALCULIX", True):
             try:
                 row["calculix"] = core.solve(fam, p, lv["standard"], mode="final")
             except Exception as e:

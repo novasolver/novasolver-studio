@@ -11,13 +11,15 @@ for slender brackets (beam reference = plastic hinge at the flange root)."""
 from __future__ import annotations
 
 import csv
+import os
 from functools import lru_cache
 from pathlib import Path
 
 from l_bracket import L, E, F, PARAMS, dims, refine_face, refine_length   # noqa: F401
 
 SY = 250e6                    # Pa (scaled out)
-LAM_MAX = 3.2                 # load ramp up to this many first-yield loads; collapse normally ends it earlier
+# load ramp up to this many first-yield loads; collapse normally ends it earlier (plastic_bracket.py sets its own)
+LAM_MAX = float(os.environ.get("NSS_LAM_MAX", 3.2))
 STEPS = 16                    # 0.2 F_y per step
 # Elastic-plastic solves factorise the tangent at every iteration: the cost grows much faster than the node count
 # (a full bracket at R/8, ~90k unknowns: ~5 min per load step). Hence half the bracket (mirror plane y = W/2) and a
@@ -101,6 +103,8 @@ def extra_changes(p: dict, scale: float, force: float) -> dict:
 
 
 def measure(C, cid: str, p: dict, scale: float, refine_key: str) -> dict:
+    if os.environ.get("NSS_LAM_MAX"):                               # plastic_bracket.py only asks whether it finished
+        return {}
     d = dims(p, scale)
     res = C.get_results(cid, None, "en")
     curve = res.get("curve") or []

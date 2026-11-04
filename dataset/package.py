@@ -15,6 +15,7 @@ import argparse
 import importlib
 import inspect
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -37,7 +38,7 @@ def family_readme(name: str, fam, s: dict) -> str:
                      f"max {pct(sim.get('max'))} | max {pct(ccx.get('max'))} |")
     lines += ["", "## Checks", "",
               f"- points: {s['points_ok']} solved, {s['points_failed']} failed",
-              f"- three-mesh studies: {s['gci_studies']} (every 10th point); the band of each point is 1.25 x the "
+              f"- three-mesh studies: {s['gci_studies']} (every {getattr(fam, 'GCI_EVERY', 10)}th point); the band of each point is 1.25 x the "
               "largest standard-mesh error among its 3 nearest studies",
               f"- symmetry check (max): {pct((s.get('mirror_err') or {}).get('max'))}",
               f"- neighbour check: flagged {sum(len(v) for v in s['neighbour_flags'].values())}, "
@@ -53,8 +54,8 @@ def family_readme(name: str, fam, s: dict) -> str:
               "`equilibrium_err` (where a single reaction exists), `<answer>_loo_err` / `_neighbour_flag` (leave-one-out "
               "prediction from all other points), `<answer>_recheck_diff` / `_flag_resolved` (finer re-solve of a flagged "
               "point), `has_gci` / `has_similarity` / `has_calculix`, `nodes`, `solve_s`, `studio` (version).", "",
-              "Solved with NovaSolver Studio (tet10 FEM, coarse global mesh refined on the critical face) through the "
-              "same commands an AI client uses over MCP. The claim is verification (the equations are solved within the "
+              "Solved with NovaSolver Studio through the same commands an AI client uses over MCP; the first section says "
+              "which solver and mesh. The claim is verification (the equations are solved within the "
               "band), not validation against tests.", ""]
     return "\n".join(lines)
 
@@ -67,7 +68,8 @@ def main():
     rel.mkdir(parents=True, exist_ok=True)
     index = []
     for d in sorted((HERE / "out").iterdir()):
-        if not (d / "summary.json").exists() or d.name.startswith("_") or "_v1" in d.name:
+        # l_bracket_v2_inside and the like are earlier builds of a family, kept for comparison: not part of the release
+        if not (d / "summary.json").exists() or d.name.startswith("_") or re.search(r"_v\d", d.name):
             continue
         s = json.loads((d / "summary.json").read_text(encoding="utf-8"))
         fam = importlib.import_module(s["family"])
