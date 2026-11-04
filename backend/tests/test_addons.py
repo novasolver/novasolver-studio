@@ -35,6 +35,7 @@ def test_freecad_macro_folder_from_user_cfg(tmp_path, monkeypatch):
 
 def test_freecad_install_and_state(tmp_path, monkeypatch):
     monkeypatch.setattr(addons, "_roaming", lambda: tmp_path)
+    monkeypatch.setattr(addons.shutil, "which", lambda *a, **k: None)
     monkeypatch.setattr(addons.sys, "platform", "win32")
     assert addons.freecad_status()["installed"] is None
     out = addons.install_freecad()

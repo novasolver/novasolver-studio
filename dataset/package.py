@@ -24,6 +24,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 pct = lambda x: "-" if x is None else f"{100 * x:.2g} %"
+LICENSE = ("## License\n\nThis data is licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/\n"
+           "Credit: NovaSolver, https://novasolver.jp/studio/verified/\n"
+           "Provided as is, without warranty. Design decisions remain the user's responsibility.\n")
 
 
 def family_readme(name: str, fam, s: dict) -> str:
@@ -56,7 +59,7 @@ def family_readme(name: str, fam, s: dict) -> str:
               "point), `has_gci` / `has_similarity` / `has_calculix`, `nodes`, `solve_s`, `studio` (version).", "",
               "Solved with NovaSolver Studio through the same commands an AI client uses over MCP; the first section says "
               "which solver and mesh. The claim is verification (the equations are solved within the "
-              "band), not validation against tests.", ""]
+              "band), not validation against tests.", "", LICENSE]
     return "\n".join(lines)
 
 
@@ -84,7 +87,7 @@ def main():
                       "error_band_p95": {q: (s["error_band"].get(q) or {}).get("p95") for q in s["quantities"]},
                       "size_kb": round(sum(f.stat().st_size for f in dst.iterdir()) / 1024, 1)})
     (rel / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
-    lines = ["# Simulation data with error bars", "",
+    lines = ["---", "license: cc-by-4.0", "---", "", "# Simulation data with error bars", "",
              "Parameter sweeps of standard engineering problems where every point carries its own verification: an error "
              "band from mesh studies, symmetry, similarity scaling, an independent solver (CalculiX) on a subset, hand "
              "theory where it exists, and a neighbour-consistency check over the whole space.", "",
@@ -93,7 +96,7 @@ def main():
         lines.append(f"| [{i['family']}]({i['family']}/README.md) | {i['title']} | {i['points']} | "
                      + ", ".join(f"`{q}`" for q in i["answers"]) + " | "
                      + ", ".join(pct(v) for v in i["error_band_p95"].values()) + f" | {i['size_kb']} KB |")
-    (rel / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (rel / "README.md").write_text("\n".join(lines + ["", LICENSE]), encoding="utf-8")
     print(json.dumps(index, ensure_ascii=False, indent=1))
 
 

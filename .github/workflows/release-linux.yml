@@ -1,0 +1,84 @@
+name: Linux release build
+
+# Builds the portable Linux program on a GitHub-hosted runner and tests the built program. The archive is attached to
+# the workflow run, checked, and uploaded to the GitHub release by hand, as with the Windows build.
+# On the oldest supported runner, so that the bundled C library requirement stays low.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: System libraries and CalculiX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglu1-mesa libgl1 libxrender1 libxcursor1 libxft2 libxinerama1 calculix-ccx
+      - name: Python packages
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e . "pyinstaller==6.22.3"
+      - name: Frontend
+        run: |
+          npm ci
+          npm run build
+        working-directory: frontend
+      - name: Program folder
+        run: |
+          .venv/bin/python -m PyInstaller --noconfirm --clean --onedir --console --name NovaSolverStudio \
+            --distpath build/dist --workpath build/work --specpath build \
+            --paths backend \
+            --collect-all gmsh --collect-all pymeshlab --collect-submodules novastudio --collect-submodules uvicorn \
+            --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp.types --collect-submodules mcp_types --exclude-module mcp.cli \
+            --collect-submodules pyamg --copy-metadata pyamg --collect-data scipy.stats --hidden-import scipy.sparse.linalg --hidden-import matplotlib.backends.backend_agg \
+            --add-data "$PWD/backend/novastudio/i18n:novastudio/i18n" \
+            --add-data "$PWD/backend/novastudio/estimate_data:novastudio/estimate_data" \
+            --add-data "$PWD/frontend/dist:frontend/dist" \
+            --add-data "$PWD/samples:samples" \
+            --add-data "$PWD/integrations:integrations" \
+            backend/launcher.py
+          cp LICENSE THIRD_PARTY_NOTICES.md README.md build/dist/NovaSolverStudio/
+          cat > build/dist/NovaSolverStudio/START_HERE.txt <<'EOF'
+          NovaSolver Studio for Linux
+
+          Run ./NovaSolverStudio. The app opens in a browser window; Cases are saved in ~/NovaSolverStudio/workspace.
+          The built-in solvers work right away.
+          CalculiX is optional: sudo apt install calculix-ccx
+          For flow analyses, install OpenFOAM: https://novasolver.jp/en/studio/
+          AI assistants connect with: ./NovaSolverStudio mcp
+          EOF
+      - name: Smoke test (engines)
+        run: |
+          build/dist/NovaSolverStudio/NovaSolverStudio env | tee env.txt
+          grep -q '"calculix"' env.txt
+      - name: Smoke test (large models and a surrogate build, in the built program)
+        run: .venv/bin/python tools/smoke_exe.py build/dist/NovaSolverStudio/NovaSolverStudio
+      - name: Archive
+        run: |
+          v=$(.venv/bin/python -c "import sys; sys.path.insert(0, 'backend'); import novastudio; print(novastudio.__version__)")
+          mkdir -p release
+          tar -C build/dist -czf "release/NovaSolverStudio-$v-linux-x86_64.tar.gz" NovaSolverStudio
+          (cd release && sha256sum "NovaSolverStudio-$v-linux-x86_64.tar.gz" > "NovaSolverStudio-$v-linux-x86_64.tar.gz.sha256")
+          ls -la release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: release/
+          retention-days: 14

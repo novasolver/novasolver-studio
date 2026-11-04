@@ -53,11 +53,12 @@ def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = 
             if isinstance(level, str):                              # a level named by Studio's own mesh size (flow meshes)
                 ch.update({"mesh.size": level, "run.mode": mode})
             else:
-                ch.update({"mesh.size": size, "run.mode": mode,
-                           f"mesh.refine.{key}": f"{level * fam.refine_length(p, scale) * SIZE_COMP[size]:.6g} mm"})
+                ch.update({"mesh.size": size, "run.mode": mode})
+                for k in (key if isinstance(key, list) else [key]):  # a part may have several critical faces
+                    ch[f"mesh.refine.{k}"] = f"{level * fam.refine_length(p, scale) * SIZE_COMP[size]:.6g} mm"
             if physics == "structural":
                 ch.update({"materials.solid.preset": "custom", "materials.solid.E": f"{fam.E / 1e9} GPa",
-                           "materials.solid.nu": p["nu"]})
+                           "materials.solid.nu": p.get("nu", getattr(fam, "NU", 0.3))})
         if hasattr(fam, "extra_changes"):                           # e.g. elastic-plastic material, load steps
             ch.update(fam.extra_changes(p, scale, force))
         C.update_case(cid, c["revision"], ch, "en", source="ai")

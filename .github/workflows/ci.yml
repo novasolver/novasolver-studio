@@ -39,6 +39,8 @@ jobs:
         if: runner.os == 'macOS' && steps.calculix.outcome == 'failure'
         run: echo '::warning::Homebrew CalculiX unavailable; built-in FEM and discovery tests still run.'
       - run: python -m pip install -e ".[dev]"
+      - name: Add-ons in the package folder, as a build places them
+        run: python -c "import shutil; shutil.copytree('integrations', 'backend/novastudio/integrations', dirs_exist_ok=True)"
       - run: python -m pytest backend/tests -q
       - run: npm ci
         working-directory: frontend
