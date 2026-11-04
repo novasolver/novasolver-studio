@@ -79,13 +79,13 @@ def main():
             shutil.copy2(f, dst / f.name)
         (dst / "README.md").write_text(family_readme(d.name, fam, s), encoding="utf-8")
         first = " ".join((inspect.getdoc(fam) or "").split("\n\n")[0].split())
-        index.append({"family": d.name, "title": first.split(". ")[0].rstrip("."), "points": s["points_ok"],
+        index.append({"family": d.name, "title": re.sub(r"^Family \w+: ", "", first.split(". ")[0].rstrip(".")),"points": s["points_ok"],
                       "params": s["params"], "answers": s["quantities"],
                       "error_band_p95": {q: (s["error_band"].get(q) or {}).get("p95") for q in s["quantities"]},
                       "size_kb": round(sum(f.stat().st_size for f in dst.iterdir()) / 1024, 1)})
     (rel / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
-    lines = ["# Certified physics spaces", "",
-             "Parameter spaces of standard engineering problems where every point carries its own verification: an error "
+    lines = ["# Simulation data with error bars", "",
+             "Parameter sweeps of standard engineering problems where every point carries its own verification: an error "
              "band from mesh studies, symmetry, similarity scaling, an independent solver (CalculiX) on a subset, hand "
              "theory where it exists, and a neighbour-consistency check over the whole space.", "",
              "| family | what | points | answers | error band (95 %) | size |", "|---|---|---|---|---|---|"]

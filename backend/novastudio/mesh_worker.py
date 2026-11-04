@@ -1303,11 +1303,18 @@ def describe_faces(gmsh, keys: dict, display: dict, discrete: bool) -> None:
         if not discrete:
             up, _ = gmsh.model.getAdjacencies(2, tag)
             # A curved triangle's centroid lies inside its chord. Probe the true CAD surface, not the chord.
-            surface, uv = gmsh.model.getClosestPoint(2, tag, centers[0].tolist())
-            outward = np.asarray(gmsh.model.getNormal(tag, uv))[:3]
-            if any(gmsh.model.isInside(3, int(v), (surface+outward*diag*1e-5).tolist()) for v in up):
+            # isInside can call both sides of a face inside (seen on a cut sphere's flat face, whatever the probe distance),
+            # and one probe then turned the normal inward. Take the first of a few spots where exactly one side is inside.
+            for i in np.linspace(0, len(centers)-1, min(8, len(centers))).astype(int):
+                surface, uv = gmsh.model.getClosestPoint(2, tag, centers[i].tolist())
+                outward = np.asarray(gmsh.model.getNormal(tag, uv))[:3]
+                plus, minus = (any(gmsh.model.isInside(3, int(v), (surface+s*outward*diag*1e-5).tolist()) for v in up)
+                               for s in (1, -1))
+                if plus != minus:
+                    break
+            if plus:
                 outward = -outward
-            sign = 1 if outward @ normals[0] >= 0 else -1
+            sign = 1 if outward @ normals[i] >= 0 else -1
         normals *= sign
         samples[tag] = (centers, normals)
         f = by_key.setdefault(key, {'key': key, 'n': len(by_key)+1,

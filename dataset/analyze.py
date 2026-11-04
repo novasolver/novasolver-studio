@@ -177,8 +177,12 @@ def main():
                 hi_[:, j] = np.minimum(X[:, j] + 0.05, 1.0)
                 lo_[:, j] = np.maximum(X[:, j] - 0.05, 0.0)
                 slope = (fit(hi_) - fit(lo_)) / (hi_[:, j] - lo_[:, j])
-                share = float(np.mean(np.sign(slope) == sign)) if sign else None
-                rho = float(spearmanr([t[k] for t in table], [t[q] for t in table]).statistic)
+                # a change across the probe smaller than what the fit misses at left-out points says nothing about the sign
+                # (a tall block's height hardly matters: the fit then wiggles either way by 0.2 %, far above the mesh error)
+                loo = [t[f"{q}_loo_err"] for t in table if f"{q}_loo_err" in t]
+                seen = np.abs(slope) * (hi_[:, j] - lo_[:, j]) > (float(np.percentile(loo, 95)) if loo else 0.0)
+                share = float(np.mean(np.sign(slope[seen]) == sign)) if sign and seen.any() else (1.0 if sign else None)
+                rho =float(spearmanr([t[k] for t in table], [t[q] for t in table]).statistic)
                 directions[f"{q} vs {k}"] = {
                     "expected": sign, "share_expected_sign": None if share is None else round(share, 3),
                     "median_abs_slope": round(float(np.median(np.abs(slope))), 4), "spearman": round(rho, 3),

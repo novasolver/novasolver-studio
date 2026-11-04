@@ -15,7 +15,9 @@ GCI_EVERY = 5
 PARAMS = {"t_over_L": (0.02, 0.15), "w_over_t": (1.2, 4.0), "nu": (0.2, 0.4)}
 QUANTITIES = ("p_star",)
 NORMALISED = {"p_star": "p_over_engesser"}
-EXPECTED_DIRECTIONS = {"p_star": {"t_over_L": 1}}
+# t/L has no sure sign (shear lowers the load, the root raises it). The ratio to Engesser follows nu^2 w / L (r = 0.98): the
+# fixed root stops the sideways Poisson bending of a wide section, so a wider section and a higher nu stand more.
+EXPECTED_DIRECTIONS = {"p_star": {"w_over_t": 1, "nu": 1}}
 CHECK_EQUILIBRIUM = False
 
 
