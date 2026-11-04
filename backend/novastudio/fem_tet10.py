@@ -176,19 +176,25 @@ def folded_elements(nodes, ct, chunk=4000):
     return np.concatenate(out) if out else np.empty(0, int)
 
 
-def straighten_inverted(nodes, tets, rounds=5):
+def straighten_inverted(nodes, tets, rounds=200):
     """Move the midside nodes of folded tet10 elements back to their edge midpoints.
     Gmsh's HighOrderOptimize untangles most curved elements, but a coarse element on a small hole in a large part
     can stay folded and stop the solve. A straight edge is always valid; it only gives up the curved-surface
-    accuracy of that one edge. Straightening a shared node can fold a neighbour, hence the rounds.
+    accuracy of that one edge. Straightening a shared node can fold a neighbour, hence the rounds: on a refined
+    fillet the chain outlasted 5 rounds and one element stopped the solve. An edge once straight stays straight,
+    so the rounds end. Only an element with inverted corners stays folded, and then the same set comes back.
     Returns the new nodes, the number of elements straightened and the number still folded."""
     nodes = np.array(nodes, dtype=float, copy=True)
     fixed = set()
     ct = canonical_tets(nodes, tets)
+    last = None
     for _ in range(rounds):
         idx = folded_elements(nodes, ct)
         if not len(idx):
             return nodes, len(fixed), 0
+        if last is not None and np.array_equal(idx, last):
+            break
+        last = idx
         fixed.update(idx.tolist())
         for k, (a, b) in enumerate(EDGES):
             nodes[ct[idx, 4 + k]] = 0.5 * (nodes[ct[idx, a]] + nodes[ct[idx, b]])

@@ -52,6 +52,24 @@ def test_straighten_inverted_unfolds_only_the_folded_element():
     assert n == 1 and left == 0 and np.allclose(out, nodes)
 
 
+def test_straighten_inverted_follows_a_long_chain_and_stops_when_nothing_changes(monkeypatch):
+    corners = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1.]])
+    mids = np.array([(corners[a] + corners[b]) / 2 for a, b in fem.EDGES])
+    nodes = np.vstack([corners, mids])
+    tets = np.arange(20).reshape(2, 10)
+    nodes = np.vstack([nodes, nodes + 5])
+    # the fold moves back and forth between two elements for longer than the old limit of 5 rounds
+    seq = iter([np.array([i % 2]) for i in range(8)] + [np.empty(0, int)])
+    monkeypatch.setattr(fem, "folded_elements", lambda n, ct: next(seq))
+    _, n, left = fem.straighten_inverted(nodes, tets)
+    assert n == 2 and left == 0
+    # corners inverted: straightening cannot help, so the same set returns and the rounds stop at once
+    calls = []
+    monkeypatch.setattr(fem, "folded_elements", lambda n, ct: calls.append(1) or np.array([0]))
+    _, n, left = fem.straighten_inverted(nodes, tets)
+    assert n == 1 and left == 1 and len(calls) == 3
+
+
 def test_canonical_tets_assigns_crowded_midside_nodes():
     corners = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1.]])
     mids = np.array([(corners[a] + corners[b]) / 2 for a, b in fem.EDGES])
