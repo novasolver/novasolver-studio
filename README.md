@@ -14,6 +14,10 @@ server so Claude or any MCP client can import your STEP/STL, set the loads, run,
 *One sentence to the AI → Studio sets up and solves the case → mesh refined three times (GCI 1.5 %) → compared
 with a hand calculation. Real app, real numbers.*
 
+![An AI designs a bracket in SolidCraft and analyses it in Studio, then refuses to call it a pass because the mesh check failed](assets/readme/design-loop.gif)
+
+*From one prompt, an AI modelled a bracket in SolidCraft and analysed three versions in Studio. It stopped without calling any of them a pass, because the mesh check had failed. [40 s video](https://novasolver.jp/studio/video/novasolver-studio-design-loop-en.mp4).*
+
 ## Why Studio
 
 - **Ran ≠ right.** Every result carries three separate checks: **ran → converged → mesh convergence**. The third

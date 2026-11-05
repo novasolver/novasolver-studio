@@ -13,6 +13,10 @@
 
 *对 AI 说一句话 → Studio 设置并求解 → 三次加密网格确认收敛（GCI 1.5%）→ 与手算比较。真实的软件，真实的数值。*
 
+![AI 在 SolidCraft 中建模支架并在 Studio 中分析，因网格检查未通过而没有判定为合格](assets/readme/design-loop.gif)
+
+*只凭一条指令，AI 在 SolidCraft 中建模支架，并在 Studio 中分析了三个方案。由于网格检查未通过，它没有把任何方案判定为合格。[40 秒视频（中文）](https://novasolver.jp/studio/video/novasolver-studio-design-loop-zh.mp4)*
+
 ## 特点
 
 - **“算出来”不等于“算对了”。** 每个结果分别给出“已运行 → 已收敛 → 网格收敛”三项判定。网格收敛将网格分三级加密，

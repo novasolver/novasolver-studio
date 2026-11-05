@@ -13,6 +13,10 @@ MCP に対応しているので、Claude などの AI が STEP/STL の読み込�
 
 *AI にひとこと頼む → Studio が条件を設定して解く → メッシュを3段階で細かくして収束を確認（GCI 1.5%）→ 手計算と比較。実際のアプリと実際の数値です。*
 
+![AI が SolidCraft でブラケットを作って Studio で解析し、メッシュ確認が通らないため合格とは言わなかった実行](assets/readme/design-loop.gif)
+
+*1回の指示で、AI が SolidCraft でブラケットを作り、3案を Studio で解析しました。メッシュ確認が通らなかったため、どの案も合格とは言わずに止まりました。[40 秒の動画（日本語）](https://novasolver.jp/studio/video/novasolver-studio-design-loop-ja.mp4)*
+
 ## Studio の特長
 
 - **「計算できた」と「正しい」を分けます。** 結果には「実行できた → 収束した → メッシュ収束」の3つの判定が別々につきます。
