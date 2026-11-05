@@ -58,7 +58,7 @@ mesh-convergence column is published with each release as `docs/VALIDATION.md`):
 | Water-cooled plate | heat balance | 0.03 % |
 | Lid-driven cavity | Ghia et al. | profile match (built-in and OpenFOAM®) |
 
-How often does it get through a part it has never seen? [docs/PART_TEST.md](docs/PART_TEST.md) counts 246 STEP files, including every one that failed and why.
+How often does it get through a part it has never seen? [docs/PART_TEST.md](docs/PART_TEST.md) counts 246 STEP files, including every one that failed and why. Does it tell you when your setup is wrong? [docs/SETUP_MISTAKES.md](docs/SETUP_MISTAKES.md) breaks correct setups in 34 ways, with the list fixed before the run, and shows what it said, misses included.
 
 ## What it does / できること
 
