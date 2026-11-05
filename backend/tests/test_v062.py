@@ -173,7 +173,7 @@ def test_a_finer_mesh_retry_also_refines_the_stl_surface(tmp_path, monkeypatch):
     assert seen == [0.125]
 
 
-def test_last_resort_mesh_attempts_are_only_for_imported_cad(tmp_path, monkeypatch):
+def test_last_resort_mesh_attempt_is_only_for_imported_cad(tmp_path, monkeypatch):
     import json
     import pytest
     from novastudio import mesh_worker as M
@@ -192,33 +192,9 @@ def test_last_resort_mesh_attempts_are_only_for_imported_cad(tmp_path, monkeypat
             M.main(str(path))
         return list(seen)
     cad = attempts(kind="import", file="a.step")
-    assert [a.get("_fuzzy_m") for a in cad[-2:]] == [1e-4, 1e-4] and cad[-3]["_curvature"] == 12
-    assert len(cad) == len(M.MESH_ATTEMPTS) + len(M.LAST_RESORTS)
-    assert not any("_fuzzy_m" in a or "_curvature" in a for a in attempts(kind="import", file="a.stl"))     # an STL has no CAD faces to fragment
+    assert cad[-1]["_curvature"] == 12 and len(cad) == len(M.MESH_ATTEMPTS) + 1
+    assert not any("_curvature" in a for a in attempts(kind="import", file="a.stl"))
     assert len(attempts(kind="box")) == 3
-
-    def broken(job):
-        seen.append(job)
-        raise ValueError("a bad file, not this mesh")
-    monkeypatch.setattr(M, "mesh_job", broken)
-    seen.clear()
-    (tmp_path / "job.json").write_text(json.dumps({"kind": "import", "file": "a.step"}), encoding="utf-8")
-    with pytest.raises(ValueError):                        # not retried until the last resorts
-        M.main(str(tmp_path / "job.json"))
-    assert len(seen) == 1
-
-
-def test_a_mesh_from_the_tolerant_fragment_says_so():
-    import json
-    from novastudio import commands as C
-    from novastudio.store import case_dir
-    cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
-    r = C.run_simulation(cid, "preview", wait_s=300, lang="en")["results"]
-    assert "fuzzy_mesh" not in [w["code"] for w in r["warnings"]]
-    p = case_dir(cid) / "mesh" / "mesh_stats.json"
-    p.write_text(json.dumps({**json.loads(p.read_text()), "fuzzy_mm": 0.1}))
-    w = [x for x in C.get_results(cid, None, "en")["warnings"] if x["code"] == "fuzzy_mesh"]
-    assert len(w) == 1 and "0.1 mm" in w[0]["message"]
 
 
 def test_a_worker_that_crashed_reports_the_crash(tmp_path, monkeypatch):

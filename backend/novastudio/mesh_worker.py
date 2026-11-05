@@ -810,9 +810,9 @@ class MeshAttemptFailed(Exception):
 # the first size. Every try is a fresh gmsh session, because after one error gmsh stays inert until it is restarted:
 # a later generate() returns at once with no elements and no error, even after clearing the model.
 MESH_ATTEMPTS = ((6, 1.0), (5, 1.0), (1, 1.0), (6, 0.5), (1, 0.5), (6, 0.25), (1, 0.25))
-# Imported parts that all of those fail on: facets that cut through a curved wall, which sizing by curvature avoids, and
-# bodies that overlap by a sliver, which a tolerant fragment (0.1 mm, refused if the total volume moves by 1 %) absorbs.
-LAST_RESORTS = ({"_curvature": 12}, {"_fuzzy_m": 1e-4}, {"_fuzzy_m": 1e-4, "_curvature": 12})
+# Imported parts that all of those fail on: facets that cut through a curved wall, which sizing by curvature avoids.
+# A tolerant fragment also got assemblies through, but it renumbers the faces, so a load can move to another face.
+LAST_RESORT = {"_curvature": 12}
 
 
 def main(job_path: str) -> None:
@@ -820,14 +820,12 @@ def main(job_path: str) -> None:
     full = job["kind"] == "import" and not job.get("domain")
     attempts = [{"_surface_mesher": m, "_size_factor": f} for m, f in (MESH_ATTEMPTS if full else MESH_ATTEMPTS[:3])]
     if full and not job["file"].lower().endswith(".stl"):
-        attempts += [{"_surface_mesher": 6, "_size_factor": 1.0, **extra} for extra in LAST_RESORTS]
+        attempts.append({"_surface_mesher": 6, "_size_factor": 1.0, **LAST_RESORT})
     for i, attempt in enumerate(attempts):
         try:
             mesh_job({**job, **attempt})
             return
-        except Exception as e:
-            if not isinstance(e, MeshAttemptFailed) and i < len(MESH_ATTEMPTS):     # a bug or a bad file, not this mesh
-                raise
+        except MeshAttemptFailed as e:
             if i == len(attempts) - 1:
                 raise RuntimeError(str(e)) from None
             print(f"mesher {attempt} failed ({e}); trying the next", flush=True)
@@ -894,18 +892,7 @@ def mesh_job(job: dict) -> None:
                 if not vols:
                     raise RuntimeError("NO_SOLID: the file contains no closed solid body")
                 if len(vols) > 1:
-                    exact = None
-                    if job.get("_fuzzy_m"):                              # the exact result on a copy is what it must stay close to
-                        copies = gmsh.model.occ.copy(vols)
-                        pieces, _ = gmsh.model.occ.fragment(copies[:1], copies[1:])
-                        exact = sum(gmsh.model.occ.getMass(*v) for v in pieces if v[0] == 3)
-                        gmsh.model.occ.remove(pieces, recursive=True)
-                        gmsh.option.setNumber("Geometry.ToleranceBoolean", job["_fuzzy_m"])
                     gmsh.model.occ.fragment(vols[:1], vols[1:])          # conformal interfaces between bodies
-                    if exact is not None:
-                        total = sum(gmsh.model.occ.getMass(*v) for v in gmsh.model.occ.getEntities(3))
-                        if abs(total - exact) > 0.01 * exact:
-                            raise MeshAttemptFailed("the tolerant fragment changed the volume")
                 gmsh.model.occ.synchronize()
             xmin, ymin, zmin, xmax, ymax, zmax = model_bounds(gmsh)
             lx, ly, lz = xmax - xmin, ymax - ymin, zmax - zmin
@@ -1203,7 +1190,7 @@ def mesh_job(job: dict) -> None:
         gmsh.option.setNumber("Mesh.Algorithm3D", 1)
         gmsh.option.setNumber("Mesh.OptimizeNetgen", 1)   # removes near-flat slivers that stall the iterative solver
         gmsh.option.setNumber("Mesh.Algorithm", job.get("_surface_mesher", 6))
-        if job.get("_curvature"):
+        if job.get("_curvature"):                 # a refinement field around the loaded faces turned it off above
             gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", job["_curvature"])
         if job.get("volume") and job.get("thin_n") and job["kind"] == "import" and not job.get("domain"):
             # thin walls (fins, handles, ribs, plates) get enough elements across, whatever the overall size
@@ -1309,8 +1296,6 @@ def mesh_job(job: dict) -> None:
                      "quality_min": float(np.min(q)), "quality_mean": float(np.mean(q)), "h": h,
                      # quality_* describe Gmsh's curved mesh before straightening
                      "straightened": int(straightened), "still_folded": int(folded)}
-            if job.get("_fuzzy_m"):
-                stats["fuzzy_mm"] = job["_fuzzy_m"] * 1e3
             (out / "mesh_stats.json").write_text(json.dumps(stats), encoding="utf-8")
     finally:
         gmsh.finalize()

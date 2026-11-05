@@ -252,9 +252,6 @@ def payload(case: dict, lang: str, run_id: str | None = None) -> dict:
     if r["kind"] == "structural" and m.get("peak_on_support") and m.get("max_vm_away_pa"):
         warnings.append({"code": "peak_on_support",
                          "message": t("result.peak_on_support", lang, vm=m["max_vm_pa"] / 1e6, away=m["max_vm_away_pa"] / 1e6)})
-    fuzzy = (geometry.mesh_state(case).get("stats") or {}).get("fuzzy_mm")
-    if fuzzy:
-        warnings.append({"code": "fuzzy_mesh", "message": t("result.fuzzy_mesh", lang, mm=fuzzy)})
     wm = m.get("wall_mesh") or {}
     if r["kind"] == "flow3d" and wm.get("yplus_avg") is not None and not 20 <= wm["yplus_avg"] <= 300:
         warnings.append({"code": "yplus", "message": t("result.yplus", lang, yp=wm["yplus_avg"])})
