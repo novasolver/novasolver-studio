@@ -992,6 +992,8 @@ def _release_solver_slot(slot: Path) -> None:
 
 
 def main(job_dir: str) -> None:
+    import faulthandler
+    faulthandler.enable()                          # a crash in native code goes to worker.log; "process ended" says nothing
     jd = Path(job_dir)
     req = json.loads((jd / "request.json").read_text(encoding="utf-8"))
     prog = _progress(jd)

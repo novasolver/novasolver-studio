@@ -173,6 +173,24 @@ def test_a_finer_mesh_retry_also_refines_the_stl_surface(tmp_path, monkeypatch):
     assert seen == [0.125]
 
 
+def test_a_worker_that_crashed_reports_the_crash(tmp_path, monkeypatch):
+    import json
+    import subprocess
+    import sys
+    from novastudio import jobs
+    (tmp_path / "job.json").write_text(json.dumps({"job_id": "x", "state": "running", "pid": None, "created_at": 0}), encoding="utf-8")
+    (tmp_path / "worker.log").write_text('Fatal Python error: Segmentation fault\n\nCurrent thread:\n  File "C:/a/b.py", line 1 in f\n', encoding="utf-8")
+    monkeypatch.setattr(jobs, "_job_dir", lambda job_id: tmp_path)
+    assert jobs.status("x")["message_args"]["detail"] == "Fatal Python error: Segmentation fault"
+    p = subprocess.Popen([sys.executable, "-c", ""])     # never reaped until wait(): a zombie on POSIX
+    try:
+        import time
+        time.sleep(1.0)
+        assert not jobs._alive({"pid": p.pid, "pid_ctime": None})
+    finally:
+        p.wait()
+
+
 def test_a_singular_model_says_what_to_do():
     import scipy.sparse as sp
     from novastudio.store import StudioError

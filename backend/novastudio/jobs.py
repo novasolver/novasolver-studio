@@ -76,6 +76,8 @@ def _alive(j: dict) -> bool:
         return False
     try:
         pr = psutil.Process(j["pid"])
+        if pr.status() == psutil.STATUS_ZOMBIE:      # dead but not yet reaped (POSIX): the job would wait for ever
+            return False
         return j.get("pid_ctime") is None or abs(pr.create_time() - j["pid_ctime"]) < 1.0
     except psutil.Error:
         return False
@@ -85,9 +87,14 @@ def status(job_id: str) -> dict:
     jd = _job_dir(job_id)
     j = read(jd)
     if j["state"] in ("queued", "running") and not _alive(j) and time.time() - j["created_at"] > 5:
-        log = (jd / "worker.log").read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:] \
+        j = read(jd)                                 # it may have finished and exited between the read and the check
+        if j["state"] in TERMINAL:
+            return j
+        full = (jd / "worker.log").read_text(encoding="utf-8", errors="replace").strip().splitlines() \
             if (jd / "worker.log").is_file() else []
-        j = update(jd, state="failed", message_key="err.solver", message_args={"detail": " | ".join(log) or "process ended"})
+        log = full[-3:]
+        fatal = [x for x in full if x.startswith("Fatal Python error")]     # not the stack frames, which carry file paths
+        j = update(jd, state="failed", message_key="err.solver", message_args={"detail": fatal[0] if fatal else " | ".join(log) or "process ended"})
     return j
 
 
