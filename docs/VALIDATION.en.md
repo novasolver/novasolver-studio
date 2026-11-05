@@ -1,6 +1,6 @@
-# NovaSolver Studio validation manual — 0.7.1
+# NovaSolver Studio validation manual — 0.7.6
 
-This document records how accurately Studio 0.7.1 solves problems with known answers. Anyone can re-run every problem with `validation/suite.py`. The numbers were produced on 2026-11-01 on the machine below; none were typed in by hand.
+This document records how accurately Studio 0.7.6 solves problems with known answers. Anyone can re-run every problem with `validation/suite.py`. The numbers were produced on 2026-11-06 on the machine below; none were typed in by hand.
 
 Machine: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 
@@ -25,7 +25,7 @@ Machine: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 | Hanging bar under gravity | Verify self-weight stress and displacement against the one-dimensional solution. | Verify self-weight stress and displacement against the one-dimensional solution. | 1.878e-04 mm | 1.878e-04 mm | -0.00 % | ±2 % | pass | converged |
 | Rotating disk | Quarter disk with half thickness; compare centre stress with the plane-stress solution. | Quarter disk with half thickness; compare centre stress with the plane-stress solution. | 35.54 MPa | 35.51 MPa | +0.07 % | ±2 % | pass | converged |
 | Shaft torsion | Verify shear stress and twist of a steel shaft under torque. | Verify shear stress and twist of a steel shaft under torque. | 0.01615 rad | 0.01615 rad | +0.00 % | ±2 % | pass | not converged |
-| Large cantilever | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | pass | one mesh |
+| Large cantilever | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | pass | converged |
 | Plastic bar | Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement. | Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement. | 268 MPa | 268 MPa | -0.00 % | ±1 % | pass | converged |
 | Plastic beam collapse | Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain. | Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain. | 1280 N | 1250 N | +2.44 % | ±3 % | pass | one mesh |
 | Rubber tension | Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress. | Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress. | 29.54 MPa | 29.54 MPa | +0.00 % | ±2 % | pass | converged |
@@ -34,16 +34,16 @@ Machine: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 | Friction block | Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0. | Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0. | 400 N | 400 N | -0.00 % | ±1 % | pass | converged |
 | Two blocks with a gap (contact) | Two blocks 0.05 mm apart are pressed together. They are meshed differently, and the contact force after the gap closes is compared with a hand calculation. | Uniform compression of two blocks in series: F = E (d − g) A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | pass | converged |
 | Tying separately meshed parts | Two blocks that share no nodes are bonded (tied) and pulled; the answer must equal that of one bar. | Uniform tension of one bar: F = E d A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | pass | converged |
+| Cylinder on a flat (Hertz contact) | A steel cylinder pressed onto a steel block; peak contact pressure and contact width are compared with Hertz (plane strain, quarter model). | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | pass | converged |
 | NAFEMS LE1 elliptic membrane | curved boundary, symmetry planes, outward pressure | σyy at D | 92.8 MPa | 92.7 MPa | +0.11 % | ±2 % | pass | converged |
-| NAFEMS LE10 thick plate | 3D bending, component supports, symmetry planes | σyy at D | -5.364 MPa | -5.38 MPa | -0.29 % | ±2 % | pass | one mesh |
+| NAFEMS LE10 thick plate | 3D bending, component supports, symmetry planes | σyy at D | -5.367 MPa | -5.38 MPa | -0.24 % | ±2 % | pass | one mesh |
 | Closed thick cylinder under pressure (Lamé) | pressure on curved faces, curved quadratic elements, 1/8 symmetry | hoop stress, mid wall | 20 MPa | 19.99 MPa | +0.01 % | ±1 % | pass | not converged |
 |  |  | axial stress, mid wall | 9.756 MPa | 9.756 MPa | +0.00 % | ±1 % | pass |  |
-| Curved beam (Winkler–Bach) | combined bending and tension, curvature shifts the stress | inner fibre | 90.6 MPa | 89.41 MPa | +1.33 % | ±2 % | pass | converged |
-|  |  | outer fibre | -51.92 MPa | -52.2 MPa | -0.54 % | ±2 % | pass |  |
+| Curved beam (Winkler–Bach) | combined bending and tension, curvature shifts the stress | inner fibre | 90.47 MPa | 89.41 MPa | +1.19 % | ±2 % | pass | converged |
+|  |  | outer fibre | -51.95 MPa | -52.2 MPa | -0.49 % | ±2 % | pass |  |
 | Steel and aluminium bar in series | per-part materials, component supports, bonded interface | tip displacement | 0.1934 mm | 0.1937 mm | -0.17 % | ±1 % | pass | converged |
 | Thick sphere under internal pressure | three symmetry planes, pressure on a curved inner face | inner displacement | 0.00195 mm | 0.001951 mm | -0.07 % | ±1 % | pass | converged |
 |  |  | hoop stress at the bore | 7.136 MPa | 7.143 MPa | -0.10 % | ±3 % | pass |  |
-| Cylinder on a flat (Hertz contact) | A steel cylinder pressed onto a steel block; peak contact pressure and contact width are compared with Hertz (plane strain, quarter model). | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | pass | converged |
 
 ## Heat transfer
 
@@ -52,20 +52,20 @@ Machine: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 | Heat conduction block | Heat flowing through a block whose two ends are held at fixed temperatures. Compared automatically with Fourier's law (Q = kAΔT/L). | Heat flow through the block (Fourier's law) | 40 W | 40 W | +0.00 % | ±2 % | pass | converged |
 | Cooling fin | A pin fin heated at its base and cooled by the surrounding air. The heat leaving the base is compared with the analytic fin solution. | Heat through the fin base (fin theory) | 5.064 W | 5.066 W | -0.05 % | ±2 % | pass | converged |
 | NAFEMS T4 2D conduction with convection | fixed temperature with convection | T at E | 18.25 °C | 18.3 °C | -0.28 % | ±1 % | pass | converged |
-| ISO 10211 Annex A, case 1 | thermal-bridge software validation (tolerance 0.1 K) | largest deviation of 28 points (at x 1 m, y 7 m) | 9.657 °C | 9.658 °C | -0.000693 °C | ±0.1 °C | pass | not converged |
+| ISO 10211 Annex A, case 1 | thermal-bridge software validation (tolerance 0.1 K) | largest deviation of 28 points (at x 1 m, y 7 m) | 9.657 °C | 9.658 °C | -0.000708 °C | ±0.1 °C | pass | not converged |
 | ISO 10211 Annex A, case 2 (four materials) | several materials, a thin aluminium profile, surface resistances | T at A | 7.065 °C | 7.1 °C | -0.035 °C | ±0.1 °C | pass | one mesh |
 |  |  | T at B | 0.7613 °C | 0.8 °C | -0.0387 °C | ±0.1 °C | pass |  |
-|  |  | T at C | 7.898 °C | 7.9 °C | -0.00191 °C | ±0.1 °C | pass |  |
-|  |  | T at D | 6.272 °C | 6.3 °C | -0.0279 °C | ±0.1 °C | pass |  |
+|  |  | T at C | 7.898 °C | 7.9 °C | -0.00188 °C | ±0.1 °C | pass |  |
+|  |  | T at D | 6.274 °C | 6.3 °C | -0.0263 °C | ±0.1 °C | pass |  |
 |  |  | T at E | 0.8275 °C | 0.8 °C | +0.0275 °C | ±0.1 °C | pass |  |
-|  |  | T at F | 16.41 °C | 16.4 °C | +0.00842 °C | ±0.1 °C | pass |  |
-|  |  | T at G | 16.33 °C | 16.3 °C | +0.0343 °C | ±0.1 °C | pass |  |
+|  |  | T at F | 16.41 °C | 16.4 °C | +0.00845 °C | ±0.1 °C | pass |  |
+|  |  | T at G | 16.33 °C | 16.3 °C | +0.0344 °C | ±0.1 °C | pass |  |
 |  |  | T at H | 16.77 °C | 16.8 °C | -0.0329 °C | ±0.1 °C | pass |  |
 |  |  | T at I | 18.33 °C | 18.3 °C | +0.0336 °C | ±0.1 °C | pass |  |
-|  |  | heat flow | 9.492 W/m | 9.5 W/m | -0.00779 W/m | ±0.1 W/m | pass |  |
-| Three-layer wall | per-part conductivity, temperature continuity at interfaces | T, first interface | 19.85 °C | 19.85 °C | -1.82e-12 °C | ±0.05 °C | pass | converged |
-|  |  | T, second interface | 0.7634 °C | 0.7634 °C | -4.39e-12 °C | ±0.05 °C | pass |  |
-|  |  | heat flow | 0.1527 W | 0.1527 W | +0.00 % | ±1 % | pass |  |
+|  |  | heat flow | 9.492 W/m | 9.5 W/m | -0.00778 W/m | ±0.1 W/m | pass |  |
+| Three-layer wall | per-part conductivity, temperature continuity at interfaces | T, first interface | 19.85 °C | 19.85 °C | +1.24e-13 °C | ±0.05 °C | pass | converged |
+|  |  | T, second interface | 0.7634 °C | 0.7634 °C | -1.6e-13 °C | ±0.05 °C | pass |  |
+|  |  | heat flow | 0.1527 W | 0.1527 W | -0.00 % | ±1 % | pass |  |
 | Radial conduction through a tube | temperatures on curved faces, logarithmic profile | T at r = 15 mm | 53.21 °C | 53.2 °C | +0.00481 °C | ±0.05 °C | pass | converged |
 |  |  | heat flow | 1813 W | 1813 W | +0.00 % | ±1 % | pass |  |
 
@@ -73,7 +73,7 @@ Machine: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 
 | Problem | What it tests | Quantity | Studio | Reference | Error | Tolerance | Result | Mesh |
 |---|---|---|---|---|---|---|---|---|
-| Parallel-plate capacitor | Finds potential and capacitance between plates; checked against C = εA/d. | Capacitance (parallel-plate solution) | 23.24 pF | 23.24 pF | -0.00 % | ±1 % | pass | converged |
+| Parallel-plate capacitor | Finds potential and capacitance between plates; checked against C = εA/d. | Capacitance (parallel-plate solution) | 23.24 pF | 23.24 pF | +0.00 % | ±1 % | pass | converged |
 | Coaxial cable | Finds coaxial capacitance and electric field; compared with the cylindrical analytic solution. | Capacitance (coaxial solution) | 0.9326 pF | 0.9326 pF | +0.00 % | ±1 % | pass | converged |
 | Busbar Joule heating | Finds current and temperature rise in a copper bar; checked against resistance and conduction formulas. | Temperature rise (bar with cooled ends) | 7.641 K | 7.641 K | -0.00 % | ±1 % | pass | converged |
 

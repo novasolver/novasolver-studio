@@ -1,6 +1,6 @@
-# NovaSolver Studio 验证手册 — 0.7.1
+# NovaSolver Studio 验证手册 — 0.7.6
 
-本文档记录 Studio 0.7.1 求解已知答案问题的准确程度。所有问题都可以用 `validation/suite.py` 重新计算。数值是 2026-11-01 在下列环境中求解的结果，没有手工抄写。
+本文档记录 Studio 0.7.6 求解已知答案问题的准确程度。所有问题都可以用 `validation/suite.py` 重新计算。数值是 2026-11-06 在下列环境中求解的结果，没有手工抄写。
 
 环境: Windows-10-10.0.19045-SP0, Python 3.12.3, 8 CPU
 
@@ -25,7 +25,7 @@
 | 自重作用下的悬挂杆 | 用一维解析解验证自重引起的应力和位移。 | Verify self-weight stress and displacement against the one-dimensional solution. | 1.878e-04 mm | 1.878e-04 mm | -0.00 % | ±2 % | 合格 | 已收敛 |
 | 旋转圆盘 | 采用四分之一圆盘及半厚度模型，将中心应力与平面应力解析解比较。 | Quarter disk with half thickness; compare centre stress with the plane-stress solution. | 35.54 MPa | 35.51 MPa | +0.07 % | ±2 % | 合格 | 已收敛 |
 | 圆轴扭转 | 验证钢圆轴在扭矩作用下的剪应力和扭转角。 | Verify shear stress and twist of a steel shaft under torque. | 0.01615 rad | 0.01615 rad | +0.00 % | ±2 % | 合格 | 未确认收敛 |
-| 大变形悬臂梁 | 不可伸长 Euler 弹性线，PL²/EI = 1，与线性解比较。 梁端约束允许横向应变。 | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | 合格 | 单一网格 |
+| 大变形悬臂梁 | 不可伸长 Euler 弹性线，PL²/EI = 1，与线性解比较。 梁端约束允许横向应变。 | Inextensible Euler elastica, PL²/EI = 1; compare with the linear answer. The beam clamp permits lateral strain. | 60.22 mm | 60.34 mm | -0.20 % | ±2 % | 合格 | 已收敛 |
 | 弹塑性杆 | 单轴双线性硬化：加载至 1%，卸载经过零力点，再回到零位移。 | Uniaxial bilinear hardening: load to 1%, unload through zero force, then return to zero displacement. | 268 MPa | 268 MPa | -0.00 % | ±1 % | 合格 | 已收敛 |
 | 梁的塑性极限 | 理想塑性矩形悬臂梁，忽略剪切，P = σy b h²/(4L)。达到极限后以未收敛结束。 梁端约束允许横向应变。 | Perfectly plastic rectangular cantilever; P = σy b h²/(4L), neglecting shear. A limit run ends without convergence. The beam clamp permits lateral strain. | 1280 N | 1250 N | +2.44 % | ±3 % | 合格 | 单一网格 |
 | 橡胶拉伸 | 可压缩 neo-Hookean 材料的均匀拉伸，λ = 2，侧向应力为零。 | Homogeneous compressible neo-Hookean tension, λ = 2 and zero lateral stress. | 29.54 MPa | 29.54 MPa | +0.00 % | ±2 % | 合格 | 已收敛 |
@@ -34,16 +34,16 @@
 | 摩擦方块 | 法向压力及剪切下的 Coulomb 粘着与滑动，软弹簧保证稳定。 此验证模型的泊松比为 0。 | Coulomb stick/slip under normal pressure and shear, with a soft spring. This patch uses Poisson ratio 0. | 400 N | 400 N | -0.00 % | ±1 % | 合格 | 已收敛 |
 | 有间隙的两个块（接触） | 将相距 0.05 mm 的两个块压在一起。上下网格不同，比较间隙闭合后的接触力与手算结果。 | Uniform compression of two blocks in series: F = E (d − g) A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | 合格 | 已收敛 |
 | 分别划分网格的零件的绑定 | 将不共享节点的两个块粘接（绑定）后拉伸，确认结果与一根杆相同。 | Uniform tension of one bar: F = E d A / (2h). | 1.025e+05 N | 1.025e+05 N | -0.00 % | ±0.5 % | 合格 | 已收敛 |
+| 圆柱与平面接触（赫兹） | 将钢圆柱压在钢块上，并将最大接触压力和接触宽度与赫兹公式比较（平面应变、1/4 模型）。 | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | 合格 | 已收敛 |
 | NAFEMS LE1 椭圆膜 | 曲线边界、对称面、向外压力 | σyy at D | 92.8 MPa | 92.7 MPa | +0.11 % | ±2 % | 合格 | 已收敛 |
-| NAFEMS LE10 厚板弯曲 | 三维弯曲、分量约束、对称面 | σyy at D | -5.364 MPa | -5.38 MPa | -0.29 % | ±2 % | 合格 | 单一网格 |
+| NAFEMS LE10 厚板弯曲 | 三维弯曲、分量约束、对称面 | σyy at D | -5.367 MPa | -5.38 MPa | -0.24 % | ±2 % | 合格 | 单一网格 |
 | 封闭厚壁圆筒内压（Lamé） | 曲面压力、二次单元贴合曲面、1/8 对称 | hoop stress, mid wall | 20 MPa | 19.99 MPa | +0.01 % | ±1 % | 合格 | 未确认收敛 |
 |  |  | axial stress, mid wall | 9.756 MPa | 9.756 MPa | +0.00 % | ±1 % | 合格 |  |
-| 曲梁（Winkler–Bach） | 弯曲与轴力组合、曲率导致应力偏移 | inner fibre | 90.6 MPa | 89.41 MPa | +1.33 % | ±2 % | 合格 | 已收敛 |
-|  |  | outer fibre | -51.92 MPa | -52.2 MPa | -0.54 % | ±2 % | 合格 |  |
+| 曲梁（Winkler–Bach） | 弯曲与轴力组合、曲率导致应力偏移 | inner fibre | 90.47 MPa | 89.41 MPa | +1.19 % | ±2 % | 合格 | 已收敛 |
+|  |  | outer fibre | -51.95 MPa | -52.2 MPa | -0.49 % | ±2 % | 合格 |  |
 | 钢铝串联杆 | 分部件材料、分量约束、粘接界面 | tip displacement | 0.1934 mm | 0.1937 mm | -0.17 % | ±1 % | 合格 | 已收敛 |
 | 厚壁球内压 | 三个对称面、曲面内压 | inner displacement | 0.00195 mm | 0.001951 mm | -0.07 % | ±1 % | 合格 | 已收敛 |
 |  |  | hoop stress at the bore | 7.136 MPa | 7.143 MPa | -0.10 % | ±3 % | 合格 |  |
-| 圆柱与平面接触（赫兹） | 将钢圆柱压在钢块上，并将最大接触压力和接触宽度与赫兹公式比较（平面应变、1/4 模型）。 | Hertz line contact p0 = √(P E*/(πR)) and the contact half-width a. | 1407 MPa | 1408 MPa | -0.09 % | ±5 % | 合格 | 已收敛 |
 
 ## 传热
 
@@ -52,20 +52,20 @@
 | 导热块 | 两端温度固定的长方体中的热传导。自动与傅里叶定律（Q = kAΔT/L）比较。 | Heat flow through the block (Fourier's law) | 40 W | 40 W | +0.00 % | ±2 % | 合格 | 已收敛 |
 | 散热翅片 | 根部受热、被周围空气冷却的翅片。将根部散出的热量与翅片理论解析解比较。 | Heat through the fin base (fin theory) | 5.064 W | 5.066 W | -0.05 % | ±2 % | 合格 | 已收敛 |
 | NAFEMS T4 带对流的二维导热 | 定温与对流组合 | T at E | 18.25 °C | 18.3 °C | -0.28 % | ±1 % | 合格 | 已收敛 |
-| ISO 10211 附录A 案例1 | 建筑热桥计算验证（容差 0.1 K） | largest deviation of 28 points (at x 1 m, y 7 m) | 9.657 °C | 9.658 °C | -0.000693 °C | ±0.1 °C | 合格 | 未确认收敛 |
+| ISO 10211 附录A 案例1 | 建筑热桥计算验证（容差 0.1 K） | largest deviation of 28 points (at x 1 m, y 7 m) | 9.657 °C | 9.658 °C | -0.000708 °C | ±0.1 °C | 合格 | 未确认收敛 |
 | ISO 10211 附录A 案例2（四种材料热桥） | 多材料、薄铝型材、表面热阻 | T at A | 7.065 °C | 7.1 °C | -0.035 °C | ±0.1 °C | 合格 | 单一网格 |
 |  |  | T at B | 0.7613 °C | 0.8 °C | -0.0387 °C | ±0.1 °C | 合格 |  |
-|  |  | T at C | 7.898 °C | 7.9 °C | -0.00191 °C | ±0.1 °C | 合格 |  |
-|  |  | T at D | 6.272 °C | 6.3 °C | -0.0279 °C | ±0.1 °C | 合格 |  |
+|  |  | T at C | 7.898 °C | 7.9 °C | -0.00188 °C | ±0.1 °C | 合格 |  |
+|  |  | T at D | 6.274 °C | 6.3 °C | -0.0263 °C | ±0.1 °C | 合格 |  |
 |  |  | T at E | 0.8275 °C | 0.8 °C | +0.0275 °C | ±0.1 °C | 合格 |  |
-|  |  | T at F | 16.41 °C | 16.4 °C | +0.00842 °C | ±0.1 °C | 合格 |  |
-|  |  | T at G | 16.33 °C | 16.3 °C | +0.0343 °C | ±0.1 °C | 合格 |  |
+|  |  | T at F | 16.41 °C | 16.4 °C | +0.00845 °C | ±0.1 °C | 合格 |  |
+|  |  | T at G | 16.33 °C | 16.3 °C | +0.0344 °C | ±0.1 °C | 合格 |  |
 |  |  | T at H | 16.77 °C | 16.8 °C | -0.0329 °C | ±0.1 °C | 合格 |  |
 |  |  | T at I | 18.33 °C | 18.3 °C | +0.0336 °C | ±0.1 °C | 合格 |  |
-|  |  | heat flow | 9.492 W/m | 9.5 W/m | -0.00779 W/m | ±0.1 W/m | 合格 |  |
-| 三层墙 | 分部件导热系数、界面温度连续 | T, first interface | 19.85 °C | 19.85 °C | -1.82e-12 °C | ±0.05 °C | 合格 | 已收敛 |
-|  |  | T, second interface | 0.7634 °C | 0.7634 °C | -4.39e-12 °C | ±0.05 °C | 合格 |  |
-|  |  | heat flow | 0.1527 W | 0.1527 W | +0.00 % | ±1 % | 合格 |  |
+|  |  | heat flow | 9.492 W/m | 9.5 W/m | -0.00778 W/m | ±0.1 W/m | 合格 |  |
+| 三层墙 | 分部件导热系数、界面温度连续 | T, first interface | 19.85 °C | 19.85 °C | +1.24e-13 °C | ±0.05 °C | 合格 | 已收敛 |
+|  |  | T, second interface | 0.7634 °C | 0.7634 °C | -1.6e-13 °C | ±0.05 °C | 合格 |  |
+|  |  | heat flow | 0.1527 W | 0.1527 W | -0.00 % | ±1 % | 合格 |  |
 | 圆管径向导热 | 曲面温度条件、对数分布 | T at r = 15 mm | 53.21 °C | 53.2 °C | +0.00481 °C | ±0.05 °C | 合格 | 已收敛 |
 |  |  | heat flow | 1813 W | 1813 W | +0.00 % | ±1 % | 合格 |  |
 
@@ -73,7 +73,7 @@
 
 | 问题 | 检验内容 | 量 | Studio | 参考值 | 误差 | 容差 | 结果 | 网格 |
 |---|---|---|---|---|---|---|---|---|
-| 平行板电容器 | 计算平板间的电势和电容，并与 C = εA/d 对比。 | Capacitance (parallel-plate solution) | 23.24 pF | 23.24 pF | -0.00 % | ±1 % | 合格 | 已收敛 |
+| 平行板电容器 | 计算平板间的电势和电容，并与 C = εA/d 对比。 | Capacitance (parallel-plate solution) | 23.24 pF | 23.24 pF | +0.00 % | ±1 % | 合格 | 已收敛 |
 | 同轴电缆 | 计算同轴导体间的电容和电场，并与圆柱解析解对比。 | Capacitance (coaxial solution) | 0.9326 pF | 0.9326 pF | +0.00 % | ±1 % | 合格 | 已收敛 |
 | 母排焦耳热 | 计算铜棒中的电流和温升，并用电阻与热传导解析解验证。 | Temperature rise (bar with cooled ends) | 7.641 K | 7.641 K | -0.00 % | ±1 % | 合格 | 已收敛 |
 
