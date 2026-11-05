@@ -173,6 +173,41 @@ def test_a_finer_mesh_retry_also_refines_the_stl_surface(tmp_path, monkeypatch):
     assert seen == [0.125]
 
 
+def test_last_resort_mesh_attempts_are_only_for_imported_cad(tmp_path, monkeypatch):
+    import json
+    import pytest
+    from novastudio import mesh_worker as M
+    seen = []
+
+    def fails(job):
+        seen.append(job)
+        raise M.MeshAttemptFailed("no")
+    monkeypatch.setattr(M, "mesh_job", fails)
+
+    def attempts(**job):
+        seen.clear()
+        path = tmp_path / "job.json"
+        path.write_text(json.dumps(job), encoding="utf-8")
+        with pytest.raises(RuntimeError, match="no"):
+            M.main(str(path))
+        return list(seen)
+    cad = attempts(kind="import", file="a.step")
+    assert [a.get("_fuzzy_m") for a in cad[-2:]] == [1e-4, 1e-4] and cad[-3]["_curvature"] == 12
+    assert len(cad) == len(M.MESH_ATTEMPTS) + len(M.LAST_RESORTS)
+    assert not any("_fuzzy_m" in a or "_curvature" in a for a in attempts(kind="import", file="a.stl"))     # an STL has no CAD faces to fragment
+    assert len(attempts(kind="box")) == 3
+
+    def broken(job):
+        seen.append(job)
+        raise ValueError("a bad file, not this mesh")
+    monkeypatch.setattr(M, "mesh_job", broken)
+    seen.clear()
+    (tmp_path / "job.json").write_text(json.dumps({"kind": "import", "file": "a.step"}), encoding="utf-8")
+    with pytest.raises(ValueError):                        # not retried until the last resorts
+        M.main(str(tmp_path / "job.json"))
+    assert len(seen) == 1
+
+
 def test_a_worker_that_crashed_reports_the_crash(tmp_path, monkeypatch):
     import json
     import subprocess

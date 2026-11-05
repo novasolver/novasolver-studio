@@ -83,9 +83,10 @@ def kill_tree(pid: int) -> None:
     import psutil
     try:
         root = psutil.Process(pid)
-    except psutil.NoSuchProcess:
+        tree = root.children(recursive=True) + [root]
+    except psutil.NoSuchProcess:                                    # it may end between the two calls
         return
-    for q in root.children(recursive=True) + [root]:
+    for q in tree:
         try:
             q.kill()
         except psutil.NoSuchProcess:
