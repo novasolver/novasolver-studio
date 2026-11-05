@@ -1309,6 +1309,8 @@ def mesh_job(job: dict) -> None:
                      "quality_min": float(np.min(q)), "quality_mean": float(np.mean(q)), "h": h,
                      # quality_* describe Gmsh's curved mesh before straightening
                      "straightened": int(straightened), "still_folded": int(folded)}
+            if job.get("_fuzzy_m"):
+                stats["fuzzy_mm"] = job["_fuzzy_m"] * 1e3
             (out / "mesh_stats.json").write_text(json.dumps(stats), encoding="utf-8")
     finally:
         gmsh.finalize()

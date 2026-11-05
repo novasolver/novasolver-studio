@@ -208,6 +208,19 @@ def test_last_resort_mesh_attempts_are_only_for_imported_cad(tmp_path, monkeypat
     assert len(seen) == 1
 
 
+def test_a_mesh_from_the_tolerant_fragment_says_so():
+    import json
+    from novastudio import commands as C
+    from novastudio.store import case_dir
+    cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
+    r = C.run_simulation(cid, "preview", wait_s=300, lang="en")["results"]
+    assert "fuzzy_mesh" not in [w["code"] for w in r["warnings"]]
+    p = case_dir(cid) / "mesh" / "mesh_stats.json"
+    p.write_text(json.dumps({**json.loads(p.read_text()), "fuzzy_mm": 0.1}))
+    w = [x for x in C.get_results(cid, None, "en")["warnings"] if x["code"] == "fuzzy_mesh"]
+    assert len(w) == 1 and "0.1 mm" in w[0]["message"]
+
+
 def test_a_worker_that_crashed_reports_the_crash(tmp_path, monkeypatch):
     import json
     import subprocess

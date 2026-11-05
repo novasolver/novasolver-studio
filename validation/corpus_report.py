@@ -46,6 +46,8 @@ def main() -> None:
     ap.add_argument("out")
     ap.add_argument("--version", required=True)
     ap.add_argument("--limit-s", type=int, required=True)
+    ap.add_argument("--at-once", type=int, default=1)
+    ap.add_argument("--note", help="anything about how the run differed from the plain procedure")
     a = ap.parse_args()
     rows = [json.loads(x) for x in open(a.results, encoding="utf-8") if x.strip()]
     if len({r["file"] for r in rows}) != len(rows):
@@ -60,7 +62,7 @@ def main() -> None:
         "",
         f"Can Studio take a part it has never seen from import to a solved result? {n} STEP files that were not made for Studio "
         "went through `validation/corpus.py`: import, one end of the longest axis fixed, 1,000 N on the other end, automatic mesh at the coarse level, "
-        f"solve, and a check that the reactions balance the load. Each file ran on its own, with a limit of {a.limit_s} s.",
+        f"solve, and a check that the reactions balance the load. Each file ran in its own process, with a limit of {a.limit_s} s and {a.at_once} files running at a time.",
         "",
         f"**{len(solved)} of {n} ({pct(len(solved))}) were solved.** Run on {date.today().isoformat()}, {platform.system()}, 8 CPU threads, 16 GB of memory.",
         "",
@@ -71,10 +73,18 @@ def main() -> None:
     lines += ["", "| Source | Parts | Solved |", "|---|---:|---:|"]
     names = {"solidcraft": "STEP test parts of the SolidCraft CAD project", "freecad": "An even sample of the FreeCAD parts library"}
     lines += [f"| {names.get(s, s)} | {sum(c.values())} | {c['solved']} |" for s, c in by_source.items()]
+    if all("solids" in r for r in rows):
+        bins = (("1 solid", lambda s: s == 1), ("2 to 5 solids", lambda s: 2 <= s <= 5), ("6 or more solids", lambda s: s >= 6), ("No solid", lambda s: s < 1))
+        lines += ["", "| Solids in the file | Parts | Solved | Refused | Failed |", "|---|---:|---:|---:|---:|"]
+        for name, test in bins:
+            c = Counter(kind(r) for r in rows if test(r["solids"]))
+            refused = c["loose"] + c["no_solid"]
+            lines.append(f"| {name} | {sum(c.values())} | {c['solved']} | {refused} | {sum(c.values()) - c['solved'] - refused} |")
     lines += [
         "",
         "## How to read this",
         "",
+        *([f"- {a.note}"] if a.note else []),
         "- It tests robustness, not accuracy. The supports and the load are chosen by a script and mean nothing physically, "
         "so this says nothing about whether a stress value is right. Accuracy is in [VALIDATION.en.md](VALIDATION.en.md).",
         "- Many files are assemblies of loose parts, with screws, wires and enclosures. A refusal is often the right answer there, "
