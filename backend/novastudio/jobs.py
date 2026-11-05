@@ -93,7 +93,7 @@ def status(job_id: str) -> dict:
         full = (jd / "worker.log").read_text(encoding="utf-8", errors="replace").strip().splitlines() \
             if (jd / "worker.log").is_file() else []
         log = full[-3:]
-        fatal = [x for x in full if x.startswith("Fatal Python error")]     # not the stack frames, which carry file paths
+        fatal = [x for x in full if x.startswith(("Fatal Python error", "Windows fatal exception"))]     # not the stack frames, which carry file paths
         j = update(jd, state="failed", message_key="err.solver", message_args={"detail": fatal[0] if fatal else " | ".join(log) or "process ended"})
     return j
 

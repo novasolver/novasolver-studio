@@ -182,6 +182,9 @@ def test_a_worker_that_crashed_reports_the_crash(tmp_path, monkeypatch):
     (tmp_path / "worker.log").write_text('Fatal Python error: Segmentation fault\n\nCurrent thread:\n  File "C:/a/b.py", line 1 in f\n', encoding="utf-8")
     monkeypatch.setattr(jobs, "_job_dir", lambda job_id: tmp_path)
     assert jobs.status("x")["message_args"]["detail"] == "Fatal Python error: Segmentation fault"
+    (tmp_path / "job.json").write_text(json.dumps({"job_id": "x", "state": "running", "pid": None, "created_at": 0}), encoding="utf-8")
+    (tmp_path / "worker.log").write_text('Windows fatal exception: access violation\n\nCurrent thread:\n  File "C:/a/b.py", line 1 in f\n', encoding="utf-8")
+    assert jobs.status("x")["message_args"]["detail"] == "Windows fatal exception: access violation"
     p = subprocess.Popen([sys.executable, "-c", ""])     # never reaped until wait(): a zombie on POSIX
     try:
         import time
