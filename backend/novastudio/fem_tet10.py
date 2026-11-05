@@ -81,7 +81,8 @@ def spd_factor(A):
 
 def _pcg_best(A, b, M, tol, maxiter=3000, patience=40, report=None):
     """Preconditioned CG that returns its best iterate and the relative residual there. Past the round-off floor the
-    recurrence drifts upwards: running on to maxiter took minutes and ended on a worse answer than it had passed."""
+    recurrence drifts upwards: running on to maxiter took minutes and ended on a worse answer than it had passed.
+    The residual returned is recomputed from b - Ax, because the recurrence can report 1e-9 while the true one is 0.02."""
     norm_b = float(np.linalg.norm(b))
     if norm_b == 0:
         return np.zeros_like(b), 0.0
@@ -109,7 +110,7 @@ def _pcg_best(A, b, M, tol, maxiter=3000, patience=40, report=None):
         z = M @ r
         rz, old = float(r @ z), rz
         p = z + (rz / old) * p
-    return best_x, best
+    return best_x, float(np.linalg.norm(b - A @ best_x)) / norm_b
 
 
 def _amg_cg(A, b, B=None, tol=1e-8, report=None):
@@ -157,12 +158,12 @@ def canonical_tets(nodes: np.ndarray, tets: np.ndarray) -> np.ndarray:
         for e in bad:
             rows, cols = linear_sum_assignment(d[e])
             if np.any(d[e][rows, cols] > 0.5 * edge[e]):
-                return _midsides_by_position(tets)
+                return _midsides_by_position(nodes, tets)
             pick[e] = cols
     out = tets.copy()
     out[:, 4:10] = np.take_along_axis(tets[:, 4:10], pick, axis=1)
     if len(bad) and not _midsides_consistent(out):
-        return _midsides_by_position(tets)
+        return _midsides_by_position(nodes, tets)
     return out
 
 
@@ -176,14 +177,20 @@ def _midsides_consistent(tets: np.ndarray) -> bool:
     return not np.any((m[1:] == m[:-1]) & np.any(k[1:] != k[:-1], axis=1))
 
 
-def _midsides_by_position(tets: np.ndarray) -> np.ndarray:
+def _midsides_by_position(nodes: np.ndarray, tets: np.ndarray) -> np.ndarray:
     """Heavily curved midside nodes on a coarse element can sit nearer another edge than their own, so geometry cannot
-    tell them apart. Gmsh's column order can: 4..9 are the edges 01, 12, 20, 30, 32, 31."""
-    out = tets.copy()
-    out[:, 4:10] = tets[:, [4, 5, 6, 7, 9, 8]]
-    if not _midsides_consistent(out):
+    tell them apart. Gmsh's column order can: 4..9 are the edges 01, 12, 20, 30, 32, 31. The input may already be
+    canonical (callers normalise it again), so the columns stay put if that is the layout neighbours agree on; only
+    elements sharing no midside node can fit both, and then the nearer layout is taken."""
+    swapped = tets.copy()
+    swapped[:, 4:10] = tets[:, [4, 5, 6, 7, 9, 8]]
+    fits = [t for t in (swapped, tets) if _midsides_consistent(t)]
+    if not fits:
         raise ValueError("midside node matching failed (curved or non-conforming mesh)")
-    return out
+
+    def distance(t):
+        return np.linalg.norm(nodes[t[:, 4:10]] - 0.5 * (nodes[t[:, EDGES[:, 0]]] + nodes[t[:, EDGES[:, 1]]]), axis=2).sum()
+    return min(fits, key=distance).copy()
 
 
 def _dshape(g):

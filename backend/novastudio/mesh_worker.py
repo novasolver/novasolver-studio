@@ -858,7 +858,8 @@ def mesh_job(job: dict) -> None:
                     ref = json.loads(Path(job["faces_display"]).read_text(encoding="utf-8")).get("faces")
                 groups, labelled = import_stl(gmsh, job["file"], float(job.get("stl_scale", 1e-3)),
                                               target=job.get("surf_cap") if job.get("volume") else None,
-                                              factor=float(job.get("surf_factor", 1.0)), ref_faces=ref)
+                                              factor=float(job.get("surf_factor", 1.0)) * job.get("_size_factor", 1.0),
+                                              ref_faces=ref)
             else:
                 gmsh.option.setString("Geometry.OCCTargetUnit", "M")     # CAD units -> metres
                 gmsh.option.setNumber('Geometry.OCCImportLabels', 1)

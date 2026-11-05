@@ -134,11 +134,43 @@ def test_midside_columns_follow_gmsh_order_when_geometry_cannot_tell():
     index = np.zeros(int(tag.max()) + 1, int)
     index[tag.astype(int)] = np.arange(len(tag))
     nodes, tets = xyz.reshape(-1, 3), index[conn.astype(int)].reshape(-1, 10)
-    assert np.array_equal(fem._midsides_by_position(tets), fem.canonical_tets(nodes, tets))
+    assert np.array_equal(fem._midsides_by_position(nodes, tets), fem.canonical_tets(nodes, tets))
     # a midside node bowed past half its edge: the geometric match gives up and the column order answers
     far = nodes.copy()
     far[tets[0, 4]] = far[tets[0, 0]] + 3.0 * (far[tets[0, 1]] - far[tets[0, 0]]) + 3.0 * (far[tets[0, 2]] - far[tets[0, 0]])
-    assert np.array_equal(fem.canonical_tets(far, tets)[0], fem._midsides_by_position(tets)[0])
+    assert np.array_equal(fem.canonical_tets(far, tets)[0], fem._midsides_by_position(far, tets)[0])
+    # solve_modal normalises and mass_matrix normalises again: the second pass must not swap the columns back
+    once = fem.canonical_tets(far, tets)
+    assert np.array_equal(fem.canonical_tets(far, once), once)
+
+
+def test_the_iterative_solver_judges_the_true_residual():
+    import scipy.sparse as sp
+    rng = np.random.default_rng(10)
+    Q = np.linalg.qr(rng.normal(size=(3, 3)))[0]
+    A = sp.csr_matrix(Q @ np.diag([1e-15, 1e-4, 1.0]) @ Q.T)
+    b = rng.normal(size=3)
+    x, rel = fem._pcg_best(A, b, sp.identity(3, format="csr"), 1e-8)
+    assert rel == pytest.approx(np.linalg.norm(b - A @ x) / np.linalg.norm(b))
+    with pytest.raises(RuntimeError, match="did not converge"):      # reported 1e-9 here while the true value was 0.02
+        fem._amg_cg(A, b)
+
+
+def test_a_finer_mesh_retry_also_refines_the_stl_surface(tmp_path, monkeypatch):
+    from novastudio import mesh_worker as W
+    seen = []
+
+    class Stop(Exception):
+        pass
+
+    def stl(gmsh, path, scale, target=None, factor=1.0, ref_faces=None):
+        seen.append(factor)
+        raise Stop
+    monkeypatch.setattr(W, "import_stl", stl)
+    job = {"kind": "import", "file": "a.stl", "out": str(tmp_path), "volume": True, "surf_cap": 0.002, "surf_factor": 0.5}
+    with pytest.raises(Stop):
+        W.mesh_job({**job, "_size_factor": 0.25})
+    assert seen == [0.125]
 
 
 def test_a_singular_model_says_what_to_do():
