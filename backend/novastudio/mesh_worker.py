@@ -801,8 +801,28 @@ def body_volume_centroid(gmsh, tag: int, discrete: bool):
     return float(abs(vol)), (acc / vol).tolist() if vol else [0.0, 0.0, 0.0]
 
 
+class MeshAttemptFailed(Exception):
+    """gmsh could not make a volume mesh with this surface mesher and size."""
+
+
+# (surface mesher, size factor): Frontal-Delaunay, Delaunay, MeshAdapt. A boundary mesh too coarse for a detail makes
+# facets intersect, so an imported part then goes finer: on real assemblies this got past errors no mesher avoided at
+# the first size. Every try is a fresh gmsh session, because after one error gmsh stays inert until it is restarted:
+# a later generate() returns at once with no elements and no error, even after clearing the model.
+MESH_ATTEMPTS = ((6, 1.0), (5, 1.0), (1, 1.0), (6, 0.5), (1, 0.5), (6, 0.25), (1, 0.25))
+
+
 def main(job_path: str) -> None:
-    mesh_job(json.loads(Path(job_path).read_text(encoding="utf-8")))
+    job = json.loads(Path(job_path).read_text(encoding="utf-8"))
+    attempts = MESH_ATTEMPTS if job["kind"] == "import" and not job.get("domain") else MESH_ATTEMPTS[:3]
+    for i, (mesher, factor) in enumerate(attempts):
+        try:
+            mesh_job({**job, "_surface_mesher": mesher, "_size_factor": factor})
+            return
+        except MeshAttemptFailed as e:
+            if i == len(attempts) - 1:
+                raise RuntimeError(str(e)) from None
+            print(f"mesher {mesher} at size x{factor} failed ({e}); trying the next", flush=True)
 
 
 def model_bounds(gmsh) -> tuple:
@@ -1112,6 +1132,7 @@ def mesh_job(job: dict) -> None:
             spots.insert(0, {"faces": job["refine_faces"], "h": job["h"], "dist": job.get("refine_dist")})
         else:
             h = job.get("h", h)                 # caller may set the size directly (e.g. cells across a pipe inlet)
+        h *= job.get("_size_factor", 1.0)
         if spots:
             fields = []
             for sp in spots:
@@ -1161,11 +1182,15 @@ def mesh_job(job: dict) -> None:
         gmsh.option.setNumber("Mesh.MeshSizeMin", job["_hmin"] * 0.5 if job.get("_hmin") else h * (0.5 if job["kind"] != "import" else 0.1))
         gmsh.option.setNumber("Mesh.Algorithm3D", 1)
         gmsh.option.setNumber("Mesh.OptimizeNetgen", 1)   # removes near-flat slivers that stall the iterative solver
+        gmsh.option.setNumber("Mesh.Algorithm", job.get("_surface_mesher", 6))
         if job.get("volume") and job.get("thin_n") and job["kind"] == "import" and not job.get("domain"):
             # thin walls (fins, handles, ribs, plates) get enough elements across, whatever the overall size
             flip = None
             if not job["file"].lower().endswith(".stl"):
-                flip = cad_inward_faces(gmsh)          # CAD: mesh the surfaces once to measure, then start over
+                try:
+                    flip = cad_inward_faces(gmsh)      # CAD: mesh the surfaces once to measure, then start over
+                except Exception as e:
+                    raise MeshAttemptFailed(str(e)) from None
             thin = thin_wall_sizes(gmsh, h, float(job["thin_n"]), flip)
             if flip is not None:
                 gmsh.model.mesh.clear()
@@ -1183,19 +1208,13 @@ def mesh_job(job: dict) -> None:
                     return float(min(lc, np.min(sz[j] + 0.5 * d)))   # grows by half the distance away from the wall
                 gmsh.model.mesh.setSizeCallback(size_cb)
         if job.get("volume"):
-            # "Invalid boundary mesh (overlapping facets)" comes from one surface mesher on one face; another usually meshes it
-            for surface_mesher in (6, 5, 1):           # Frontal-Delaunay (default), Delaunay, MeshAdapt
-                gmsh.option.setNumber("Mesh.Algorithm", surface_mesher)
-                try:
-                    gmsh.model.mesh.generate(3)
-                    if not any(len(t) for t in gmsh.model.mesh.getElementsByType(4)[:1]):
-                        raise RuntimeError("the mesher produced no tetrahedra")
-                    break
-                except Exception:
-                    if surface_mesher == 1:
-                        raise
-                    print(f"surface mesher {surface_mesher} failed; trying another", flush=True)
-                    gmsh.model.mesh.clear()
+            try:
+                gmsh.model.mesh.generate(3)
+            except Exception as e:
+                raise MeshAttemptFailed(str(e)) from None
+            # all volumes, not any: a body left empty would quietly drop out of the analysis
+            if not all(len(gmsh.model.mesh.getElementsByType(4, t)[0]) for _, t in gmsh.model.getEntities(3)):
+                raise MeshAttemptFailed("the mesher left a body without tetrahedra")
             if job.get("order", 2) == 2:
                 gmsh.model.mesh.setOrder(2)
         elif not (job["kind"] == "import" and job["file"].lower().endswith(".stl")):

@@ -70,7 +70,13 @@ def check_memory(n_nodes: int, kind: str, steps: int = 1) -> None:
 def spd_factor(A):
     """Sparse LU for a symmetric positive definite matrix: a symmetric ordering and no pivot search. On a 100,000-unknown
     bracket this took 12 s and 0.4 GB for L, where the default column ordering ran out of memory."""
-    return spla.splu(A.tocsc(), permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0, options=dict(SymmetricMode=True))
+    try:
+        return spla.splu(A.tocsc(), permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0, options=dict(SymmetricMode=True))
+    except RuntimeError as e:
+        if "singular" not in str(e):
+            raise
+        from .store import StudioError
+        raise StudioError("err.singular", 400) from None
 
 
 def _pcg_best(A, b, M, tol, maxiter=3000, patience=40, report=None):
@@ -151,21 +157,32 @@ def canonical_tets(nodes: np.ndarray, tets: np.ndarray) -> np.ndarray:
         for e in bad:
             rows, cols = linear_sum_assignment(d[e])
             if np.any(d[e][rows, cols] > 0.5 * edge[e]):
-                raise ValueError("midside node matching failed (curved or non-conforming mesh)")
+                return _midsides_by_position(tets)
             pick[e] = cols
     out = tets.copy()
     out[:, 4:10] = np.take_along_axis(tets[:, 4:10], pick, axis=1)
-    if len(bad):
-        # A per-element assignment could still swap two midside nodes of a sliver: every element sharing a midside
-        # node must put it on the same corner pair, or straightening that node would corrupt the neighbours.
-        pair = np.sort(out[:, :4][:, EDGES], axis=2)                     # (E,6,2) corner pair of each midside column
-        mids = out[:, 4:10].ravel()
-        key = pair.reshape(-1, 2)
-        order = np.argsort(mids, kind="stable")
-        m, k = mids[order], key[order]
-        same = m[1:] == m[:-1]
-        if np.any(same & np.any(k[1:] != k[:-1], axis=1)):
-            raise ValueError("midside node matching failed (curved or non-conforming mesh)")
+    if len(bad) and not _midsides_consistent(out):
+        return _midsides_by_position(tets)
+    return out
+
+
+def _midsides_consistent(tets: np.ndarray) -> bool:
+    """Every element sharing a midside node must put it on the same corner pair, or straightening that node would
+    corrupt the neighbours."""
+    key = np.sort(tets[:, :4][:, EDGES], axis=2).reshape(-1, 2)          # corner pair of each midside column
+    mids = tets[:, 4:10].ravel()
+    order = np.argsort(mids, kind="stable")
+    m, k = mids[order], key[order]
+    return not np.any((m[1:] == m[:-1]) & np.any(k[1:] != k[:-1], axis=1))
+
+
+def _midsides_by_position(tets: np.ndarray) -> np.ndarray:
+    """Heavily curved midside nodes on a coarse element can sit nearer another edge than their own, so geometry cannot
+    tell them apart. Gmsh's column order can: 4..9 are the edges 01, 12, 20, 30, 32, 31."""
+    out = tets.copy()
+    out[:, 4:10] = tets[:, [4, 5, 6, 7, 9, 8]]
+    if not _midsides_consistent(out):
+        raise ValueError("midside node matching failed (curved or non-conforming mesh)")
     return out
 
 

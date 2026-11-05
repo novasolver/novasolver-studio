@@ -29,6 +29,7 @@
   "err.symmetry_rbm": "Without a fixed face, symmetry planes are needed in all three directions (x, y and z), or the part can slide or spin. Add a fixed face or symmetry planes in the missing directions.",
   "err.floating_body": "{count} of {total} bodies have no support and are not connected to anything (for example, the one centred near {where} mm), so the part cannot be solved. Add a fixed face on that body, or a bonded contact with another part.",
   "err.calculix_failed": "CalculiX stopped while solving a model with {nodes} nodes (exit code {rc}). At this size the usual cause is memory. Use a coarser mesh, or the built-in solver (preview mode), which needs less memory. End of the log: {log}",
+  "err.singular": "The model cannot be solved because part of it is free to move: nothing holds it in at least one direction. Look for bodies that touch only along an edge or at a point, and add a support or a bonded contact.",
   "role.load": "Load",
   "role.pressure": "Pressure",
   "role.symmetry": "Symmetry",

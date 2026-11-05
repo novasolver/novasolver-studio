@@ -129,6 +129,8 @@ def _run_worker(job: dict, timeout: int = 300) -> None:
         tail = [l for l in (p.stderr or p.stdout or "").strip().splitlines() if l.strip() and "***" not in l][-3:]
         if any("NO_SOLID" in l for l in tail):
             raise StudioError("err.no_solid", 400)
+        if "Traceback" in (p.stderr or ""):             # only what went wrong, not the worker's file paths and code
+            tail = tail[-1:]
         raise StudioError("err.mesh", 500, detail=" | ".join(tail) or f"exit code {p.returncode}")
 
 

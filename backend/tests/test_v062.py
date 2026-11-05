@@ -92,3 +92,58 @@ def test_canonical_tets_assigns_crowded_midside_nodes():
     tets = np.array([[0, 1, 2, 3, 5, 4, 6, 7, 8, 9]])    # midside columns shuffled
     out = fem.canonical_tets(nodes, tets)
     assert sorted(out[0, 4:]) == list(range(4, 10))
+
+def test_mesh_retries_in_a_fresh_session_and_goes_finer_only_for_imports(tmp_path, monkeypatch):
+    import json
+    from novastudio import mesh_worker as W
+    seen = []
+
+    def fails_until(n):
+        def job(j):
+            seen.append((j["_surface_mesher"], j["_size_factor"]))
+            if len(seen) <= n:
+                raise W.MeshAttemptFailed("overlapping facets")
+        return job
+    path = tmp_path / "job.json"
+    path.write_text(json.dumps({"kind": "import"}), encoding="utf-8")
+    monkeypatch.setattr(W, "mesh_job", fails_until(3))
+    W.main(str(path))
+    assert seen == [(6, 1.0), (5, 1.0), (1, 1.0), (6, 0.5)]
+    seen.clear()
+    path.write_text(json.dumps({"kind": "box"}), encoding="utf-8")
+    monkeypatch.setattr(W, "mesh_job", fails_until(99))
+    with pytest.raises(RuntimeError, match="overlapping facets"):
+        W.main(str(path))
+    assert all(f == 1.0 for _, f in seen) and len(seen) == 3
+
+
+def test_midside_columns_follow_gmsh_order_when_geometry_cannot_tell():
+    import gmsh
+    gmsh.initialize(["", "-nopopup"])
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.model.occ.addSphere(0, 0, 0, 1)
+        gmsh.model.occ.synchronize()
+        gmsh.option.setNumber("Mesh.MeshSizeMax", 0.6)
+        gmsh.option.setNumber("Mesh.ElementOrder", 2)
+        gmsh.model.mesh.generate(3)
+        tag, xyz, _ = gmsh.model.mesh.getNodes()
+        conn = gmsh.model.mesh.getElementsByType(11)[1]
+    finally:
+        gmsh.finalize()
+    index = np.zeros(int(tag.max()) + 1, int)
+    index[tag.astype(int)] = np.arange(len(tag))
+    nodes, tets = xyz.reshape(-1, 3), index[conn.astype(int)].reshape(-1, 10)
+    assert np.array_equal(fem._midsides_by_position(tets), fem.canonical_tets(nodes, tets))
+    # a midside node bowed past half its edge: the geometric match gives up and the column order answers
+    far = nodes.copy()
+    far[tets[0, 4]] = far[tets[0, 0]] + 3.0 * (far[tets[0, 1]] - far[tets[0, 0]]) + 3.0 * (far[tets[0, 2]] - far[tets[0, 0]])
+    assert np.array_equal(fem.canonical_tets(far, tets)[0], fem._midsides_by_position(tets)[0])
+
+
+def test_a_singular_model_says_what_to_do():
+    import scipy.sparse as sp
+    from novastudio.store import StudioError
+    with pytest.raises(StudioError) as e:
+        fem.spd_factor(sp.csc_matrix(np.array([[1.0, 0.0], [0.0, 0.0]])))
+    assert e.value.key == "err.singular"
