@@ -376,7 +376,9 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
     prog("job.solving", 0.3)
     rc = _proc([ccx, "-i", "job"], wd, wd / "ccx.log", jd)
     if rc != 0 or not (wd / "job.frd").is_file():
-        raise RuntimeError("CalculiX failed: " + " | ".join((wd / "ccx.log").read_text(errors="replace").splitlines()[-3:]))
+        from .store import StudioError
+        tail = (wd / "ccx.log").read_text(errors="replace").splitlines()[-3:]
+        raise StudioError("err.calculix_failed", 500, nodes=len(mesh["nodes"]), rc=rc, log=" | ".join(x.strip() for x in tail))
     prog("job.post", 0.9)
     r = parse_frd(wd / "job.frd", len(mesh["nodes"]))
     if case.get('physics',{}).get('analysis') == 'modal':
@@ -472,6 +474,8 @@ def run_calculix(case: dict, jd: Path, prog) -> dict:
     np.savez_compressed(jd/'results.npz',**fields)
     umag = np.linalg.norm(U, axis=1)
     metrics = {"max_disp_m": float(umag.max()), "max_vm_pa": float(vm.max()), **common}
+    from .run_worker import structural_loads, support_peak
+    metrics.update(support_peak(mesh["nodes"], structural_loads(case, mesh)[0], vm))
     if interfaces:
         metrics.update(imbalance=balance,complementarity=comp)
     if T is not None:

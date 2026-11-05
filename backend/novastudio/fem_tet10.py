@@ -67,7 +67,46 @@ def check_memory(n_nodes: int, kind: str, steps: int = 1) -> None:
         raise StudioError("err.memory", 500, need=f"{need / 1e9:.1f}", have=f"{have / 1e9:.1f}", nodes=n_nodes)
 
 
-def _amg_cg(A, b, B=None, tol=1e-8):
+def spd_factor(A):
+    """Sparse LU for a symmetric positive definite matrix: a symmetric ordering and no pivot search. On a 100,000-unknown
+    bracket this took 12 s and 0.4 GB for L, where the default column ordering ran out of memory."""
+    return spla.splu(A.tocsc(), permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0, options=dict(SymmetricMode=True))
+
+
+def _pcg_best(A, b, M, tol, maxiter=3000, patience=40, report=None):
+    """Preconditioned CG that returns its best iterate and the relative residual there. Past the round-off floor the
+    recurrence drifts upwards: running on to maxiter took minutes and ended on a worse answer than it had passed."""
+    norm_b = float(np.linalg.norm(b))
+    if norm_b == 0:
+        return np.zeros_like(b), 0.0
+    x = np.zeros_like(b)
+    r = b.copy()
+    z = M @ r
+    p = z.copy()
+    rz = float(r @ z)
+    best_x, best, since = x.copy(), np.inf, 0
+    for it in range(maxiter):
+        Ap = A @ p
+        alpha = rz / float(p @ Ap)
+        x += alpha * p
+        r -= alpha * Ap
+        rel = float(np.linalg.norm(r)) / norm_b
+        if rel < best:
+            best, since = rel, 0
+            best_x[:] = x
+        else:
+            since += 1
+        if report is not None and it % 5 == 0:
+            report(best)
+        if best <= tol or since >= patience or not np.isfinite(rel):
+            break
+        z = M @ r
+        rz, old = float(r @ z), rz
+        p = z + (rz / old) * p
+    return best_x, best
+
+
+def _amg_cg(A, b, B=None, tol=1e-8, report=None):
     """Smoothed-aggregation AMG preconditioned CG. Strongly graded meshes (thin-wall and load refinement next to
     coarse regions) can make the default set-up stall, so a sturdier set-up with symmetric Gauss-Seidel smoothing
     is tried before giving up. tol 1e-8: on stiff, graded meshes CG reaches ~1e-9 and then drifts with round-off,
@@ -83,10 +122,8 @@ def _amg_cg(A, b, B=None, tol=1e-8):
     last = None
     for kw in setups:
         ml = pyamg.smoothed_aggregation_solver(A, B=B, symmetry="symmetric", **kw)
-        res = []
-        x = ml.solve(b, tol=tol, accel="cg", maxiter=3000, residuals=res)
-        last = res[-1] / max(res[0], 1e-300) if res else np.inf
-        if np.all(np.isfinite(x)) and last <= 1e-6:
+        x, last = _pcg_best(A, b, ml.aspreconditioner(cycle="V"), tol, report=report)
+        if last <= 1e-6:
             return x
     raise RuntimeError(f"iterative solver did not converge (relative residual {last:.1e})")
 
@@ -349,9 +386,15 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     progress("job.solving", 0.45)
     u = np.zeros(ndof)
     Kfix = K[fixed]                                   # rows of the constrained dofs, for the reactions
-    if len(free) <= DIRECT_LIMIT:
-        u[free] = spla.spsolve(K[free][:, free].tocsc(), f[free])
-    else:
+    solved = False
+    if len(free) <= 4 * DIRECT_LIMIT:                 # about 2 GB at the top of this range
+        try:
+            u[free] = spd_factor(K[free][:, free]).solve(f[free])
+            solved = True
+        except MemoryError:                           # the iterative solver below needs far less
+            if len(free) <= DIRECT_LIMIT:
+                raise
+    if not solved:
         # large 3D problems: smoothed-aggregation AMG preconditioned CG with the rigid-body modes.
         # The constraints are applied in place (zero rows and columns, a scaled 1 on the diagonal) instead of copying
         # out K[free][:, free], and the matrix goes in as 3x3 blocks: AMG then measures strength per node, not per
@@ -376,14 +419,16 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
         B[:, 1, 4], B[:, 2, 4] = -z, y
         B[:, 0, 5], B[:, 2, 5] = z, -x
         try:
-            u[:] = _amg_cg(A, b, B.reshape(ndof, 6))
+            # progress over the digits of the residual: without it the bar sits still for the whole solve
+            u[:] = _amg_cg(A, b, B.reshape(ndof, 6),
+                           report=lambda rel: progress("job.solving", 0.45 + 0.4 * min(1.0, max(0.0, -np.log10(max(rel, 1e-8)) / 8))))
         except RuntimeError:
             # strongly graded meshes (fine around a load, coarse elsewhere) can stall AMG-CG; a direct solve is slower
             # and uses more memory but always answers, so fall back to it while the problem still fits
             if len(free) > DIRECT_FALLBACK_LIMIT:
                 raise
             progress("job.solving", 0.6)
-            u[:] = spla.spsolve(A.tocsc(), b)
+            u[:] = spd_factor(A).solve(b)
         u[fixed] = 0.0
 
     progress("job.post", 0.85)
@@ -677,7 +722,7 @@ def solve_buckling(nodes, tets, E, nu, fixed_faces=(), tractions=(), rollers=(),
         raise RuntimeError("buckling needs supports")
     progress("job.solving", 0.30)
     Kff = K[free][:, free].tocsc()
-    lu = spla.splu(Kff) if len(free) <= MODAL_DIRECT_LIMIT else None
+    lu = spd_factor(Kff) if len(free) <= MODAL_DIRECT_LIMIT else None
     rhs = f[free] - K[free][:, fixed] @ up[fixed]
     u = up.copy()
     u[free] = lu.solve(rhs) if lu is not None else _amg_cg(K[free][:, free].tobsr(blocksize=(3, 3)), rhs)
@@ -801,7 +846,7 @@ def solve_scalar(nodes, tets, k, fixed: list[tuple[np.ndarray, float]], fluxes: 
     Tk = np.nan_to_num(T)
     rhs = f[free] - A[free][:, known] @ Tk[known]
     Aff = A[free][:, free].tocsr()
-    T[free] = spla.spsolve(Aff.tocsc(), rhs) if len(free) <= 3 * DIRECT_LIMIT else _amg_cg(Aff, rhs)
+    T[free] = spd_factor(Aff).solve(rhs) if len(free) <= 3 * DIRECT_LIMIT else _amg_cg(Aff, rhs)
 
     progress("job.post", 0.85)
     resid = A @ T - f                         # heat that the fixed-temperature nodes must supply

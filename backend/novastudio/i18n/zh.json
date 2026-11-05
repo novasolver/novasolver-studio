@@ -28,6 +28,7 @@
   "err.symmetry_plane": "对称面 {face} 不是垂直于 x、y 或 z 轴的平面。只有垂直于坐标轴的平整剖切面才能设为对称面。",
   "err.symmetry_rbm": "没有固定面时，x、y、z 三个方向都需要对称面，否则模型会滑动或转动。请添加一个固定面，或补齐缺少方向的对称面。",
   "err.floating_body": "{total} 个实体中有 {count} 个没有约束，也未与其他实体连接（例如中心位于 {where} mm 附近的实体），因此无法求解。请为该实体添加固定面，或设置与其他零件的绑定接触。",
+  "err.calculix_failed": "CalculiX 在求解 {nodes} 个节点的模型时停止（退出代码 {rc}）。这种规模下通常是内存不足。请使用较粗的网格，或使用内存需求较小的内置求解器（预览模式）。日志末尾：{log}",
   "role.load": "载荷",
   "role.pressure": "压力",
   "role.symmetry": "对称",

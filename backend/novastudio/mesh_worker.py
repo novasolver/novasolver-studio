@@ -1183,7 +1183,17 @@ def mesh_job(job: dict) -> None:
                     return float(min(lc, np.min(sz[j] + 0.5 * d)))   # grows by half the distance away from the wall
                 gmsh.model.mesh.setSizeCallback(size_cb)
         if job.get("volume"):
-            gmsh.model.mesh.generate(3)
+            # "Invalid boundary mesh (overlapping facets)" comes from one surface mesher on one face; another usually meshes it
+            for surface_mesher in (6, 5, 1):           # Frontal-Delaunay (default), Delaunay, MeshAdapt
+                gmsh.option.setNumber("Mesh.Algorithm", surface_mesher)
+                try:
+                    gmsh.model.mesh.generate(3)
+                    break
+                except Exception:
+                    if surface_mesher == 1:
+                        raise
+                    print(f"surface mesher {surface_mesher} failed; trying another", flush=True)
+                    gmsh.model.mesh.clear()
             if job.get("order", 2) == 2:
                 gmsh.model.mesh.setOrder(2)
         elif not (job["kind"] == "import" and job["file"].lower().endswith(".stl")):
