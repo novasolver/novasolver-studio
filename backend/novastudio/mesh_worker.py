@@ -819,7 +819,7 @@ def main(job_path: str) -> None:
     job = json.loads(Path(job_path).read_text(encoding="utf-8"))
     full = job["kind"] == "import" and not job.get("domain")
     attempts = [{"_surface_mesher": m, "_size_factor": f} for m, f in (MESH_ATTEMPTS if full else MESH_ATTEMPTS[:3])]
-    if full and not job["file"].lower().endswith(".stl"):
+    if full and not str(job.get("file", "")).lower().endswith(".stl"):
         attempts.append({"_surface_mesher": 6, "_size_factor": 1.0, **LAST_RESORT})
     for i, attempt in enumerate(attempts):
         try:
