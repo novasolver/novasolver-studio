@@ -1208,6 +1208,9 @@ def mesh_job(job: dict) -> None:
                     d, j = tree.query((x, y, z), k=kk)
                     return float(min(lc, np.min(sz[j] + 0.5 * d)))   # grows by half the distance away from the wall
                 gmsh.model.mesh.setSizeCallback(size_cb)
+                # each curve integrates the size to this precision: at the default 1e-9 the Python callback took 73 s
+                # on an assembly of 740 curves, per attempt; at 1e-3 it took 4 s
+                gmsh.option.setNumber("Mesh.LcIntegrationPrecision", 1e-3)
         if job.get("volume"):
             try:
                 gmsh.model.mesh.generate(3)
