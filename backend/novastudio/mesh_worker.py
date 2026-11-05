@@ -1188,6 +1188,8 @@ def mesh_job(job: dict) -> None:
                 gmsh.option.setNumber("Mesh.Algorithm", surface_mesher)
                 try:
                     gmsh.model.mesh.generate(3)
+                    if not any(len(t) for t in gmsh.model.mesh.getElementsByType(4)[:1]):
+                        raise RuntimeError("the mesher produced no tetrahedra")
                     break
                 except Exception:
                     if surface_mesher == 1:

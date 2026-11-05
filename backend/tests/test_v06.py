@@ -43,7 +43,7 @@ def solve_template(tid,changes=None):
     started = time.perf_counter()
     out = C.run_simulation(cid,wait_s=1,lang='en'); jid = out['job']['job_id']
     j = jobs.wait(jid,1800)
-    assert j['state'] == 'done',C.job_status(jid,'en')
+    assert j['state'] == 'done',C.job_status(jid,'en').get('message')
     jd,raw = results.load(cid)
     elapsed = time.perf_counter()-started
     if tid in NEW and changes is None:

@@ -107,22 +107,23 @@ def _pcg_best(A, b, M, tol, maxiter=3000, patience=40, report=None):
 
 
 def _amg_cg(A, b, B=None, tol=1e-8, report=None):
-    """Smoothed-aggregation AMG preconditioned CG. Strongly graded meshes (thin-wall and load refinement next to
-    coarse regions) can make the default set-up stall, so a sturdier set-up with symmetric Gauss-Seidel smoothing
-    is tried before giving up. tol 1e-8: on stiff, graded meshes CG reaches ~1e-9 and then drifts with round-off,
-    so asking for 1e-10 made it run past the answer."""
+    """Smoothed-aggregation AMG preconditioned CG. The set-up with symmetric Gauss-Seidel smoothing goes first: measured
+    on 100,000 unknowns it solved a thin bracket in 25 s against 82 s, and costs about the same on a chunky block.
+    The iterations are capped so that a stall reaches the next set-up or the caller's direct solve within minutes.
+    tol 1e-8: on stiff, graded meshes CG reaches ~1e-9 and then drifts with round-off, so asking for 1e-10 made it
+    run past the answer."""
     import pyamg
     setups = [
-        dict(strength=("symmetric", {"theta": 0.0}), max_coarse=500),
         dict(strength=("symmetric", {"theta": 0.02}), max_coarse=1000,
              presmoother=("gauss_seidel", {"sweep": "symmetric", "iterations": 2}),
              postsmoother=("gauss_seidel", {"sweep": "symmetric", "iterations": 2}),
              smooth=("energy", {"krylov": "cg", "maxiter": 4})),
+        dict(strength=("symmetric", {"theta": 0.0}), max_coarse=500),
     ]
     last = None
     for kw in setups:
         ml = pyamg.smoothed_aggregation_solver(A, B=B, symmetry="symmetric", **kw)
-        x, last = _pcg_best(A, b, ml.aspreconditioner(cycle="V"), tol, report=report)
+        x, last = _pcg_best(A, b, ml.aspreconditioner(cycle="V"), tol, maxiter=400, report=report)
         if last <= 1e-6:
             return x
     raise RuntimeError(f"iterative solver did not converge (relative residual {last:.1e})")
@@ -386,15 +387,9 @@ def solve(nodes, tets, E, nu, fixed_faces: list[np.ndarray], tractions: list[tup
     progress("job.solving", 0.45)
     u = np.zeros(ndof)
     Kfix = K[fixed]                                   # rows of the constrained dofs, for the reactions
-    solved = False
-    if len(free) <= 4 * DIRECT_LIMIT:                 # about 2 GB at the top of this range
-        try:
-            u[free] = spd_factor(K[free][:, free]).solve(f[free])
-            solved = True
-        except MemoryError:                           # the iterative solver below needs far less
-            if len(free) <= DIRECT_LIMIT:
-                raise
-    if not solved:
+    if len(free) <= DIRECT_LIMIT:
+        u[free] = spd_factor(K[free][:, free]).solve(f[free])
+    else:
         # large 3D problems: smoothed-aggregation AMG preconditioned CG with the rigid-body modes.
         # The constraints are applied in place (zero rows and columns, a scaled 1 on the diagonal) instead of copying
         # out K[free][:, free], and the matrix goes in as 3x3 blocks: AMG then measures strength per node, not per
