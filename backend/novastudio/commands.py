@@ -552,9 +552,10 @@ def get_gui_selection(lang: str = 'ja') -> dict:
 def validate_case(case_id: str, lang: str = "ja") -> dict:
     case = store.load(case_id)
     items = checks.run(case, lang)
+    from .setup_summary import summary
     return {"case_id": case_id, "revision": case["revision"], "ready": not any(i["level"] == "error" for i in items),
             "status": "red" if any(i["level"] == "error" for i in items) else ("orange" if items else "green"),
-            "items": items}
+            "items": items, "setup": summary(case, lang)}
 
 
 def generate_mesh(case_id: str, size: str | None = None, lang: str = "ja", source: str = 'gui') -> dict:

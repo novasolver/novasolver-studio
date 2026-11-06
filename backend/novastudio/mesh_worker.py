@@ -1187,7 +1187,7 @@ def mesh_job(job: dict) -> None:
                 gmsh.model.mesh.setSize(gmsh.model.getBoundary([(3, 2)], recursive=True), h * 0.625)
         gmsh.option.setNumber("Mesh.MeshSizeMax", h)
         gmsh.option.setNumber("Mesh.MeshSizeMin", job["_hmin"] * 0.5 if job.get("_hmin") else h * (0.5 if job["kind"] != "import" else 0.1))
-        gmsh.option.setNumber("Mesh.Algorithm3D", 1)
+        gmsh.option.setNumber("Mesh.Algorithm3D", job.get("_volume_mesher", 1))
         gmsh.option.setNumber("Mesh.OptimizeNetgen", 1)   # removes near-flat slivers that stall the iterative solver
         gmsh.option.setNumber("Mesh.Algorithm", job.get("_surface_mesher", 6))
         if job.get("_curvature"):                 # a refinement field around the loaded faces turned it off above

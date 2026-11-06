@@ -331,12 +331,16 @@ async def update_case(case_id: str, expected_revision: int, changes: dict[str, A
 @mcp.tool(annotations=RO)
 async def validate_case(case_id: str, language: Lang = "ja") -> CallToolResult:
     """Readiness check. red = cannot solve (fix first), orange = solvable with caveats, green = ready.
-    Each item says which step to fix and suggests the update_case call."""
+    Each item says which step to fix and suggests the update_case call. It also states the setup in words (which face
+    carries what load and which way, what holds the part, the material): no check can tell a load pointing the wrong
+    way or on the wrong face, so compare it with what the person asked for before solving."""
     r, e = await _call(C.validate_case, language, case_id, language)
     if e:
         return e
     s = f"{r['status'].upper()}" + ("" if not r["items"] else "\n" + "\n".join(
         f"[{i['level']}] {i['message']}" + (f"  fix: {i['fix']}" if i.get("fix") else "") for i in r["items"]))
+    if r.get("setup"):
+        s += "\n" + t("setup.head", language) + "\n" + "\n".join(r["setup"])
     return _ok(s, r)
 
 

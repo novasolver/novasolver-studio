@@ -19,6 +19,16 @@ def run(case: dict, lang: str) -> list[dict]:
 
     b = case["boundaries"]
     thermal = list(b.values()) if tp['physics'] == 'thermal' else [v.get('thermal', {}) for v in b.values()]
+    # 100 typed as kelvin (or °C meant as K offsets) ends up at -173 °C: a valid run of a cryogenic part, so say it
+    for k, v in b.items():
+        for src in (v, v.get('thermal', {})):
+            for field in ('temperature', 'tinf'):
+                q = src.get(field)
+                if q is not None and src.get('role') in ('temperature', 'convection', 'water-inlet') and units.to_si(q) < 200:
+                    T = units.to_si(q)
+                    add('warn', 'cold_temperature', 'boundaries', faces=[k],
+                        fix=f'update_case(changes={{"boundaries.{k}{"" if src is v else ".thermal"}.{field}": "{T:g} degC"}})',
+                        face=k, T=f"{T - 273.15:.4g}", K=f"{T:.4g}", guess=f"{T:g}")
     dc = case['physics']['kind'] == 'dc-current'
     if tp['physics'] == 'thermal' or (dc and case['physics'].get('joule_heating', True)):
         refs = [units.to_si(v['temperature' if v.get('role') == 'temperature' else 'tinf'])
