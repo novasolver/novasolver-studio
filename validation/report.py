@@ -29,6 +29,7 @@ TXT = {
         "limits": "分かっている限界",
         "limit_items": [
             "乱流の壁摩擦（円管の摩擦係数）は、壁の近くのメッシュに強く左右されます。表の Blasius の結果を確認してから使ってください。",
+            "急拡大管の損失係数は Borda–Carnot の値より約 12 % 小さく出ます。Re 5,000〜10,000 で両側の管の摩擦を 10〜20 % 大きく見積もるため、圧力の外挿がずれます。下流の管を 40 D に延ばしても −11 % までしか近づきません。",
             "固定面の角や鋭い入隅の応力は理論上無限大（特異点）です。Studio は警告を出し、比べる値には使いません。",
             "NAFEMS LE10 の細かいメッシュは 16 GB のメモリでは解けないため、標準メッシュ1段階の値です。",
             "接触・座屈・疲労は上の表の基本問題（直列ブロック・ヘルツ接触・オイラー座屈・グッドマン）で確かめています。陽解法の衝突・シェル要素は、この版の検証範囲に含まれていません。",
@@ -54,6 +55,7 @@ TXT = {
         "limits": "Known limits",
         "limit_items": [
             "Turbulent wall friction (pipe friction factor) depends strongly on the mesh next to the wall. Check the Blasius row before relying on it.",
+            "The sudden-expansion loss coefficient comes out about 12 % below Borda–Carnot. At Re 5,000–10,000 the friction in both pipes is 10–20 % too high, which shifts the extrapolated pressures; a 40 D downstream pipe only brings it to −11 %.",
             "Stress at the corner of a fixed face or a sharp re-entrant corner is infinite in theory (a singularity). Studio warns and does not use it for comparison.",
             "NAFEMS LE10 on the fine mesh needs more than 16 GB, so its value comes from the normal mesh only.",
             "Contact, buckling and fatigue are checked by the basic problems in the tables (blocks in series, Hertz contact, Euler buckling, Goodman). Explicit crash and shell elements are not part of this version's validation.",
@@ -77,6 +79,7 @@ TXT = {
         "limits": "已知的限制",
         "limit_items": [
             "湍流壁面摩擦（圆管摩擦系数）强烈依赖壁面附近的网格。使用前请先查看表中 Blasius 的结果。",
+            "突扩管的损失系数比 Borda–Carnot 值小约 12 %。在 Re 5,000～10,000 时两侧管道的摩擦偏大 10～20 %，使外推的压力产生偏差；把下游管延长到 40 D 也只能接近到 −11 %。",
             "固定面的角点或尖锐内角处的应力在理论上为无穷大（奇异点）。Studio 会给出警告，不用于比较。",
             "NAFEMS LE10 的细网格需要 16 GB 以上内存，因此采用标准网格的结果。",
             "接触、屈曲和疲劳通过上表中的基本问题（串联块、赫兹接触、欧拉屈曲、古德曼）进行验证。显式碰撞和壳单元不在本版本的验证范围内。",
