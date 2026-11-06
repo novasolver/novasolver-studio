@@ -44,6 +44,19 @@ def _lame_u(x):
     return (1 + x["nu"]) * ((1 - 2 * x["nu"]) + k2) / (k2 - 1)
 
 
+def _square_fit(x):
+    """The textbook square-section fit 2 pi / ln(1.08 W/d), scaled for a taller block by the walls each side of the hole:
+    a hole near a wall conducts like 1/acosh(1 + gap/radius), so moving the top and bottom walls away removes their
+    share. Only the normalisation the fit divides out (it bends fast near a square with a big hole)."""
+    d, a = x["d_over_W"], x["d_over_W"] / 2
+    side, top = math.acosh(1 + (1 - d) / 2 / a), math.acosh(1 + (x["H_over_W"] - d) / 2 / a)
+    return 2 * math.pi / math.log(1.08 / d) * (0.5 + 0.5 * side / top)
+
+
+def _maxwell(x):
+    return math.pi * x["d_over_W"] ** 2 / 2
+
+
 def _round_kt(key):
     return lambda q, I, x: q * 4 * I["F_N"] / (math.pi * I[key] ** 2)
 
@@ -76,6 +89,19 @@ SHAPES = {
     "sphere_cavity": {
         "title": "Round bar with a central spherical cavity, tension", "inputs": ("D_mm", "F_N"),
         "out": (("peak_principal_on_cavity", "Kt", "MPa", None, _round_kt("D_mm")),)},
+    "square_hole_thermal": {
+        "title": "Heat from a round hole through a long rectangular block (H/W tall) to its outside, steady conduction",
+        "inputs": ("length_m", "k_W_mK", "dT_K"),
+        "out": (("heat_flow", "q/(k*length*dT)", "W", _square_fit,
+                 lambda q, I, x: q * I["k_W_mK"] * I["length_m"] * I["dT_K"]),)},
+    "strip_hole_current": {
+        "title": "Direct current along a flat busbar with a round hole, possibly off the centre line",
+        "inputs": ("W_mm", "t_mm", "sigma_MS_m", "I_A"),
+        "out": (("extra_resistance", "dL/W", "uOhm", _maxwell,
+                 lambda q, I, x: q * 1e3 / (I["sigma_MS_m"] * I["t_mm"])),
+                ("peak_current_density_at_hole", "J_max/J_mean", "A/mm2", None,
+                 lambda q, I, x: q * I["I_A"] / (I["W_mm"] * I["t_mm"]))),
+    },
 }
 
 

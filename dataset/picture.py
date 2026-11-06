@@ -12,9 +12,10 @@ W, H = 480, 300            # pixels of the saved webp
 VIEW = (24, -58)           # elevation, azimuth: the families put the critical feature towards +x/+y/+z
 
 
-def save(case_id: str, path: Path, view: tuple[float, float] = VIEW, crop: float | None = None) -> dict:
+def save(case_id: str, path: Path, view: tuple[float, float] = VIEW, crop: float | None = None, quantity: str = "vm") -> dict:
+    """quantity: the field drawn (a family's PICTURE_QUANTITY; vm falls back to the physics' default field)."""
     from novastudio import results, store
-    f = results.field(store.load(case_id), "vm", "en")
+    f = results.field(store.load(case_id), quantity, "en")
     P = np.array(f["positions"], dtype=float).reshape(-1, 3)
     tri = np.array(f["indices"], dtype=int).reshape(-1, 3)
     s = np.array(f["scalars"], dtype=float)

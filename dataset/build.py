@@ -66,6 +66,19 @@ def sobol_points(fam, n: int, seed: int = 20261101) -> list[dict]:
     return [{k: round(float(v), 6) for k, v in zip(names, row)} for row in x]
 
 
+REFINE_ID = 10000
+
+
+def refine_points(fam) -> list[tuple[int, dict]]:
+    """Extra points in a family's REFINE boxes, [({name: (lo, hi)}, n), ...]: where the answer bends faster than the even
+    spread can follow (found by blind_check.py). Ids from 10000 per box, so the main sequence can still grow."""
+    out = []
+    for b, (box, n) in enumerate(getattr(fam, "REFINE", ())):
+        sub = type("Box", (), {"PARAMS": {k: box.get(k, v) for k, v in fam.PARAMS.items()}})
+        out += [(REFINE_ID * (b + 1) + i, p) for i, p in enumerate(sobol_points(sub, n, seed=20261106 + b))]
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--family", default="l_bracket")
@@ -88,7 +101,7 @@ def main():
             if r.get("status") == "ok":
                 done.add(r["id"])
     pts = sobol_points(fam, a.n)
-    todo = [(i, p) for i, p in enumerate(pts) if i not in done]
+    todo = [(i, p) for i, p in list(enumerate(pts)) + refine_points(fam) if i not in done]
     print(f"{a.family}: {len(done)} done, {len(todo)} to solve with {a.workers} workers", flush=True)
     t0 = time.time()
     with ProcessPoolExecutor(a.workers) as ex, log.open("a", encoding="utf-8") as f:

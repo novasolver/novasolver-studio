@@ -40,7 +40,9 @@ def family_readme(name: str, fam, s: dict) -> str:
         lines.append(f"| `{q}` | {pct(b.get('median'))} / {pct(b.get('p95'))} / {pct(b.get('max'))} | "
                      f"max {pct(sim.get('max'))} | max {pct(ccx.get('max'))} |")
     lines += ["", "## Checks", "",
-              f"- points: {s['points_ok']} solved, {s['points_failed']} failed",
+              f"- points: {s['points_ok']} solved, {s['points_failed']} failed"
+              + "".join(f"; {n} of them added in " + ", ".join(f"`{k}` {lo}-{hi}" for k, (lo, hi) in box.items())
+                        + " (ids from 10000), where the answer bends fast" for box, n in getattr(fam, "REFINE", ())),
               f"- three-mesh studies: {s['gci_studies']} (every {getattr(fam, 'GCI_EVERY', 10)}th point); the band of each point is 1.25 x the "
               "largest standard-mesh error among its 3 nearest studies",
               f"- symmetry check (max): {pct((s.get('mirror_err') or {}).get('max'))}",

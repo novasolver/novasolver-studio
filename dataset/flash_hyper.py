@@ -1,7 +1,8 @@
 """Learn NovaSolver Flash's Gaussian process settings offline and store them in each estimate_data/<shape>.json, because
 learning takes seconds per quantity and an answer must not. Measurement of the choice: compare_surrogates.py, blind_check.py.
 
-    python dataset/flash_hyper.py
+    python dataset/flash_hyper.py                      # every shape
+    python dataset/flash_hyper.py strip_hole_current   # one
 
 Only the "gp" field changes; the solved points stay byte for byte. estimate.py and the site's explore.js read the same files."""
 from __future__ import annotations
@@ -37,7 +38,7 @@ def learn(shape: str, d: dict) -> list[dict]:
 
 
 def main():
-    for shape in SHAPES:
+    for shape in sys.argv[1:] or SHAPES:
         path = DATA / f"{shape}.json"
         text = path.read_bytes().decode("utf-8")
         d = json.loads(text)

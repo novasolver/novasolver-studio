@@ -79,7 +79,8 @@ def solve(fam, p: dict, level: float, scale: float = 1.0, force: float | None = 
         if picture:
             try:
                 import picture as pic
-                out["picture"] = pic.save(cid, picture, getattr(fam, "VIEW", pic.VIEW), getattr(fam, "PICTURE_CROP", None))
+                out["picture"] = pic.save(cid, picture, getattr(fam, "VIEW", pic.VIEW), getattr(fam, "PICTURE_CROP", None),
+                                         getattr(fam, "PICTURE_QUANTITY", "vm"))
             except Exception as e:                                  # a missing picture never loses the numbers
                 out["picture"] = {"error": f"{type(e).__name__}: {e}"[:200]}
         return out

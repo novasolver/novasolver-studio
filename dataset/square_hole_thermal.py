@@ -27,6 +27,9 @@ NORMALISED = {"s_star": "s_over_fit"}
 # a taller block moves the top and bottom walls away and the side walls stay: less heat, down to the strip's value
 EXPECTED_DIRECTIONS = {"s_star": {"d_over_W": 1, "H_over_W": -1}}
 CHECK_EQUILIBRIUM = False
+# near a square section with a big hole the thin walls make the answer bend fast in H/W: the first blind check
+# (2026-11-06) had 3 of 32 answers outside the bar, all in this corner, so it gets its own points
+REFINE = [({"d_over_W": (0.65, 0.8), "H_over_W": (1.0, 1.3)}, 24)]
 
 
 def dims(p, scale=1.0):

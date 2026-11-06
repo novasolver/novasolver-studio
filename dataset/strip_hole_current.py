@@ -26,6 +26,7 @@ QUANTITIES = ("dl_over_W", "kj")
 NORMALISED = {"dl_over_W": "dl_over_maxwell", "kj": "kj"}
 EXPECTED_DIRECTIONS = {"dl_over_W": {"d_over_W": 1}}
 CHECK_EQUILIBRIUM = False
+PICTURE_QUANTITY = "jmag"     # the crowding at the hole, not the voltage falling along the strip
 
 
 def dims(p, scale=1.0):

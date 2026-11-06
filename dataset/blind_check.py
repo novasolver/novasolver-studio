@@ -3,6 +3,7 @@
     python dataset/blind_check.py <family> plan                 write predictions.json (refuses to overwrite)
     python dataset/blind_check.py <family> solve --workers 3    solve every planned point (append-only log, safe to resume)
     python dataset/blind_check.py <family> score                compare, write score.json
+    --round 2 on all three: after a change that the earlier points showed was needed, a fresh set in out/<family>_blind_r2
 
 Points: the next points of the dataset's own Sobol sequence, hard points near the ends of several ranges at once,
 reruns of two dataset points (does this Studio version still give the same answer?) and twins moved a tiny step from a
@@ -29,8 +30,11 @@ TWIN_STEP = 0.002              # of each range
 HARD = {"l_bracket": ("t_over_L", "w_over_L", "r_over_t")}     # the ranges pushed to their ends; default: all but nu
 
 
+ROUND = 0                      # a later round after a change: fresh points, its own folder (--round)
+
+
 def out_dir(family: str) -> Path:
-    return HERE / "out" / f"{family}_blind"
+    return HERE / "out" / (f"{family}_blind" + (f"_r{ROUND}" if ROUND else ""))
 
 
 def solved_rows(family: str) -> dict:
@@ -45,13 +49,13 @@ def solved_rows(family: str) -> dict:
 def plan_points(family: str, fam) -> list[dict]:
     import build
     rows = solved_rows(family)
-    design = max(rows) + 1
+    design = max(i for i in rows if i < build.REFINE_ID) + 1 + ROUND * N_SOBOL     # REFINE points sit apart
     names = list(fam.PARAMS)
     lo = np.array([fam.PARAMS[k][0] for k in names])
     hi = np.array([fam.PARAMS[k][1] for k in names])
     to_p = lambda u: {k: round(float(v), 6) for k, v in zip(names, lo + np.clip(u, 0, 1) * (hi - lo))}
     pts = [{"key": f"sobol{i}", "kind": "sobol", "params": p} for i, p in enumerate(build.sobol_points(fam, design + N_SOBOL)[design:])]
-    rng = np.random.default_rng(20261104)
+    rng = np.random.default_rng(20261104 + ROUND)
     free = [names.index(k) for k in HARD.get(family, [k for k in names if k != "nu"])]
     if len(free) < 2:
         free = list(range(len(names)))
@@ -213,5 +217,7 @@ if __name__ == "__main__":
     ap.add_argument("family")
     ap.add_argument("cmd", choices=("plan", "solve", "score"))
     ap.add_argument("--workers", type=int, default=3)
+    ap.add_argument("--round", type=int, default=0)
     a = ap.parse_args()
+    ROUND = a.round
     {"plan": lambda: plan(a.family), "solve": lambda: solve(a.family, a.workers), "score": lambda: score(a.family)}[a.cmd]()

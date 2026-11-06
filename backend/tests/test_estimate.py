@@ -123,6 +123,27 @@ def test_stored_cylinder_answers_stay_within_their_band_of_lame():
             assert abs(q["y"][i] / exact - 1) <= q["band"][i]
 
 
+def test_heat_and_current_shapes_reach_their_textbook_limits():
+    # small hole in a square: the 2 pi / ln(1.08 W/d) fit; tall block: the strip between two walls
+    sq = E.estimate("square_hole_thermal", {"d_over_W": 0.1, "H_over_W": 1.0})["results"][0]["dimensionless_value"]
+    assert sq == pytest.approx(2 * math.pi / math.log(1.08 / 0.1), rel=0.01)
+    tall = E.estimate("square_hole_thermal", {"d_over_W": 0.1, "H_over_W": 3.0})["results"][0]["dimensionless_value"]
+    assert tall == pytest.approx(2 * math.pi / math.log(4 / (math.pi * 0.1)), rel=0.01)
+    # small bolt hole in a busbar: Maxwell's extra length, current density twice the mean at the hole's side
+    dl, kj = (q["dimensionless_value"] for q in E.estimate("strip_hole_current", {"d_over_W": 0.05, "e_over_W": 0.0})["results"])
+    assert dl == pytest.approx(E._maxwell({"d_over_W": 0.05}), rel=0.03)
+    assert kj == pytest.approx(2.0, rel=0.01)
+
+
+def test_heat_and_current_dimensional_values():
+    q = E.estimate("square_hole_thermal", {"d_over_W": 0.3, "H_over_W": 1.5}, {"length_m": 2, "k_W_mK": 0.04, "dT_K": 80})["results"][0]
+    assert (q["unit"], q["value"]) == ("W", pytest.approx(q["dimensionless_value"] * 2 * 0.04 * 80))
+    r, j = E.estimate("strip_hole_current", {"d_over_W": 0.3, "e_over_W": 0.05},
+                      {"W_mm": 40, "t_mm": 4, "sigma_MS_m": 58, "I_A": 400})["results"]
+    assert r["value"] == pytest.approx(r["dimensionless_value"] / (58e6 * 4e-3) * 1e6)      # dL/W / (sigma t), in micro-ohm
+    assert j["value"] == pytest.approx(j["dimensionless_value"] * 400 / (40 * 4))
+
+
 def test_titles_say_what_was_actually_solved():
     assert "spread evenly" in E.SHAPES["l_bracket"]["title"] and "tip" not in E.SHAPES["l_bracket"]["title"]
     assert "plane strain" in E.SHAPES["thick_cylinder"]["title"]

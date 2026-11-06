@@ -540,18 +540,20 @@ async def print_check(case_id: str, strength_xy_mpa: float | None = None, streng
 
 
 @mcp.tool(annotations=RO)
-async def instant_estimate(shape: Literal["l_bracket", "plate_hole", "stepped_shaft", "grooved_shaft", "flat_shoulder", "thick_cylinder", "sphere_cavity"],
+async def instant_estimate(shape: Literal["l_bracket", "plate_hole", "stepped_shaft", "grooved_shaft", "flat_shoulder", "thick_cylinder", "sphere_cavity",
+                                         "square_hole_thermal", "strip_hole_current"],
                            ratios: dict[str, float], size: dict[str, float] | None = None, language: Lang = "ja") -> CallToolResult:
-    """NovaSolver Flash: peak stress or deflection of a standard shape in milliseconds, from a Gaussian process fitted to points Studio solved and checked,
+    """NovaSolver Flash: peak stress or deflection, heat flow or busbar resistance of a standard shape in milliseconds, from a Gaussian process fitted to points Studio solved and checked,
     so dimensions never solved get an answer too, with an error bar (mesh + interpolation). No case, mesh or solve. Refuses outside the solved ranges.
     ratios by shape (nu may be left out: 0.3):
     l_bracket: h_over_L, t_over_L, w_over_L, r_over_t, nu; plate_hole: d_over_W, t_over_W, nu;
     stepped_shaft: D_over_d, r_over_h, nu; grooved_shaft: D_over_d, r_over_h, nu; flat_shoulder: D_over_d, r_over_h, t_over_d, nu;
-    thick_cylinder: b_over_a, nu; sphere_cavity: a_over_R, nu.
+    thick_cylinder: b_over_a, nu; sphere_cavity: a_over_R, nu; square_hole_thermal: d_over_W, H_over_W; strip_hole_current: d_over_W, e_over_W.
     size (optional; without it only the dimensionless answers come back):
     l_bracket: L_mm, F_N, E_GPa; plate_hole: W_mm, F_N; stepped_shaft, grooved_shaft, flat_shoulder: d_mm, F_N;
-    thick_cylinder: p_MPa, a_mm, E_GPa; sphere_cavity: D_mm, F_N.
-    Linear elastic, these supports and loads only: l_bracket has the back of the upright fixed and F as the total force spread evenly over the top of the flange beyond the fillet (not a force at the tip); thick_cylinder is plane strain (ends held axially; for open or capped ends run a simulation); the shafts and bars are in plain tension. The error bar covers the numerics, not the real part."""
+    thick_cylinder: p_MPa, a_mm, E_GPa; sphere_cavity: D_mm, F_N; square_hole_thermal: length_m, k_W_mK, dT_K;
+    strip_hole_current: W_mm, t_mm, sigma_MS_m, I_A.
+    Linear elastic, these supports and loads only: l_bracket has the back of the upright fixed and F as the total force spread evenly over the top of the flange beyond the fillet (not a force at the tip); thick_cylinder is plane strain (ends held axially; for open or capped ends run a simulation); the shafts and bars are in plain tension. square_hole_thermal: steady conduction, the hole wall and the whole outside each at one temperature (dT apart), ends insulated, H the taller side. strip_hole_current: steady DC, the current uniform again far from the hole, e the hole's offset from the centre line; extra_resistance is what the hole adds to the plain bar. The error bar covers the numerics, not the real part."""
     from . import estimate
     r, e = await _call(estimate.estimate, language, shape, ratios, size)
     if e:
@@ -561,8 +563,8 @@ async def instant_estimate(shape: Literal["l_bracket", "plate_hole", "stepped_sh
              + f"(mesh {q['mesh_error_pct']:.2g} %, interpolation {q['interpolation_error_pct']:.2g} %)" for q in r["results"]]
     how = "a solved point itself" if r["exact_point"] else "interpolated between solved points"
     s = (f"{r['title']}: " + "; ".join(lines) + f". {how.capitalize()}, {r['solved_points']} points in this shape's data.\n"
-         "No solve was run: this is a fitted model of the standard shape and load, linear elastic. Run a case for any other "
-         "shape, support or load. The error bar covers the numerics, not the real part or its material.")
+         "No solve was run: this is a fitted model of the standard shape and its stated conditions. Run a case for "
+         "any other shape, boundary condition or load. The error bar covers the numerics, not the real part or its material.")
     return _ok(s, r)
 
 
