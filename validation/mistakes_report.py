@@ -53,11 +53,22 @@ def main():
             continue
         L.append(f"| {r['id']} | {r['mistake']} | {'yes' if r['pointed_out'] else '**no**'} | "
                  f"{', '.join(f'`{c}`' for c in r['new']) or '—'} |")
+    shown = [r for r in rows if not r["pointed_out"] and r.get("setup")]
+    if shown:
+        L += ["", "## What the setup summary says for the misses", "",
+              "`validate_case` also states the setup in words, so the person or the AI can compare it with what was meant. "
+              "It is not a warning and is not counted above; here is the line about the changed item for each miss, so "
+              "you can judge whether it would have made the mistake visible.", "",
+              "| | Mistake | Setup summary |", "|---|---|---|"]
+        for r in shown:
+            line = next((s for s in r["setup"] if s.startswith("Material")), r["setup"][-1]) \
+                if r["group"] == "materials" else r["setup"][0]
+            L.append(f"| {r['id']} | {r['mistake']} | {line.replace('|', '/')} |")
     L += ["", "Prefixes: `input` refused where typed in; `error`/`warn`/`info` the check before solving; `run` the "
           "default solve; `study` the solve with the mesh study. `gate:` a gate that failed.", "",
           f"Re-run: `python validation/mistakes.py` (about an hour on a laptop). Raw results: "
           f"`validation/results/mistakes-{doc['version']}.json`.", ""]
-    out = ROOT / "docs" / "SETUP_MISTAKES.md"
+    out = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "docs" / "SETUP_MISTAKES.md"
     out.write_text("\n".join(L), encoding="utf-8")
     print(out, f"{len(hit)}/{len(rows)}")
 

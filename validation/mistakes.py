@@ -144,7 +144,7 @@ def _run(cid, study):
 def study(cid):
     v = C.validate_case(cid, "en")
     out = {"checks": [f"{i['level']}:{i['code']}" for i in v["items"]],
-           "check_messages": {i["code"]: i["message"] for i in v["items"]}}
+           "check_messages": {i["code"]: i["message"] for i in v["items"]}, "setup": v.get("setup", [])}
     if not v["ready"]:
         return out                                # the user cannot solve it: the check error is the message
     out["run"] = _run(cid, False)
@@ -166,9 +166,10 @@ def new_codes(row, base):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", nargs="*")
+    ap.add_argument("--label", default=__version__, help="version label for the output file (e.g. 0.7.7-dev)")
     a = ap.parse_args()
-    out = HERE / "results" / f"mistakes-{__version__}.json"
-    doc = {"version": __version__, "date": time.strftime("%Y-%m-%d"), "bases": {}, "rows": []}
+    out = HERE / "results" / f"mistakes-{a.label}.json"
+    doc = {"version": a.label, "date": time.strftime("%Y-%m-%d"), "bases": {}, "rows": []}
     bases = {}
     for key, (title, make) in BASES.items():
         t0 = time.time()

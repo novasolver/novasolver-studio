@@ -1,0 +1,2031 @@
+{
+ "version": "0.7.7-dev",
+ "date": "2026-11-06",
+ "bases": {
+  "C": {
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 200 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 142 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 141 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 0.9755,
+     "max_vm": 142.1,
+     "max_disp": 0.9783,
+     "reaction": 1000.0,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 157 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 142 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 0.9762,
+     "max_vm": 156.6,
+     "max_disp": 0.979,
+     "reaction": 1000.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "title": "Steel cantilever 200 x 20 x 20 mm, end fixed, 1000 N down on the free end",
+   "wall_s": 16.3
+  },
+  "L": {
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "f8 (Face 8): 200 N toward -z. The face points +X, so the load acts along it (shear). Mean 0.625 MPa over 320 mm².",
+    "  Nearest support f1 (Face 1): 80 mm across the load line, so about 16 N·m of bending there.",
+    "Held: f1 (Face 1) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 32 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 31 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "max_vm": 31.71,
+     "max_disp": 0.08195,
+     "reaction": 200.0,
+     "nodes": 25637.0,
+     "elements": 15723.0
+    }
+   },
+   "study": {
+    "codes": [
+     "stress_singular",
+     "gate:mesh"
+    ],
+    "messages": {
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (29 → 32 → 33 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "max_vm": 33.4,
+     "max_disp": 0.08298,
+     "reaction": 200.0,
+     "nodes": 87249.0,
+     "elements": 56752.0
+    }
+   },
+   "title": "L-bracket (bundled STEP), back face fixed, 200 N down on the end of the other leg",
+   "wall_s": 106.7
+  },
+  "T": {
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x0 (Left end (x = 0)): 100 °C.",
+    "x1 (Right end (x = L)): 20 °C.",
+    "Material: Steel, conductivity 50 W/mK."
+   ],
+   "run": {
+    "codes": [],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 100.0,
+     "t_min": 20.0,
+     "q_in": 40.0,
+     "nodes": 4134.0,
+     "elements": 2342.0
+    }
+   },
+   "study": {
+    "codes": [],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 100.0,
+     "t_min": 20.0,
+     "q_in": 40.0,
+     "nodes": 13439.0,
+     "elements": 8114.0
+    }
+   },
+   "title": "Steel block 100 x 50 x 20 mm, 100 °C and 20 °C on opposite ends",
+   "wall_s": 9.7
+  }
+ },
+ "rows": [
+  {
+   "id": "C1",
+   "base": "C",
+   "group": "units",
+   "mistake": "Load typed 1000 times too large (1 000 000 N)",
+   "changes": {
+    "boundaries.x1.force": {
+     "value": 1000000.0,
+     "unit": "N"
+    }
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 1e+06 N toward -z. The face points +X, so the load acts along it (shear). Mean 2,500 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 2e+05 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "large_deformation",
+     "peak_on_support",
+     "yield"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "yield": "Max von Mises stress 142108 MPa exceeds the typical yield strength 235 MPa. The part would deform plastically, so this linear elastic result does not hold. Run as nonlinear (elastoplastic) to model yielding.",
+     "peak_on_support": "The peak stress 142108 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 140671 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 975.5,
+     "max_vm": 142100.0,
+     "max_disp": 978.3,
+     "reaction": 1000000.0,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": {
+    "codes": [
+     "large_deformation",
+     "peak_on_support",
+     "yield"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "yield": "Max von Mises stress 156649 MPa exceeds the typical yield strength 235 MPa. The part would deform plastically, so this linear elastic result does not hold. Run as nonlinear (elastoplastic) to model yielding.",
+     "peak_on_support": "The peak stress 156649 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 142097 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 976.2,
+     "max_vm": 156600.0,
+     "max_disp": 979.0,
+     "reaction": 1000000.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "new": [
+    "run:large_deformation",
+    "run:yield",
+    "study:large_deformation",
+    "study:yield"
+   ],
+   "pointed_out": true,
+   "wall_s": 15.1
+  },
+  {
+   "id": "C2",
+   "base": "C",
+   "group": "units",
+   "mistake": "Load typed 1000 times too small (1 N)",
+   "changes": {
+    "boundaries.x1.force": {
+     "value": 1,
+     "unit": "N"
+    }
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 1 N toward -z. The face points +X, so the load acts along it (shear). Mean 0.0025 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 0.2 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 0 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 0 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 0.0009755,
+     "max_vm": 0.1421,
+     "max_disp": 0.0009783,
+     "reaction": 1.0,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 0 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 0 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 0.0009762,
+     "max_vm": 0.1566,
+     "max_disp": 0.000979,
+     "reaction": 1.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "new": [],
+   "pointed_out": false,
+   "wall_s": 15.1
+  },
+  {
+   "id": "C3",
+   "base": "C",
+   "group": "units",
+   "mistake": "Young's modulus in the wrong unit: 205 MPa for steel",
+   "changes": {
+    "materials.solid.E": {
+     "value": 205,
+     "unit": "MPa"
+    }
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 200 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Custom, E 0.205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "large_deformation",
+     "peak_on_support"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "peak_on_support": "The peak stress 142 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 141 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 975.5,
+     "max_vm": 142.1,
+     "max_disp": 978.3,
+     "reaction": 1000.0,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": {
+    "codes": [
+     "large_deformation",
+     "peak_on_support"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "peak_on_support": "The peak stress 157 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 142 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 976.2,
+     "max_vm": 156.6,
+     "max_disp": 979.0,
+     "reaction": 1000.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "new": [
+    "run:large_deformation",
+    "study:large_deformation"
+   ],
+   "pointed_out": true,
+   "wall_s": 16.0
+  },
+  {
+   "id": "C4",
+   "base": "C",
+   "group": "units",
+   "mistake": "Young's modulus 1000 times too large: 205 000 GPa",
+   "changes": {
+    "materials.solid.E": {
+     "value": 205000,
+     "unit": "GPa"
+    }
+   },
+   "checks": [],
+   "refused": "materials.solid.E must be between 0.1 GPa and 1000 GPa.",
+   "new": [
+    "input:err.range"
+   ],
+   "pointed_out": true,
+   "wall_s": 0.1
+  },
+  {
+   "id": "C5",
+   "base": "C",
+   "group": "units",
+   "mistake": "Dimensions in metres instead of millimetres (200 m long)",
+   "changes": {
+    "geometry.params.length": {
+     "value": 200,
+     "unit": "m"
+    },
+    "geometry.params.width": {
+     "value": 20,
+     "unit": "m"
+    },
+    "geometry.params.height": {
+     "value": 20,
+     "unit": "m"
+    }
+   },
+   "checks": [],
+   "refused": "geometry.params.length must be between 0.01 m and 5 m.",
+   "new": [
+    "input:err.range"
+   ],
+   "pointed_out": true,
+   "wall_s": 0.1
+  },
+  {
+   "id": "C6",
+   "base": "C",
+   "group": "units",
+   "mistake": "Dimensions 1000 times too small (0.2 mm long)",
+   "changes": {
+    "geometry.params.length": {
+     "value": 0.2,
+     "unit": "mm"
+    },
+    "geometry.params.width": {
+     "value": 0.02,
+     "unit": "mm"
+    },
+    "geometry.params.height": {
+     "value": 0.02,
+     "unit": "mm"
+    }
+   },
+   "checks": [],
+   "refused": "geometry.params.length must be between 10 mm and 5000 mm.",
+   "new": [
+    "input:err.range"
+   ],
+   "pointed_out": true,
+   "wall_s": 0.0
+  },
+  {
+   "id": "C7",
+   "base": "C",
+   "group": "supports",
+   "mistake": "No support at all",
+   "changes": {
+    "boundaries.x0.role": "free"
+   },
+   "checks": [
+    "error:no_fixed"
+   ],
+   "check_messages": {
+    "no_fixed": "No face is fixed. The body floats freely, so it cannot be solved."
+   },
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "Held: -.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "new": [
+    "error:no_fixed"
+   ],
+   "pointed_out": true,
+   "wall_s": 0.2
+  },
+  {
+   "id": "C8",
+   "base": "C",
+   "group": "loads",
+   "mistake": "No load",
+   "changes": {
+    "boundaries.x1.role": "free"
+   },
+   "checks": [
+    "error:no_load"
+   ],
+   "check_messages": {
+    "no_load": "No load or pressure is applied. All results would be zero."
+   },
+   "setup": [
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "new": [
+    "error:no_load"
+   ],
+   "pointed_out": true,
+   "wall_s": 0.2
+  },
+  {
+   "id": "C9",
+   "base": "C",
+   "group": "loads",
+   "mistake": "Load pointing the wrong way (up instead of down)",
+   "changes": {
+    "boundaries.x1.direction": "+z"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward +z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 200 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 142 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 141 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "tip_disp": -0.9755,
+     "max_vm": 142.1,
+     "max_disp": 0.9783,
+     "reaction": 1000.0,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 157 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 142 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "tip_disp": -0.9762,
+     "max_vm": 156.6,
+     "max_disp": 0.979,
+     "reaction": 1000.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "new": [],
+   "pointed_out": false,
+   "wall_s": 15.1
+  },
+  {
+   "id": "C10",
+   "base": "C",
+   "group": "supports",
+   "mistake": "Support on the wrong face (a side face instead of the end)",
+   "changes": {
+    "boundaries.x0.role": "free",
+    "boundaries.y0.role": "fixed"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "  Nearest support y0 (Front side): 100.5 mm across the load line, so about 100.5 N·m of bending there.",
+    "Held: y0 (Front side) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 14 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 6 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "tip_disp": 0.0007092,
+     "max_vm": 13.88,
+     "max_disp": 0.001326,
+     "reaction": 1000.0,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support",
+     "stress_singular",
+     "gate:mesh"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 15 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 9 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact).",
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (13 → 14 → 15 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "tip_disp": 0.0007234,
+     "max_vm": 15.32,
+     "max_disp": 0.001341,
+     "reaction": 1000.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "new": [
+    "study:stress_singular",
+    "study:gate:mesh"
+   ],
+   "pointed_out": true,
+   "wall_s": 15.2
+  },
+  {
+   "id": "C11",
+   "base": "C",
+   "group": "loads",
+   "mistake": "Load on the wrong face (the top face instead of the free end)",
+   "changes": {
+    "boundaries.x1.role": "free",
+    "boundaries.z1.role": "load",
+    "boundaries.z1.force": {
+     "value": 1000,
+     "unit": "N"
+    },
+    "boundaries.z1.direction": "-z"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "z1 (Top): 1,000 N toward -z. The face points +Z, so the load pushes on it. Mean 0.25 MPa over 4,000 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 100 mm across the load line, so about 100 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 69 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 66 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "tip_disp": 0.3662,
+     "max_vm": 69.09,
+     "max_disp": 0.3671,
+     "reaction": 1000.0,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 79 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 68 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "tip_disp": 0.3665,
+     "max_vm": 79.16,
+     "max_disp": 0.3674,
+     "reaction": 1000.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "new": [],
+   "pointed_out": false,
+   "wall_s": 15.1
+  },
+  {
+   "id": "C12",
+   "base": "C",
+   "group": "supports",
+   "mistake": "Under-supported: only a symmetry plane at the end, so the beam can slide",
+   "changes": {
+    "boundaries.x0.role": "symmetry"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 200 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Symmetry.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "stopped": "{'done': True, 'job': {'job_id': 'r_20261106_111600_6dc3', 'case_id': 'c_20261106_111600_19b6', 'state': 'failed', 'progress': 0.03, 'eta_s': None, 'engine': 'builtin-fem', 'mode': 'preview', 'revision': 2, 'message': 'Without a fixed face, symmetry planes are needed in all three directions (x, y an",
+    "codes": [
+     "stopped"
+    ]
+   },
+   "study": {
+    "stopped": "{'done': True, 'job': {'job_id': 'r_20261106_111602_5348', 'case_id': 'c_20261106_111600_19b6', 'state': 'failed', 'progress': 0.01, 'eta_s': None, 'engine': 'builtin-fem', 'mode': 'preview', 'revision': 2, 'message': 'Without a fixed face, symmetry planes are needed in all three directions (x, y an",
+    "codes": [
+     "stopped"
+    ]
+   },
+   "new": [
+    "run:stopped",
+    "study:stopped"
+   ],
+   "pointed_out": true,
+   "wall_s": 4.8
+  },
+  {
+   "id": "C13",
+   "base": "C",
+   "group": "materials",
+   "mistake": "Wrong material picked (aluminium instead of steel)",
+   "changes": {
+    "materials.solid.preset": "aluminium"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 200 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Aluminium, E 69 GPa, yield 275 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 142 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 141 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 2.894,
+     "max_vm": 142.2,
+     "max_disp": 2.902,
+     "reaction": 1000.0,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 155 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 142 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 2.896,
+     "max_vm": 155.1,
+     "max_disp": 2.904,
+     "reaction": 1000.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "new": [],
+   "pointed_out": false,
+   "wall_s": 15.2
+  },
+  {
+   "id": "C14",
+   "base": "C",
+   "group": "materials",
+   "mistake": "Poisson's ratio 0.5 (incompressible) for steel",
+   "changes": {
+    "materials.solid.nu": {
+     "value": 0.5,
+     "unit": "-"
+    }
+   },
+   "checks": [],
+   "refused": "materials.solid.nu must be between 0 - and 0.49 -.",
+   "new": [
+    "input:err.range"
+   ],
+   "pointed_out": true,
+   "wall_s": 0.1
+  },
+  {
+   "id": "C15",
+   "base": "C",
+   "group": "analysis",
+   "mistake": "Linear analysis far beyond yield (10 000 N)",
+   "changes": {
+    "boundaries.x1.force": {
+     "value": 10000,
+     "unit": "N"
+    }
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 1e+04 N toward -z. The face points +X, so the load acts along it (shear). Mean 25 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 2,000 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support",
+     "yield"
+    ],
+    "messages": {
+     "yield": "Max von Mises stress 1421 MPa exceeds the typical yield strength 235 MPa. The part would deform plastically, so this linear elastic result does not hold. Run as nonlinear (elastoplastic) to model yielding.",
+     "peak_on_support": "The peak stress 1421 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 1407 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 9.755,
+     "max_vm": 1421.0,
+     "max_disp": 9.783,
+     "reaction": 10000.0,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support",
+     "yield"
+    ],
+    "messages": {
+     "yield": "Max von Mises stress 1566 MPa exceeds the typical yield strength 235 MPa. The part would deform plastically, so this linear elastic result does not hold. Run as nonlinear (elastoplastic) to model yielding.",
+     "peak_on_support": "The peak stress 1566 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 1421 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 9.762,
+     "max_vm": 1566.0,
+     "max_disp": 9.79,
+     "reaction": 10000.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "new": [
+    "run:yield",
+    "study:yield"
+   ],
+   "pointed_out": true,
+   "wall_s": 15.2
+  },
+  {
+   "id": "C16",
+   "base": "C",
+   "group": "analysis",
+   "mistake": "Linear analysis of a thin strip that bends a lot (2 mm thick, 20 N)",
+   "changes": {
+    "geometry.params.height": {
+     "value": 2,
+     "unit": "mm"
+    },
+    "boundaries.x1.force": {
+     "value": 20,
+     "unit": "N"
+    }
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x1 (Right end (x = L)): 20 N toward -z. The face points +X, so the load acts along it (shear). Mean 0.5 MPa over 40 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 4 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "large_deformation",
+     "peak_on_support",
+     "yield"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "yield": "Max von Mises stress 310 MPa exceeds the typical yield strength 235 MPa. The part would deform plastically, so this linear elastic result does not hold. Run as nonlinear (elastoplastic) to model yielding.",
+     "peak_on_support": "The peak stress 310 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 301 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 19.33,
+     "max_vm": 309.5,
+     "max_disp": 19.33,
+     "reaction": 20.0,
+     "nodes": 243249.0,
+     "elements": 146353.0
+    }
+   },
+   "study": {
+    "stopped": "{'done': True, 'job': {'job_id': 'r_20261106_111908_16f1', 'case_id': 'c_20261106_111635_4294', 'state': 'failed', 'progress': 0.677, 'eta_s': None, 'engine': 'builtin-fem', 'mode': 'preview', 'revision': 2, 'message': 'This mesh (870087 nodes) needs about 6.9 GB of memory, but only about 5.5 GB is ",
+    "codes": [
+     "stopped"
+    ]
+   },
+   "new": [
+    "run:large_deformation",
+    "run:yield",
+    "study:stopped"
+   ],
+   "pointed_out": true,
+   "wall_s": 501.1
+  },
+  {
+   "id": "C17",
+   "base": "C",
+   "group": "mesh",
+   "mistake": "Coarse mesh",
+   "changes": {
+    "mesh.size": "coarse"
+   },
+   "checks": [
+    "warn:coarse"
+   ],
+   "check_messages": {
+    "coarse": "The mesh is coarse; deflection may come out a few percent low. Use 'normal' or finer for the final run."
+   },
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 200 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 143 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 136 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 0.9748,
+     "max_vm": 142.5,
+     "max_disp": 0.9776,
+     "reaction": 1000.0,
+     "nodes": 1584.0,
+     "elements": 867.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 157 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 142 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 0.9762,
+     "max_vm": 156.6,
+     "max_disp": 0.979,
+     "reaction": 1000.0,
+     "nodes": 11437.0,
+     "elements": 6536.0
+    }
+   },
+   "new": [
+    "warn:coarse"
+   ],
+   "pointed_out": true,
+   "wall_s": 14.8
+  },
+  {
+   "id": "C18",
+   "base": "C",
+   "group": "analysis",
+   "mistake": "Vibration (modal) analysis with the load still set, expecting it to matter",
+   "changes": {
+    "physics.analysis": "modal"
+   },
+   "checks": [
+    "warn:modal_loads_ignored"
+   ],
+   "check_messages": {
+    "modal_loads_ignored": "Modal analysis ignores loads and uses the supports only."
+   },
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 200 mm across the load line, so about 200 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "frequency": 411.6,
+     "nodes": 3836.0,
+     "elements": 2041.0
+    }
+   },
+   "study": null,
+   "new": [
+    "warn:modal_loads_ignored"
+   ],
+   "pointed_out": true,
+   "wall_s": 4.0
+  },
+  {
+   "id": "C19",
+   "base": "C",
+   "group": "analysis",
+   "mistake": "Beam that is too short for beam theory (40 mm long, 20 mm high)",
+   "changes": {
+    "geometry.params.length": {
+     "value": 40,
+     "unit": "mm"
+    }
+   },
+   "checks": [
+    "warn:slender"
+   ],
+   "check_messages": {
+    "slender": "Slenderness L/h = 2.0. Below 10, the comparison with beam theory becomes inaccurate."
+   },
+   "setup": [
+    "x1 (Right end (x = L)): 1,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 2.5 MPa over 400 mm².",
+    "  Nearest support x0 (Left end (x = 0)): 40 mm across the load line, so about 40 N·m of bending there.",
+    "Held: x0 (Left end (x = 0)) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 28 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 20 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 0.009017,
+     "max_vm": 27.55,
+     "max_disp": 0.009552,
+     "reaction": 1000.0,
+     "nodes": 982.0,
+     "elements": 525.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support",
+     "stress_singular"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 33 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 24 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact).",
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (25 → 28 → 33 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "tip_disp": 0.009042,
+     "max_vm": 32.82,
+     "max_disp": 0.009585,
+     "reaction": 1000.0,
+     "nodes": 2717.0,
+     "elements": 1519.0
+    }
+   },
+   "new": [
+    "warn:slender",
+    "study:stress_singular"
+   ],
+   "pointed_out": true,
+   "wall_s": 8.6
+  },
+  {
+   "id": "L1",
+   "base": "L",
+   "group": "units",
+   "mistake": "Load typed 1000 times too large (200 000 N)",
+   "changes": {
+    "boundaries.f8.force": {
+     "value": 200000.0,
+     "unit": "N"
+    }
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "f8 (Face 8): 2e+05 N toward -z. The face points +X, so the load acts along it (shear). Mean 625 MPa over 320 mm².",
+    "  Nearest support f1 (Face 1): 80 mm across the load line, so about 1.6e+04 N·m of bending there.",
+    "Held: f1 (Face 1) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "large_deformation",
+     "peak_on_support",
+     "yield"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "yield": "Max von Mises stress 31710 MPa exceeds the typical yield strength 235 MPa. The part would deform plastically, so this linear elastic result does not hold. Run as nonlinear (elastoplastic) to model yielding.",
+     "peak_on_support": "The peak stress 31710 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 30513 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "max_vm": 31710.0,
+     "max_disp": 81.95,
+     "reaction": 200000.0,
+     "nodes": 25637.0,
+     "elements": 15723.0
+    }
+   },
+   "study": {
+    "codes": [
+     "large_deformation",
+     "stress_singular",
+     "yield",
+     "gate:mesh"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "yield": "Max von Mises stress 33398 MPa exceeds the typical yield strength 235 MPa. The part would deform plastically, so this linear elastic result does not hold. Run as nonlinear (elastoplastic) to model yielding.",
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (29407 → 31710 → 33398 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "max_vm": 33400.0,
+     "max_disp": 82.98,
+     "reaction": 200000.0,
+     "nodes": 87249.0,
+     "elements": 56752.0
+    }
+   },
+   "new": [
+    "run:large_deformation",
+    "run:yield",
+    "study:large_deformation",
+    "study:yield"
+   ],
+   "pointed_out": true,
+   "wall_s": 106.2
+  },
+  {
+   "id": "L2",
+   "base": "L",
+   "group": "units",
+   "mistake": "Young's modulus in the wrong unit: 205 MPa for steel",
+   "changes": {
+    "materials.solid.E": {
+     "value": 205,
+     "unit": "MPa"
+    }
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "f8 (Face 8): 200 N toward -z. The face points +X, so the load acts along it (shear). Mean 0.625 MPa over 320 mm².",
+    "  Nearest support f1 (Face 1): 80 mm across the load line, so about 16 N·m of bending there.",
+    "Held: f1 (Face 1) = Fixed.",
+    "Material: Custom, E 0.205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "large_deformation",
+     "peak_on_support"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "peak_on_support": "The peak stress 32 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 31 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "max_vm": 31.71,
+     "max_disp": 81.95,
+     "reaction": 200.0,
+     "nodes": 25637.0,
+     "elements": 15723.0
+    }
+   },
+   "study": {
+    "codes": [
+     "large_deformation",
+     "stress_singular",
+     "gate:mesh"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (29 → 32 → 33 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "max_vm": 33.4,
+     "max_disp": 82.98,
+     "reaction": 200.0,
+     "nodes": 87249.0,
+     "elements": 56752.0
+    }
+   },
+   "new": [
+    "run:large_deformation",
+    "study:large_deformation"
+   ],
+   "pointed_out": true,
+   "wall_s": 109.6
+  },
+  {
+   "id": "L3",
+   "base": "L",
+   "group": "supports",
+   "mistake": "No support at all",
+   "changes": {
+    "boundaries.f1.role": "free"
+   },
+   "checks": [
+    "error:no_fixed"
+   ],
+   "check_messages": {
+    "no_fixed": "No face is fixed. The body floats freely, so it cannot be solved."
+   },
+   "setup": [
+    "f8 (Face 8): 200 N toward -z. The face points +X, so the load acts along it (shear). Mean 0.625 MPa over 320 mm².",
+    "Held: -.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "new": [
+    "error:no_fixed"
+   ],
+   "pointed_out": true,
+   "wall_s": 1.1
+  },
+  {
+   "id": "L4",
+   "base": "L",
+   "group": "supports",
+   "mistake": "Support on the wrong face (bottom of the leg instead of the wall face)",
+   "changes": {
+    "boundaries.f1.role": "free",
+    "boundaries.f3.role": "fixed"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "f8 (Face 8): 200 N toward -z. The face points +X, so the load acts along it (shear). Mean 0.625 MPa over 320 mm².",
+    "  Nearest support f3 (Face 3): 40.38 mm across the load line, so about 8.075 N·m of bending there.",
+    "Held: f3 (Face 3) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 3 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 2 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "max_vm": 3.141,
+     "max_disp": 6.331e-05,
+     "reaction": 200.0,
+     "nodes": 25637.0,
+     "elements": 15723.0
+    }
+   },
+   "study": {
+    "codes": [
+     "peak_on_support",
+     "stress_singular"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 4 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 2 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact).",
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (2 → 3 → 4 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "max_vm": 3.555,
+     "max_disp": 6.376e-05,
+     "reaction": 200.0,
+     "nodes": 87249.0,
+     "elements": 56752.0
+    }
+   },
+   "new": [
+    "study:peak_on_support"
+   ],
+   "pointed_out": true,
+   "wall_s": 102.4
+  },
+  {
+   "id": "L5",
+   "base": "L",
+   "group": "loads",
+   "mistake": "Load on the wrong face (the bolt hole instead of the end)",
+   "changes": {
+    "boundaries.f8.role": "free",
+    "boundaries.f9.role": "load",
+    "boundaries.f9.force": {
+     "value": 200,
+     "unit": "N"
+    },
+    "boundaries.f9.direction": "-z"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "f9 (Face 9): 200 N toward -z on a curved face (251.3 mm²).",
+    "  Nearest support f1 (Face 1): 55 mm across the load line, so about 11 N·m of bending there.",
+    "Held: f1 (Face 1) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 20 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 19 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "max_vm": 19.76,
+     "max_disp": 0.0421,
+     "reaction": 200.0,
+     "nodes": 36718.0,
+     "elements": 23265.0
+    }
+   },
+   "study": {
+    "codes": [
+     "stress_singular",
+     "gate:mesh"
+    ],
+    "messages": {
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (20 → 20 → 21 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "max_vm": 21.42,
+     "max_disp": 0.0427,
+     "reaction": 200.0,
+     "nodes": 131767.0,
+     "elements": 88078.0
+    }
+   },
+   "new": [],
+   "pointed_out": false,
+   "wall_s": 182.8
+  },
+  {
+   "id": "L6",
+   "base": "L",
+   "group": "loads",
+   "mistake": "Load pointing the wrong way",
+   "changes": {
+    "boundaries.f8.direction": "+z"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "f8 (Face 8): 200 N toward +z. The face points +X, so the load acts along it (shear). Mean 0.625 MPa over 320 mm².",
+    "  Nearest support f1 (Face 1): 80 mm across the load line, so about 16 N·m of bending there.",
+    "Held: f1 (Face 1) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 32 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 31 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "max_vm": 31.71,
+     "max_disp": 0.08195,
+     "reaction": 200.0,
+     "nodes": 25637.0,
+     "elements": 15723.0
+    }
+   },
+   "study": {
+    "codes": [
+     "stress_singular",
+     "gate:mesh"
+    ],
+    "messages": {
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (29 → 32 → 33 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "max_vm": 33.4,
+     "max_disp": 0.08298,
+     "reaction": 200.0,
+     "nodes": 87249.0,
+     "elements": 56752.0
+    }
+   },
+   "new": [],
+   "pointed_out": false,
+   "wall_s": 113.4
+  },
+  {
+   "id": "L7",
+   "base": "L",
+   "group": "materials",
+   "mistake": "Wrong material picked (PLA instead of steel)",
+   "changes": {
+    "materials.solid.preset": "pla"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "f8 (Face 8): 200 N toward -z. The face points +X, so the load acts along it (shear). Mean 0.625 MPa over 320 mm².",
+    "  Nearest support f1 (Face 1): 80 mm across the load line, so about 16 N·m of bending there.",
+    "Held: f1 (Face 1) = Fixed.",
+    "Material: PLA (3D print, 100 % infill), E 3.5 GPa, yield 50 MPa."
+   ],
+   "run": {
+    "codes": [
+     "large_deformation",
+     "peak_on_support"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "peak_on_support": "The peak stress 32 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 31 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "max_vm": 31.78,
+     "max_disp": 4.724,
+     "reaction": 200.0,
+     "nodes": 25637.0,
+     "elements": 15723.0
+    }
+   },
+   "study": {
+    "codes": [
+     "large_deformation",
+     "stress_singular",
+     "gate:mesh"
+    ],
+    "messages": {
+     "large_deformation": "Strain exceeds 1% or rotation exceeds 5°. Consider large deformation analysis.",
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (29 → 32 → 34 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "max_vm": 33.88,
+     "max_disp": 4.787,
+     "reaction": 200.0,
+     "nodes": 87249.0,
+     "elements": 56752.0
+    }
+   },
+   "new": [
+    "run:large_deformation",
+    "study:large_deformation"
+   ],
+   "pointed_out": true,
+   "wall_s": 110.4
+  },
+  {
+   "id": "L8",
+   "base": "L",
+   "group": "mesh",
+   "mistake": "Coarse mesh",
+   "changes": {
+    "mesh.size": "coarse"
+   },
+   "checks": [
+    "warn:coarse"
+   ],
+   "check_messages": {
+    "coarse": "The mesh is coarse; deflection may come out a few percent low. Use 'normal' or finer for the final run."
+   },
+   "setup": [
+    "f8 (Face 8): 200 N toward -z. The face points +X, so the load acts along it (shear). Mean 0.625 MPa over 320 mm².",
+    "  Nearest support f1 (Face 1): 80 mm across the load line, so about 16 N·m of bending there.",
+    "Held: f1 (Face 1) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support"
+    ],
+    "messages": {
+     "peak_on_support": "The peak stress 29 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 28 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "max_vm": 29.41,
+     "max_disp": 0.0811,
+     "reaction": 200.0,
+     "nodes": 5351.0,
+     "elements": 2999.0
+    }
+   },
+   "study": {
+    "codes": [
+     "stress_singular",
+     "gate:mesh"
+    ],
+    "messages": {
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (29 → 32 → 33 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "max_vm": 33.4,
+     "max_disp": 0.08298,
+     "reaction": 200.0,
+     "nodes": 87249.0,
+     "elements": 56752.0
+    }
+   },
+   "new": [
+    "warn:coarse"
+   ],
+   "pointed_out": true,
+   "wall_s": 91.6
+  },
+  {
+   "id": "L9",
+   "base": "L",
+   "group": "analysis",
+   "mistake": "Linear analysis far beyond yield (5000 N)",
+   "changes": {
+    "boundaries.f8.force": {
+     "value": 5000,
+     "unit": "N"
+    }
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "f8 (Face 8): 5,000 N toward -z. The face points +X, so the load acts along it (shear). Mean 15.62 MPa over 320 mm².",
+    "  Nearest support f1 (Face 1): 80 mm across the load line, so about 400 N·m of bending there.",
+    "Held: f1 (Face 1) = Fixed.",
+    "Material: Steel, E 205 GPa, yield 235 MPa."
+   ],
+   "run": {
+    "codes": [
+     "peak_on_support",
+     "yield"
+    ],
+    "messages": {
+     "yield": "Max von Mises stress 793 MPa exceeds the typical yield strength 235 MPa. The part would deform plastically, so this linear elastic result does not hold. Run as nonlinear (elastoplastic) to model yielding.",
+     "peak_on_support": "The peak stress 793 MPa is at the edge of a fixed face. Fully rigid support edges tend to give a stress singularity, so this value cannot be used to judge strength. A little away from the supports the maximum is 763 MPa (a reference value, not a safety factor for the whole part). Check with a support closer to the real one (bolts, contact)."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": null
+    },
+    "cards": {
+     "max_vm": 792.8,
+     "max_disp": 2.049,
+     "reaction": 5000.0,
+     "nodes": 25637.0,
+     "elements": 15723.0
+    }
+   },
+   "study": {
+    "codes": [
+     "stress_singular",
+     "yield",
+     "gate:mesh"
+    ],
+    "messages": {
+     "yield": "Max von Mises stress 835 MPa exceeds the typical yield strength 235 MPa. The part would deform plastically, so this linear elastic result does not hold. Run as nonlinear (elastoplastic) to model yielding.",
+     "stress_singular": "The peak stress keeps rising as the mesh is refined (735 → 793 → 835 MPa). It may be a stress singularity from an idealised shape or support (a sharp corner, the edge of a fully fixed face), so this peak cannot be used to judge strength. Model the real fillet or support, or choose the region to assess and check that the stress there converges."
+    },
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": false,
+     "verified_by": "mesh"
+    },
+    "cards": {
+     "max_vm": 835.0,
+     "max_disp": 2.075,
+     "reaction": 5000.0,
+     "nodes": 87249.0,
+     "elements": 56752.0
+    }
+   },
+   "new": [
+    "run:yield",
+    "study:yield"
+   ],
+   "pointed_out": true,
+   "wall_s": 105.5
+  },
+  {
+   "id": "T1",
+   "base": "T",
+   "group": "supports",
+   "mistake": "No temperature set anywhere (both ends insulated)",
+   "changes": {
+    "boundaries.x0.role": "insulated",
+    "boundaries.x1.role": "insulated"
+   },
+   "checks": [
+    "error:no_temperature",
+    "warn:no_heat"
+   ],
+   "check_messages": {
+    "no_temperature": "No face sets the temperature (fixed temperature or convection), so the temperature level is undefined.",
+    "no_heat": "There is no temperature difference or heat input, so the whole body will sit at one temperature."
+   },
+   "setup": [
+    "Material: Steel, conductivity 50 W/mK."
+   ],
+   "new": [
+    "error:no_temperature",
+    "warn:no_heat"
+   ],
+   "pointed_out": true,
+   "wall_s": 0.2
+  },
+  {
+   "id": "T2",
+   "base": "T",
+   "group": "loads",
+   "mistake": "The same temperature on both ends",
+   "changes": {
+    "boundaries.x1.temperature": {
+     "value": 100,
+     "unit": "degC"
+    }
+   },
+   "checks": [
+    "warn:uniform_temperature"
+   ],
+   "check_messages": {
+    "uniform_temperature": "There is no heat input, so the whole part will reach ambient temperature. Apply heat flux to a heated face or specify faces at different temperatures."
+   },
+   "setup": [
+    "x0 (Left end (x = 0)): 100 °C.",
+    "x1 (Right end (x = L)): 100 °C.",
+    "Material: Steel, conductivity 50 W/mK."
+   ],
+   "run": {
+    "codes": [
+     "gate:converged"
+    ],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": false,
+     "verified": false,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 100.0,
+     "t_min": 100.0,
+     "q_in": 4.161e-13,
+     "nodes": 4134.0,
+     "elements": 2342.0
+    }
+   },
+   "study": {
+    "codes": [
+     "gate:converged"
+    ],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": false,
+     "verified": false,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 100.0,
+     "t_min": 100.0,
+     "q_in": 6.661e-12,
+     "nodes": 13439.0,
+     "elements": 8114.0
+    }
+   },
+   "new": [
+    "warn:uniform_temperature",
+    "run:gate:converged",
+    "study:gate:converged"
+   ],
+   "pointed_out": true,
+   "wall_s": 9.8
+  },
+  {
+   "id": "T3",
+   "base": "T",
+   "group": "units",
+   "mistake": "Temperature typed in kelvin instead of °C (100 K on the hot end)",
+   "changes": {
+    "boundaries.x0.temperature": {
+     "value": 100,
+     "unit": "K"
+    }
+   },
+   "checks": [
+    "warn:cold_temperature"
+   ],
+   "check_messages": {
+    "cold_temperature": "x0: -173.1 °C (100 K) is below -73 °C. If you meant 100 °C, the value was entered in kelvin; change the unit to °C."
+   },
+   "setup": [
+    "x0 (Left end (x = 0)): -173.1 °C.",
+    "x1 (Right end (x = L)): 20 °C.",
+    "Material: Steel, conductivity 50 W/mK."
+   ],
+   "run": {
+    "codes": [],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 20.0,
+     "t_min": -173.1,
+     "q_in": 96.57,
+     "nodes": 4134.0,
+     "elements": 2342.0
+    }
+   },
+   "study": {
+    "codes": [],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 20.0,
+     "t_min": -173.1,
+     "q_in": 96.58,
+     "nodes": 13439.0,
+     "elements": 8114.0
+    }
+   },
+   "new": [
+    "warn:cold_temperature"
+   ],
+   "pointed_out": true,
+   "wall_s": 9.8
+  },
+  {
+   "id": "T4",
+   "base": "T",
+   "group": "materials",
+   "mistake": "Conductivity 1000 times too large (50 000 W/mK)",
+   "changes": {
+    "materials.solid.k": {
+     "value": 50000,
+     "unit": "W/mK"
+    }
+   },
+   "checks": [],
+   "refused": "materials.solid.k must be between 0.01 W/mK and 5000 W/mK.",
+   "new": [
+    "input:err.range"
+   ],
+   "pointed_out": true,
+   "wall_s": 0.1
+  },
+  {
+   "id": "T5",
+   "base": "T",
+   "group": "materials",
+   "mistake": "Wrong material picked (aluminium instead of steel)",
+   "changes": {
+    "materials.solid.preset": "aluminium"
+   },
+   "checks": [],
+   "check_messages": {},
+   "setup": [
+    "x0 (Left end (x = 0)): 100 °C.",
+    "x1 (Right end (x = L)): 20 °C.",
+    "Material: Aluminium, conductivity 167 W/mK."
+   ],
+   "run": {
+    "codes": [],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 100.0,
+     "t_min": 20.0,
+     "q_in": 133.6,
+     "nodes": 4134.0,
+     "elements": 2342.0
+    }
+   },
+   "study": {
+    "codes": [],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 100.0,
+     "t_min": 20.0,
+     "q_in": 133.6,
+     "nodes": 13439.0,
+     "elements": 8114.0
+    }
+   },
+   "new": [],
+   "pointed_out": false,
+   "wall_s": 9.8
+  },
+  {
+   "id": "T6",
+   "base": "T",
+   "group": "mesh",
+   "mistake": "Coarse mesh",
+   "changes": {
+    "mesh.size": "coarse"
+   },
+   "checks": [
+    "warn:coarse"
+   ],
+   "check_messages": {
+    "coarse": "The mesh is coarse; deflection may come out a few percent low. Use 'normal' or finer for the final run."
+   },
+   "setup": [
+    "x0 (Left end (x = 0)): 100 °C.",
+    "x1 (Right end (x = L)): 20 °C.",
+    "Material: Steel, conductivity 50 W/mK."
+   ],
+   "run": {
+    "codes": [],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 100.0,
+     "t_min": 20.0,
+     "q_in": 40.0,
+     "nodes": 1499.0,
+     "elements": 793.0
+    }
+   },
+   "study": {
+    "codes": [],
+    "messages": {},
+    "gates": {
+     "ran": true,
+     "converged": true,
+     "verified": true,
+     "verified_by": "reference"
+    },
+    "cards": {
+     "t_max": 100.0,
+     "t_min": 20.0,
+     "q_in": 40.0,
+     "nodes": 13439.0,
+     "elements": 8114.0
+    }
+   },
+   "new": [
+    "warn:coarse"
+   ],
+   "pointed_out": true,
+   "wall_s": 9.4
+  }
+ ]
+}
