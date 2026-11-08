@@ -487,7 +487,28 @@ def field(case: dict, quantity: str, lang: str, run_id: str | None = None, mode:
 
 # ---------------------------------------------------------------- PNG for the AI (and reports)
 
-def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None, mode: int = 1,step: int | None = None) -> tuple[bytes, dict]:
+# view direction = from the part towards the eye; shared by the result and the faces pictures
+VIEWS = {'iso': [1, -1.4, .9], 'iso_back': [-1, 1.4, -.9], 'top': [0, 0, 1], 'bottom': [0, 0, -1],
+         'front': [0, -1, 0], 'back': [0, 1, 0], 'left': [-1, 0, 0], 'right': [1, 0, 0]}
+
+
+def _camera(view: str) -> tuple[float, float]:
+    """matplotlib (elev, azim) for a named view. iso keeps the camera the result picture always had."""
+    if view == 'iso':
+        return 20., -62.
+    if view == 'iso_back':
+        return -20., 118.                                     # the exact opposite of iso
+    d = np.asarray(VIEWS[view], float)
+    d /= np.linalg.norm(d)
+    if abs(d[2]) > .99:
+        return 90. * np.sign(d[2]), -90.                      # top/bottom: +y up on the screen, as render_faces
+    return float(np.degrees(np.arcsin(d[2]))), float(np.degrees(np.arctan2(d[1], d[0])))
+
+
+def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None, mode: int = 1,step: int | None = None,
+               view: str = 'iso') -> tuple[bytes, dict]:
+    if view not in VIEWS:
+        raise StudioError('err.path', 400, path='view='+view)
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -533,7 +554,7 @@ def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None, 
         for setlim, c, sp_ in zip((ax.set_xlim, ax.set_ylim, ax.set_zlim), ctr, span):
             setlim(c - sp_ / 2, c + sp_ / 2)
         ax.set_box_aspect(tuple(span / span.max()), zoom=1.45)
-        ax.view_init(20, -62)
+        ax.view_init(*_camera(view))
         ax.set_axis_off()
         cax = fig.add_axes([0.86, 0.15, 0.02, 0.65])
         note = f" / deformation x{f['auto_deform_scale']:.3g}" if "displacement" in f else ""
@@ -565,7 +586,8 @@ def render_png(case: dict, quantity: str, lang: str, run_id: str | None = None, 
     buf = io.BytesIO()
     fig.savefig(buf, format="png")
     plt.close(fig)
-    return buf.getvalue(), {"quantity": f["quantity"], "unit": f["unit"], "range": f["range"]}
+    # a flat field (slice, 2D model) is drawn in its own plane, so it has no camera to turn
+    return buf.getvalue(), {"quantity": f["quantity"], "unit": f["unit"], "range": f["range"], "view": view if is3d else None}
 
 
 def render_faces(case: dict, lang: str, view: str = 'iso', highlight: list[str] | None = None) -> tuple[bytes, dict]:
@@ -575,8 +597,7 @@ def render_faces(case: dict, lang: str, view: str = 'iso', highlight: list[str] 
     import matplotlib.pyplot as plt
     from matplotlib import colors, font_manager
     from matplotlib.patches import Patch
-    views = {'iso': [1, -1.4, .9], 'iso_back': [-1, 1.4, -.9], 'top': [0, 0, 1], 'bottom': [0, 0, -1],
-             'front': [0, -1, 0], 'back': [0, 1, 0], 'left': [-1, 0, 0], 'right': [1, 0, 0]}
+    views = VIEWS
     if view not in views:
         raise StudioError('err.path', 400, path='view='+view)
     prefs = {'ja': ['Yu Gothic', 'Meiryo', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans CJK JP'], 'zh': ['Microsoft YaHei', 'SimHei', 'PingFang SC', 'Noto Sans CJK SC']}.get(lang, ['Segoe UI', 'Arial'])

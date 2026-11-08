@@ -693,7 +693,7 @@ def render_view(case_id: str, quantity: str = "", lang: str = "ja", view: str = 
                 highlight: list[str] | None = None, mode: int = 1,step: int | None = None) -> tuple[bytes, dict]:
     if quantity == 'faces':
         return results.render_faces(store.load(case_id), lang_of(lang), view, highlight)
-    return results.render_png(store.load(case_id), quantity, lang_of(lang), mode=mode,step=step)
+    return results.render_png(store.load(case_id), quantity, lang_of(lang), mode=mode,step=step, view=view)
 
 
 def print_check(case_id: str, run_id: str | None = None, strength_xy_mpa: float | None = None,

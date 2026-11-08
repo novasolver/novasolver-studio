@@ -38,6 +38,21 @@ def test_cantilever_preview_verified():
     assert f["sxx"].max() > 0.5 * f["vm"].max() and f["sxx"].min() < -0.5 * f["vm"].max()
 
 
+def test_result_render_honours_view():
+    # render_view used to forward view only for quantity="faces": every result picture came out from the iso camera
+    cid = C.create_case("cantilever")["case"]["case_id"]
+    assert C.run_simulation(cid, "preview", wait_s=120)["done"]
+    iso, meta = C.render_view(cid, "vm", "en")
+    assert iso.startswith(b"\x89PNG") and meta["view"] == "iso"
+    assert C.render_view(cid, "vm", "en", view="iso")[0] == iso          # the default look is the iso camera
+    pictures = {v: C.render_view(cid, "vm", "en", view=v) for v in ("front", "iso_back", "top")}
+    assert all(m["view"] == v for v, (_, m) in pictures.items())
+    assert len({iso, *(png for png, _ in pictures.values())}) == 4
+    with pytest.raises(StudioError) as e:
+        C.render_view(cid, "vm", "en", view="diagonal")
+    assert e.value.key == "err.path"
+
+
 def test_edit_rules_and_blocking():
     p = C.create_case("cantilever")
     cid, rev = p["case"]["case_id"], p["case"]["revision"]
