@@ -83,6 +83,26 @@ def test_extrusion_on_a_padded_case_grid(ws):
     assert "constraint_not_met" in r["warnings"]
 
 
+def test_condition_layer_does_not_move_plate_or_break_prism(ws):
+    """At 12k cells the cantilever's end faces reach one cell layer beyond the body. That layer must neither become
+    the AM build plate (the whole body was unsupported and the design vanished) nor make the y prism fail."""
+    cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
+    g, setup = _built(cid, {"cells": 12000, "overhang": "+z"})
+    g.configure(setup["settings"])
+    x = np.where(g.active, 0.3, 0.0)
+    assert g.am.forward(x)[g.active].mean() > 0.9 * 0.3          # a uniform start stays printable
+    g, setup = _built(cid, {"cells": 12000, "extrusion": "y", "symmetry": ["y"]})
+    assert setup["info"]["extrusion_trimmed"] < 0.05
+
+
+def test_precheck_refuses_before_the_job(ws):
+    """Two sink temperatures (thermal block) are refused at once with the translated reason, not as a failed job."""
+    cid = C.create_case("thermal-block", {}, "en")["case"]["case_id"]
+    with pytest.raises(StudioError) as e:
+        C.run_genesis(cid, {"cells": 4000}, wait_s=0, lang="en")
+    assert e.value.key == "err.genesis_temperatures"
+
+
 def test_trimming_never_drops_a_load(ws):
     """Engine: a load on a node no active cell holds is refused, not silently lost."""
     from novastudio import genesis as gx

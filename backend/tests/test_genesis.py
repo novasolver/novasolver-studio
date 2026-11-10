@@ -80,6 +80,26 @@ def test_two_load_cases_gradient():
     _fd_check(g, gx.Settings(), np.random.default_rng(5))
 
 
+@pytest.mark.parametrize("physics", ["elastic", "thermal"])
+def test_coarse_operators_are_galerkin(physics):
+    """Each coarse level equals P^T A P of the level above (element-wise Galerkin), also with void cells."""
+    dpn =3 if physics == "elastic" else 1
+    shape = (8, 8, 8)
+    Ku = gx.Genesis((4, 4, 4), 1e-3, physics=physics, active=np.ones((4, 4, 4), bool),
+                    fixed=np.r_[np.ones(25 * dpn, bool), np.zeros(100 * dpn, bool)],
+                    loads=np.r_[np.zeros(124 * dpn), np.ones(dpn)]).Ku
+    nn = 9 ** 3
+    mg = gx.Multigrid(shape, 1e-3, dpn, Ku, np.zeros(nn * dpn, bool), coarse_dofs=10)
+    assert len(mg.levels) >= 3
+    rng = np.random.default_rng(1)
+    E = rng.uniform(1e-3, 1, shape); E[rng.random(shape) < 0.3] = 0.0
+    mg.set_moduli(E)
+    for l in range(1, len(mg.levels)):
+        Af, Ac, P = mg.levels[l - 1].assemble(), mg.levels[l].assemble(), mg.P[l - 1]
+        ref = (P.T @ Af @ P).toarray()
+        assert np.allclose(Ac.toarray(), ref, atol=1e-9 * np.abs(ref).max())
+
+
 def test_empty_surface_is_not_closed():
     chk = gx.surface_checks(np.zeros((0, 3)), np.zeros((0, 3), int))
     assert not chk["closed"] and not chk["oriented"] and not chk["manifold_edges"]

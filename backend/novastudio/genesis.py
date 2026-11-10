@@ -119,22 +119,50 @@ class Level:
         enodes = base.ravel()[:, None] + off[None, :]                                  # (E,8), all box cells
         self.enodes_all = enodes
         self.fixed_mask = fixed_dof_mask
+        self.Kel = None
+
+    def _finish(self, act, diag_e):
+        self.act = act
+        en = self.enodes_all[act]
+        self.edof = (self.dpn * en[:, :, None] + np.arange(self.dpn)).reshape(len(en), -1) if self.dpn > 1 else en
+        diag = np.bincount(self.edof.ravel(), weights=diag_e.ravel(), minlength=self.ndof)
+        self.dead = (diag <= 0) | self.fixed_mask
+        self.inv_diag = np.where(self.dead, 0.0, 1.0 / np.where(diag > 0, diag, 1))
+        self.lam = None
+
+    def lambda_max(self, iters=10):
+        """Largest eigenvalue of D^-1 A (power iteration, warm-started): damped Jacobi needs omega < 2 / lambda_max."""
+        v = getattr(self, "_pv", None)
+        if v is None or len(v) != self.ndof:
+            v = np.random.default_rng(0).standard_normal(self.ndof)
+        v = np.where(self.dead, 0.0, v)
+        lam = 0.0
+        for _ in range(iters):
+            n = np.linalg.norm(v)
+            if n == 0:
+                return 1.0
+            v /= n
+            w = self.inv_diag * self.matvec(v)
+            lam = float(np.linalg.norm(w))             # |D^-1 A v| for a unit v: tends to lambda_max
+            v = w
+        self._pv = v
+        return max(lam, 1e-12)
 
     def set_moduli(self, Ebox):
         """Ebox: element moduli on the full box (nx,ny,nz); zero = element not present."""
         Ef = Ebox.ravel()
-        self.act = np.nonzero(Ef > 0)[0]
-        self.Ee = Ef[self.act]
-        en = self.enodes_all[self.act]
-        self.edof = (self.dpn * en[:, :, None] + np.arange(self.dpn)).reshape(len(en), -1) if self.dpn > 1 else en
-        dg = np.diag(self.Ku)
-        diag = np.bincount(self.edof.ravel(), weights=(self.Ee[:, None] * dg[None, :]).ravel(), minlength=self.ndof)
-        self.dead = (diag <= 0) | self.fixed_mask
-        self.inv_diag = np.where(self.dead, 0.0, 1.0 / np.where(diag > 0, diag, 1))
+        act = np.nonzero(Ef > 0)[0]
+        self.Ee, self.Kel = Ef[act], None
+        self._finish(act, self.Ee[:, None] * np.diag(self.Ku)[None, :])
+
+    def set_elements(self, act, Kel):
+        """Coarse level: one element matrix per present cell (Galerkin products of the finer level)."""
+        self.Ee, self.Kel = None, Kel
+        self._finish(act, np.einsum("nii->ni", Kel))
 
     def matvec(self, u):
         ue = u[self.edof]
-        ye = (ue @ self.Ku) * self.Ee[:, None]
+        ye = np.einsum("nij,nj->ni", self.Kel, ue) if self.Kel is not None else (ue @ self.Ku) * self.Ee[:, None]
         y = np.bincount(self.edof.ravel(), weights=ye.ravel(), minlength=self.ndof)
         y[self.dead] = 0.0
         return y
@@ -143,7 +171,7 @@ class Level:
         m = self.edof.shape[1]
         rows = np.repeat(self.edof, m, axis=1).ravel()
         cols = np.tile(self.edof, (1, m)).ravel()
-        data = (self.Ee[:, None, None] * self.Ku[None]).ravel()
+        data = (self.Kel if self.Kel is not None else self.Ee[:, None, None] * self.Ku[None]).ravel()
         return sp.csr_matrix((data, (rows, cols)), shape=(self.ndof, self.ndof))
 
 
@@ -159,9 +187,25 @@ def _p1d(nc):
     return sp.csr_matrix((vals, (rows, cols)), shape=(nf + 1, nc + 1))
 
 
+def _child_maps(dpn):
+    """P_c (8 children): fine-element dofs of child c from the dofs of its coarse element (trilinear), node-major."""
+    out = []
+    for c in _CORNER:
+        Pn = np.empty((8, 8))
+        for a, ca in enumerate(_CORNER):
+            x = (c + ca) / 2.0                                     # fine corner in coarse local coordinates
+            for b, cb in enumerate(_CORNER):
+                Pn[a, b] = np.prod(np.where(cb == 1, x, 1 - x))
+        out.append(np.kron(Pn, np.eye(dpn)))
+    return np.array(out)                                           # (8, m, m)
+
+
 class Multigrid:
-    """CG preconditioned by a geometric V-cycle. Coarse grids halve every direction while all dimensions stay even;
-    coarse moduli are the mean of the 8 children (rediscretisation), coarse element matrices scale with h."""
+    """CG preconditioned by a geometric V-cycle. Coarse grids halve every direction while all dimensions stay even.
+    Coarse operators are Galerkin products P^T A P, formed element by element (a coarse element matrix is the sum of
+    P_c^T K_child P_c over its 8 children), so they stay exact for thin walls and 0/1 designs. The earlier
+    rediscretisation with the mean modulus of the children needed ~100 CG iterations a solve on a thin-walled pipe
+    elbow (12k cells) and the solve time grew tenfold as the design sharpened."""
 
     def __init__(self, shape, h, dpn, Kunit, fixed_mask, coarse_dofs=COARSE_DOFS, smooth=3, omega=0.6):
         self.levels, self.P = [], []
@@ -184,12 +228,36 @@ class Multigrid:
         self.factor = None
 
     def set_moduli(self, Ebox):
-        E = Ebox
-        for i, lv in enumerate(self.levels):
-            if i:
-                nx, ny, nz = lv.shape
-                E = E.reshape(nx, 2, ny, 2, nz, 2).mean(axis=(1, 3, 5))
-            lv.set_moduli(E)
+        self.levels[0].set_moduli(Ebox)
+        if len(self.levels) > 1:
+            Pc = _child_maps(self.levels[0].dpn)
+            Mc = np.einsum("cab,ad,cde->cbe", Pc, self.levels[0].Ku, Pc)   # P_c^T K_unit P_c
+        for l in range(1, len(self.levels)):
+            fine, lv = self.levels[l - 1], self.levels[l]
+            nx, ny, nz = lv.shape
+            fx, fy, fz = fine.shape
+            I, J, K = (a.ravel() for a in np.meshgrid(np.arange(nx), np.arange(ny), np.arange(nz), indexing="ij"))
+            child = np.stack([((2 * I + cx) * fy + 2 * J + cy) * fz + 2 * K + cz for cx, cy, cz in _CORNER], axis=1)
+            pos = np.full(fx * fy * fz, -1)
+            pos[fine.act] = np.arange(len(fine.act))
+            cp = pos[child]                                           # (coarse cells, 8): index in fine.act or -1
+            act = np.nonzero((cp >= 0).any(axis=1))[0]
+            cp = cp[act]
+            if fine.Kel is None:                                      # from scalar moduli: sum_c E_c M_c
+                Ec = np.where(cp >= 0, fine.Ee[np.maximum(cp, 0)], 0.0)
+                Kel = np.einsum("nc,cij->nij", Ec, Mc)
+            else:
+                m = fine.Kel.shape[1]
+                Kel = np.zeros((len(act), m, m))
+                for c in range(8):
+                    has = cp[:, c] >= 0
+                    if has.any():
+                        Kel[has] += Pc[c].T @ fine.Kel[cp[has, c]] @ Pc[c]
+            lv.set_elements(act, Kel)
+        # damped Jacobi weight per level from its spectrum: a fixed 0.6 diverged on some modes (more sweeps took more
+        # CG iterations: 180 -> 259 on the pipe elbow); 4 / (3 lambda_max) damps the upper half of the spectrum
+        for lv in self.levels[:-1]:
+            lv.omega = 4.0 / (3.0 * 1.05 * lv.lambda_max())
         last = self.levels[-1]
         A = last.assemble()
         free = np.nonzero(~last.dead)[0]
@@ -203,15 +271,16 @@ class Multigrid:
             if self.factor is not None:
                 x[self.cfree] = self.factor.solve(r[self.cfree])
             return x
-        x = self.omega * lv.inv_diag * r
+        w = getattr(lv, "omega", self.omega)
+        x = w * lv.inv_diag * r
         for _ in range(self.smooth - 1):
-            x += self.omega * lv.inv_diag * (r - lv.matvec(x))
+            x += w * lv.inv_diag * (r - lv.matvec(x))
         rc = self.P[l].T @ (r - lv.matvec(x))
         rc[self.levels[l + 1].dead] = 0.0
         x += self.P[l] @ self.vcycle(rc, l + 1)
         x[lv.dead] = 0.0
         for _ in range(self.smooth):
-            x += self.omega * lv.inv_diag * (r - lv.matvec(x))
+            x += w * lv.inv_diag * (r - lv.matvec(x))
         return x
 
     def solve(self, b, x0=None, tol=1e-6, maxiter=200):
@@ -356,8 +425,12 @@ class Genesis:
     loads: (ncase, ndof) nodal force [N] or heat [W]; weights: (ncase,)."""
 
     def __init__(self, shape, h, *, physics="elastic", E=1.0, nu=0.3, active=None, solid=None, void=None,
-                 fixed=None, loads=None, weights=None, origin=(0, 0, 0), e_min_ratio=None):
+                 fixed=None, loads=None, weights=None, origin=(0, 0, 0), e_min_ratio=None, plate_from=None):
         self.shape = tuple(int(s) for s in shape)
+        # cells that place the AM build plate (default: the design envelope). A case passes its body cells: cells
+        # added for faces with conditions can reach one layer below the body, and a plate there left the whole
+        # body unsupported (cantilever +z at 12k cells: design wiped out from the first step)
+        self.plate_from = None if plate_from is None else np.asarray(plate_from, bool)
         if np.prod(self.shape) > MAX_ELEMENTS:
             raise ValueError(f"design grid too large ({np.prod(self.shape)} cells > {MAX_ELEMENTS})")
         self.h, self.origin, self.physics = float(h), np.asarray(origin, float), physics
@@ -411,7 +484,8 @@ class Genesis:
         self.wsum[~self.active] = 1.0
         self.am = AMFilter(*s.overhang) if s.overhang else None
         if self.am:
-            self.am.set_envelope(self.active)
+            pf = self.active if self.plate_from is None else (self.plate_from & self.active)
+            self.am.set_envelope(pf if pf.any() else self.active)
         for a in s.symmetry:
             if not np.array_equal(self.active, np.flip(self.active, a)):
                 raise ValueError(f"symmetry about axis {a}: the design envelope is not symmetric")
@@ -690,8 +764,7 @@ class Genesis:
         if self.s.overhang:
             ax, d = self.s.overhang
             s = np.moveaxis(solid, ax, 0)[::-1 if d < 0 else 1]
-            occ = np.moveaxis(self.active, ax, 0)[::-1 if d < 0 else 1].reshape(s.shape[0], -1).any(axis=1)
-            s0 = int(np.argmax(occ))
+            s0 = self.am.start                             # the same plate the filter used
             p = np.pad(s, ((0, 0), (1, 1), (1, 1)))
             below = (p[:-1, 1:-1, 1:-1] | p[:-1, :-2, 1:-1] | p[:-1, 2:, 1:-1] | p[:-1, 1:-1, :-2] | p[:-1, 1:-1, 2:])
             uns = s[s0 + 1:] & ~below[s0:]

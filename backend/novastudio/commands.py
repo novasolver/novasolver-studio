@@ -671,7 +671,9 @@ def job_status(job_id: str, lang: str = "ja") -> dict:
     if j["state"] == "failed":
         from .jobs import _job_dir
         err = _job_dir(job_id) / "error.txt"
-        if err.is_file():
+        # a StudioError already gave the job its translated message; the traceback line would only show the raw key
+        known = str(j.get("message_key", "")).startswith("err.") and j.get("message_key") != "err.solver"
+        if err.is_file() and not known:
             v["first_error"] = err.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-1]
     return v
 
@@ -691,6 +693,7 @@ def run_genesis(case_id: str, settings: dict | None = None, wait_s: float = 20.0
     if any(i["level"] == "error" for i in items):
         raise StudioError("err.blocked", 400, items=[i["message"] for i in items if i["level"] == "error"])
     spec = genesis_case.validate(settings, set(face_keys(case)))
+    genesis_case.precheck(case)                  # conditions Genesis cannot handle: refused now, with the reason
     j = jobs.start(case, "preview", "genesis", study="genesis", extra={"genesis": spec})
     j = jobs.wait(j["job_id"], wait_s)
     view = job_view(j, lang)

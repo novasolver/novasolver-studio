@@ -166,11 +166,14 @@ def trilinear(grid, P):
 
 
 # ------------------------------------------------------------------ setup
-def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Genesis, dict]:
-    from .templates import element_prop, element_k, get as template
-    physics = "thermal" if template(case["template"])["physics"] == "thermal" else "elastic"
-    if template(case["template"])["physics"] not in ("structural", "thermal"):
-        raise StudioError("err.genesis_scope", 400, what=template(case["template"])["physics"])
+def precheck(case: dict) -> str:
+    """Case-level limits of Genesis, checked from the case alone (no mesh), so a request that cannot run is refused
+    at once with its reason instead of failing inside the job. Returns the physics ('elastic' / 'thermal')."""
+    from .templates import get as template
+    kind = template(case["template"])["physics"]
+    if kind not in ("structural", "thermal"):
+        raise StudioError("err.genesis_scope", 400, what=kind)
+    physics = "thermal" if kind == "thermal" else "elastic"
     roles = {f: b["role"] for f, b in case["boundaries"].items()}
     allowed = STRUCTURAL_ROLES if physics == "elastic" else THERMAL_ROLES
     bad = sorted({r for r in roles.values() if r not in allowed})
@@ -178,6 +181,22 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
         raise StudioError("err.genesis_scope", 400, what=", ".join(bad))
     if case.get("contacts") and any(c.get("type", "bonded") != "bonded" for c in case["contacts"].values()):
         raise StudioError("err.genesis_scope", 400, what="contact")
+    if physics == "thermal":
+        temps = set()
+        for b in case["boundaries"].values():
+            if b["role"] == "temperature":
+                try:
+                    temps.add(round(float(units.to_si(b["temperature"])), 9))
+                except Exception:
+                    pass                                     # an unreadable value is reported by the case checks
+        if len(temps) > 1:
+            raise StudioError("err.genesis_temperatures", 400)
+    return physics
+
+
+def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Genesis, dict]:
+    from .templates import element_prop, element_k
+    physics = precheck(case)
     nodes = m["nodes"]
     tets = fe.canonical_tets(nodes, m["tets"])
     if physics == "elastic":
@@ -206,6 +225,7 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
     I = np.indices(shape).reshape(3, -1).T
     centres = origin + (I + 0.5) * h
     active = inside_mesh(centres, nodes, tets).reshape(shape)
+    body = active.copy()                     # cells whose centre is in the part (faces with conditions add a layer)
     if active.sum() < 500:
         raise StudioError("err.genesis_option", 400, option="cells (too few cells inside the part)")
 
@@ -324,11 +344,21 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
         keep &= active
     if spec["extrusion"] is not None:
         a = AXES[spec["extrusion"]]
-        # the grid pads the part: a prism is a full column over the part's extent along the axis, not the grid's
-        occ = active.any(axis=tuple(i for i in range(3) if i != a))
-        span = np.zeros(shape[a], bool)
-        span[np.argmax(occ):len(occ) - np.argmax(occ[::-1])] = True
-        full = np.compress(span, active, axis=a).all(axis=a, keepdims=True)       # columns filled over the span
+        # the grid pads the part: a prism is a full column over the part's extent along the axis, not the grid's.
+        # The extent is that of the part body: the cells added for faces with conditions can reach one layer beyond
+        # it (a face point in a cell whose centre is outside), which made every column look short (cantilever along
+        # y at 12k cells: body 10 cells wide, end faces 12). Columns full over the body's extent become the prism
+        # over the whole extent including that layer, so no support or load is cut off.
+        def extent(mask):
+            occ = mask.any(axis=tuple(i for i in range(3) if i != a))
+            s = np.zeros(shape[a], bool)
+            if occ.any():
+                s[np.argmax(occ):len(occ) - np.argmax(occ[::-1])] = True
+            return s
+        core, span = extent(body & active), extent(active)
+        if not core.any():
+            raise StudioError("err.genesis_extrusion", 400, axis=spec["extrusion"])
+        full = np.compress(core, active, axis=a).all(axis=a, keepdims=True)       # columns filled over the body
         prism = np.broadcast_to(full, shape) & span.reshape([-1 if i == a else 1 for i in range(3)])
         info["extrusion_trimmed"] = float((active & ~prism).sum() / active.sum())
         if prism.sum() < 0.5 * active.sum():
@@ -349,7 +379,7 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
         raise StudioError("err.genesis_supports", 400)
 
     g = gx.Genesis(grid["shape"], h, physics=physics, E=E, nu=nu, active=active, solid=keep,
-                   fixed=fixed.ravel(), loads=load.ravel(), origin=origin)
+                   fixed=fixed.ravel(), loads=load.ravel(), origin=origin, plate_from=body)
     # a requested thinnest member m: filter radius m cells. Measured on a 48x16x24 cantilever at 30 %: radius 3
     # left 17 % of the volume thinner than 3 cells, radius 1.5 left 46 %. The filter does not guarantee the size;
     # the result is measured and the warning reports members below 70 % of m. The eroded (robust) design helped
