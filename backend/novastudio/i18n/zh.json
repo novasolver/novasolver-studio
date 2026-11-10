@@ -693,6 +693,7 @@
   "genesis.warn.non_design_region_detached": "部分保留区域未与优化后的结构相连。",
   "genesis.warn.intermediate_densities": "残留较多中间密度。请增加迭代次数或加密网格。",
   "genesis.warn.threshold_lowered": "为保持体积和载荷传递路径，按低于 0.5 的密度阈值生成了形状。加密网格可减小阈值的影响。",
+  "genesis.warn.projection_limited": "进一步锐化材料边界会使细小构件消失、刚度大幅下降，因此按前一阶段的形状完成。请加密网格或增大最小构件尺寸。",
   "genesis.warn.thin_members_below_target": "部分构件比指定的最小尺寸更细（注意网格分辨率）。",
   "genesis.warn.not_converged": "达到迭代上限而停止，形状可能仍在变化。",
   "err.genesis_option": "Genesis 设置无效：{option}",

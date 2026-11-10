@@ -620,6 +620,12 @@ class Genesis:
         z = np.clip(z, 0, 1)
         history, t0, reason = [], time.monotonic(), "iteration_budget"
         self.beta, since = 1.0, 0
+        # a sharper projection can wipe out members thinner than the filter: the objective jumps and does not come
+        # back (cantilever extruded along y, 12k cells: 4.0 at beta 8, 26 then 19 at beta 16, load lost). After each
+        # beta step, when the best objective of the new step stays above 1.5x the one before, the design of the
+        # previous step is restored and beta stays there
+        snap, stage_best, beta_cap = None, math.inf, s.beta_max
+        self.beta_capped = False
         for it in range(s.iterations):
             if cancelled():
                 raise Cancelled()
@@ -627,6 +633,7 @@ class Genesis:
             history.append({"iteration": it, "objective": c, "volume_fraction": self.volume_fraction(rho),
                             "beta": self.beta, "elapsed_s": time.monotonic() - t0})
             progress("genesis.iterating", min(0.95, (it + 1) / s.iterations), {"iteration": it + 1, "objective": c})
+            stage_best = min(stage_best, c)
             znew = self._oc(z, dc, dv, s.volume_fraction, s.move if self.beta < 8 else s.move / 2)
             change = float(np.max(np.abs(znew - z)[self.design]))
             z, since = znew, since + 1
@@ -637,10 +644,16 @@ class Genesis:
             recent = [h["objective"] for h in history[-5:]]
             flat = since >= 5 and (max(recent) - min(recent)) <= 1e-3 * abs(recent[-1])
             settled = since >= 5 and (change < s.tol or flat)
-            if self.beta >= s.beta_max:
+            if snap is not None and (since >= 10 or settled):
+                if stage_best > 1.5 * snap[2]:
+                    z, self.beta, beta_cap = snap[0], snap[1], snap[1]
+                    self.beta_capped, since, settled = True, 0, False
+                snap = None
+            if self.beta >= beta_cap:
                 if settled:
                     reason = "converged"; break
             elif (settled or since >= s.beta_every) and it < s.iterations - 10:
+                snap, stage_best = (z.copy(), self.beta, c), math.inf
                 self.beta, since = min(s.beta_max, 2 * self.beta), 0
         c, _, _, rho, us = self.evaluate(z)
         self.z, self.rho = z, rho
@@ -757,6 +770,8 @@ class Genesis:
             warn.append("load_not_carried")
         if self.threshold < 0.5:
             warn.append("threshold_lowered")
+        if getattr(self, "beta_capped", False):
+            warn.append("projection_limited")
         if pieces.get("non_design_detached"):
             warn.append("non_design_region_detached")
         if pieces["removed_share"] > 0.02:
@@ -777,7 +792,7 @@ class Genesis:
             "objective": c, "objective_binary": c_bin, "objective_full": c_full,
             "stiffness_kept": c_full / c_bin if c_bin > 0 else None, "volume_fraction": self.volume_fraction(rho),
             "volume_fraction_binary": float(solid[self.active & ~self.void].mean()), "threshold": self.threshold,
-            "cells_bridged": int(self.bridged),
+            "cells_bridged": int(self.bridged), "beta_final": self.beta,
             "grey_share": grey, "min_member_m": thin * self.h, "min_member_cells": thin,
             "pieces": pieces, "termination": reason, "iterations": len(history), "elapsed_s": elapsed,
             "solver": dict(self.stats), "history": history, "warnings": warn,

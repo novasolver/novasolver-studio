@@ -693,6 +693,7 @@
   "genesis.warn.non_design_region_detached": "A kept region is not connected to the optimised structure.",
   "genesis.warn.intermediate_densities": "Many intermediate densities remain. Use more iterations or a finer grid.",
   "genesis.warn.threshold_lowered": "To keep the volume and the load path, the shape was cut at a density below 0.5. A finer grid makes the cut matter less.",
+  "genesis.warn.projection_limited": "Sharpening the material boundary further removed thin members and the stiffness dropped sharply, so the shape was finished one step earlier. Use a finer grid or a larger minimum member size.",
   "genesis.warn.thin_members_below_target": "Some members are thinner than the minimum asked for (mind the grid resolution).",
   "genesis.warn.not_converged": "Stopped at the iteration limit; the shape may still be changing.",
   "err.genesis_option": "Invalid Genesis setting: {option}",

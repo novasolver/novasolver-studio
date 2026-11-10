@@ -154,6 +154,25 @@ def test_cantilever_optimisation():
     assert chk["volume_m3"] == pytest.approx(voxel_volume, rel=0.15)
 
 
+def test_beta_step_that_wrecks_the_design_is_undone():
+    # stand-in for thin members vanishing at a sharper projection: from beta 8 on the objective is 3x worse
+    g = gx.cantilever(nx=16, ny=4, nz=8)
+    real = g.evaluate
+
+    def worse(z, *a, **k):
+        c, dc, dv, rho, extra = real(z, *a, **k)
+        return (3 * c, 3 * dc, dv, rho, extra) if g.beta >= 8 else (c, dc, dv, rho, extra)
+
+    g.evaluate = worse
+    r = g.optimize(gx.Settings(volume_fraction=0.4, iterations=120))
+    assert r["beta_final"] == 4.0 and "projection_limited" in r["warnings"]
+    assert r["history"][-1]["beta"] == 4.0 and max(h["beta"] for h in r["history"]) == 8.0
+    # an ordinary run goes to full projection without the warning
+    g2 = gx.cantilever(nx=16, ny=4, nz=8)
+    r2 = g2.optimize(gx.Settings(volume_fraction=0.4, iterations=120))
+    assert r2["beta_final"] == 16.0 and "projection_limited" not in r2["warnings"]
+
+
 def test_symmetry_is_exact():
     g = gx.cantilever(nx=16, ny=6, nz=8)
     g.optimize(gx.Settings(volume_fraction=0.35, iterations=40, symmetry=(1,)))

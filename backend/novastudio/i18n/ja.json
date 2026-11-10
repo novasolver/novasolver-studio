@@ -693,6 +693,7 @@
   "genesis.warn.non_design_region_detached": "固定領域の一部が、最適化した構造とつながっていません。",
   "genesis.warn.intermediate_densities": "中間的な密度が多く残っています。反復回数を増やすか、格子を細かくしてください。",
   "genesis.warn.threshold_lowered": "形の体積や荷重のつながりを保つため、材料とみなす密度の境目を 0.5 より下げて形を作りました。格子を細かくすると境目の影響が小さくなります。",
+  "genesis.warn.projection_limited": "密度の境目をこれ以上はっきりさせると細い部材が消えて剛性が大きく落ちたため、一段手前の形で仕上げました。格子を細かくするか、最小部材寸法を大きくしてください。",
   "genesis.warn.thin_members_below_target": "指定した最小部材より細い部分があります（格子の分解能に注意）。",
   "genesis.warn.not_converged": "反復の上限で止まりました。形はまだ変わる途中かもしれません。",
   "err.genesis_option": "Genesis の設定が正しくありません: {option}",
