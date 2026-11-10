@@ -107,6 +107,10 @@ class Problem:
     fixed_dofs: constrained dof indices (3*node + component), u = 0.
     force: global load vector (3N,).
     solid / void: boolean element masks of the non-design regions."""
+    DPN, MIN_FIXED = 3, 6
+
+    def unit_matrices(self):
+        return unit_stiffness(self.nodes, self.tets, self.nu)
 
     def __init__(self, nodes, tets, E, nu, fixed_dofs, force, *, solid=None, void=None, penal=3.0,
                  filter_radius=None, e_min_ratio=1e-9):
@@ -115,13 +119,14 @@ class Problem:
         self.nodes, self.tets = np.asarray(nodes, float), fe.canonical_tets(np.asarray(nodes, float), np.asarray(tets))
         self.E, self.nu, self.penal, self.e_min = float(E), float(nu), float(penal), float(E) * e_min_ratio
         n = len(self.nodes)
-        self.ndof = 3 * n
+        d = self.dpn = self.DPN
+        self.ndof = d * n
         self.force = np.asarray(force, float).ravel()
         if self.force.shape != (self.ndof,) or not np.isfinite(self.force).all() or not self.force.any():
-            raise ValueError("force: finite nonzero vector of length 3N required")
+            raise ValueError(f"load: finite nonzero vector of length {d}N required")
         fixed = np.unique(np.asarray(fixed_dofs, int))
-        if len(fixed) < 6:
-            raise ValueError("supports do not prevent rigid-body motion")
+        if len(fixed) < self.MIN_FIXED:
+            raise ValueError("supports do not prevent rigid-body motion" if d == 3 else "no fixed-temperature nodes")
         self.fixed = fixed
         self.free = np.setdiff1d(np.arange(self.ndof), fixed)
         if len(self.free) > MAX_FREE_DOFS:
@@ -134,10 +139,11 @@ class Problem:
         self.design = ~(self.solid | self.void)
         if not self.design.any():
             raise ValueError("no design elements")
-        self.Ke0, self.vol = unit_stiffness(self.nodes, self.tets, self.nu)
-        self.dofs = (3 * self.tets[:, :, None] + np.arange(3)).reshape(ne, 30)
-        self.rows = np.repeat(self.dofs, 30, axis=1).ravel()
-        self.cols = np.tile(self.dofs, (1, 30)).ravel()
+        self.Ke0, self.vol = self.unit_matrices()
+        m = 10 * d
+        self.dofs = (d * self.tets[:, :, None] + np.arange(d)).reshape(ne, m)
+        self.rows = np.repeat(self.dofs, m, axis=1).ravel()
+        self.cols = np.tile(self.dofs, (1, m)).ravel()
         self.centroids = self.nodes[self.tets[:, :4]].mean(axis=1)
         h = float(np.cbrt(self.vol.mean() * 6))           # about one hexahedral cell edge
         self.filter_radius = float(filter_radius) if filter_radius else 1.5 * h
@@ -216,6 +222,47 @@ class Problem:
         return float(self.vol @ rho) / self.v_total
 
 
+def unit_conduction(nodes, tets):
+    """Element conduction matrix with k = 1, shape (E,10,10), and element volumes."""
+    X = nodes[tets]
+    Ke = np.zeros((len(tets), 10, 10))
+    vol = np.zeros(len(tets))
+    for g in range(4):
+        J = np.einsum("ik,ekj->eij", fe.DSHAPE[g], X)
+        detJ = np.linalg.det(J)
+        if np.any(detJ <= 0):
+            raise ValueError("inverted element (negative Jacobian)")
+        dNdx = np.linalg.solve(J, np.broadcast_to(fe.DSHAPE[g], (len(detJ), 3, 10)))
+        Ke += fe.GW[g] * detJ[:, None, None] * np.einsum("eki,ekj->eij", dNdx, dNdx)
+        vol += fe.GW[g] * detJ
+    return Ke, vol
+
+
+def consistent_heat(nodes, tets, q):
+    """Nodal loads of a uniform volumetric heat source q [W/m3] (tet10 shape functions at the 4-point rule; the
+    corner loads of a quadratic tet are negative, so the total is exact while single nodes are not)."""
+    X = nodes[tets]
+    f = np.zeros(len(nodes))
+    for g in range(4):
+        detJ = np.linalg.det(np.einsum("ik,ekj->eij", fe.DSHAPE[g], X))
+        np.add.at(f, tets.ravel(), (fe.GW[g] * detJ * q)[:, None].repeat(10, 1).ravel() * np.tile(fe.SHAPE[g], len(tets)))
+    return f
+
+
+class ThermalProblem(Problem):
+    """Minimum thermal compliance (f^T T, i.e. the heat-weighted mean temperature) for steady conduction:
+    k_e = k_min + rho^p (k - k_min). fixed_dofs: nodes held at the sink temperature (T = 0 relative);
+    force: nodal heat input [W]. Same filter, projection and update as the elastic problem."""
+    DPN, MIN_FIXED = 1, 1
+
+    def __init__(self, nodes, tets, k, fixed_nodes, heat, **kw):
+        kw.setdefault("e_min_ratio", 1e-3)    # the conductive "void" of the classical volume-to-point problem
+        super().__init__(nodes, tets, k, 0.0, fixed_nodes, heat, **kw)
+
+    def unit_matrices(self):
+        return unit_conduction(self.nodes, self.tets)
+
+
 def _oc_update(p, x, dc, dv, target, move):
     """Optimality criteria with bisection on the Lagrange multiplier; only design elements change."""
     d = p.design
@@ -247,8 +294,8 @@ def connected(p, solid_mask):
                             shape=(ne, len(p.nodes)))
     adj = nodes_e @ nodes_e.T
     ncomp, label = connected_components(adj, directed=False)
-    loaded_nodes = np.unique(np.nonzero(p.force.reshape(-1, 3).any(axis=1))[0])
-    fixed_nodes = np.unique(p.fixed // 3)
+    loaded_nodes = np.unique(np.nonzero(p.force.reshape(-1, p.dpn).any(axis=1))[0])
+    fixed_nodes = np.unique(p.fixed // p.dpn)
     all_solid = p.tets[solid_mask]
     def comps_touching(nodeset):
         hit = np.isin(all_solid, nodeset).any(axis=1)
@@ -306,7 +353,7 @@ def optimize(p: Problem, volume_fraction=0.3, iterations=120, move=0.2, tol=0.01
         "penal": p.penal, "filter_radius": p.filter_radius,
         "compliance": c, "volume_fraction": p.volume_fraction(rho),
         "threshold": {"level": 0.5, "compliance": c_bin, "volume_fraction": float(p.vol[solid].sum()) / p.v_total,
-                      "connected": conn, "max_displacement": float(np.linalg.norm(u_bin.reshape(-1, 3), axis=1).max())},
+                      "connected": conn, "max_field": float(np.linalg.norm(u_bin.reshape(-1, p.dpn), axis=1).max())},
         "grey_share": grey, "history": history, "termination": reason,
         "elapsed_s": time.monotonic() - started, "warnings": warnings,
         "density": rho,
@@ -375,3 +422,12 @@ def cantilever_box(length=2.0, width=0.5, height=1.0, nx=24, ny=4, nz=12, E=1.0,
     force = np.zeros(3 * len(nodes))
     force[3 * edge + 2] = -load / len(edge)
     return Problem(nodes, tets, E, nu, fixed, force, **kw)
+
+
+def heat_plate(size=1.0, thickness=0.05, n=24, nz=1, k=1.0, q=1.0, sink=0.1, **kw):
+    """Classical volume-to-point problem: a square plate with uniform heat generation q, insulated except a sink of
+    width sink*size at the middle of the x = 0 edge held at T = 0. The known answer is a branching conductor tree."""
+    nodes, tets, _ = box_mesh(size, size, thickness, n, n, nz)
+    tol = 1e-9 * size
+    s = np.nonzero((nodes[:, 0] < tol) & (np.abs(nodes[:, 1] - size / 2) <= sink * size / 2 + tol))[0]
+    return ThermalProblem(nodes, tets, k, s, consistent_heat(nodes, fe.canonical_tets(nodes, tets), q), **kw)
