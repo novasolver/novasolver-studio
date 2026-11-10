@@ -611,7 +611,7 @@
   "genesis.stale": "此结果之后条件已更改，请重新运行。",
   "genesis.show": "显示优化后的形状",
   "genesis.download": "保存 STL",
-  "genesis.kept": "以 {vol} % 的体积，保留原零件（全部为材料）刚度的 {pct} %。",
-  "genesis.keptHeat": "以 {vol} % 的体积，保留原零件（全部为材料）导热能力的 {pct} %。",
+  "genesis.kept": "以 {vol} % 的体积，保留原零件（全部为材料）刚度的 {pct} %。",
+  "genesis.keptHeat": "以 {vol} % 的体积，保留原零件（全部为材料）导热能力的 {pct} %。",
   "genesis.running": "Genesis 正在生成形状"
 }

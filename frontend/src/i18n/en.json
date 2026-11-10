@@ -611,7 +611,7 @@
   "genesis.stale": "The case changed after this result. Run Genesis again.",
   "genesis.show": "Show the optimised shape",
   "genesis.download": "Save STL",
-  "genesis.kept": "At {vol} % of the volume, it keeps {pct} % of the stiffness of the full part.",
-  "genesis.keptHeat": "At {vol} % of the volume, it keeps {pct} % of the heat conductance of the full part.",
+  "genesis.kept": "At {vol} % of the volume, it keeps {pct} % of the stiffness of the full part.",
+  "genesis.keptHeat": "At {vol} % of the volume, it keeps {pct} % of the heat conductance of the full part.",
   "genesis.running": "Genesis is generating the shape"
 }
