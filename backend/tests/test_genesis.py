@@ -100,6 +100,19 @@ def test_coarse_operators_are_galerkin(physics):
         assert np.allclose(Ac.toarray(), ref, atol=1e-9 * np.abs(ref).max())
 
 
+def test_binary_threshold_keeps_the_volume_of_a_grey_design():
+    g = gx.cantilever(nx=16, ny=2, nz=8)
+    g.configure(gx.Settings(volume_fraction=0.4))
+    rng = np.random.default_rng(0)
+    crisp = np.where(rng.random(g.shape) < 0.4, 1.0, 0.0)
+    assert g.binary_threshold(crisp) == 0.5                         # a 0/1 design: the usual 0.5
+    grey = np.clip(rng.normal(0.4, 0.05, g.shape), 0, 1)            # all below 0.5: 0.5 would keep nothing
+    t = g.binary_threshold(grey)
+    assert 0.2 <= t < 0.5
+    kept = float((grey[g.active] >= t).mean())
+    assert kept >= g.volume_fraction(grey) - 0.02
+
+
 def test_empty_surface_is_not_closed():
     chk = gx.surface_checks(np.zeros((0, 3)), np.zeros((0, 3), int))
     assert not chk["closed"] and not chk["oriented"] and not chk["manifold_edges"]

@@ -698,9 +698,39 @@ class Genesis:
         Single voxels at stair steps are not members, a thin plate over a large area is. Resolution half a cell."""
         return min_member_cells(solid, cover)
 
+    def binary_threshold(self, rho):
+        """0.5, or lower when a still grey design would lose volume at 0.5: then the density whose threshold keeps
+        the volume of the design (not below 0.2). A grey cantilever extruded along its width kept 20 % of 30 % at 0.5
+        and its tip came apart (load not carried); a converged design is the same either way."""
+        d = self.design & ~self.void
+        if not d.any():
+            return 0.5
+        target = self.volume_fraction(rho)
+        if self.volume_fraction(np.where(d, (rho >= 0.5).astype(float), rho)) >= 0.97 * target:
+            return 0.5
+        lo, hi = 0.2, 0.5
+        for _ in range(30):
+            mid = 0.5 * (lo + hi)
+            if self.volume_fraction(np.where(d, (rho >= mid).astype(float), rho)) >= target:
+                lo = mid
+            else:
+                hi = mid
+        return lo
+
     def _finish(self, rho, c, history, reason, elapsed):
-        solid = (rho >= 0.5) & self.active & ~self.void
-        solid, pieces = self.clean(solid | self.solid)
+        self.threshold = self.binary_threshold(rho)
+        base = self.active & ~self.void
+        solid, pieces = self.clean(((rho >= self.threshold) & base) | self.solid)
+        # the joint of a member to a kept face can sit just under the threshold while the design carries the load
+        # through it (cantilever extruded along z, 12k cells, 150 steps: 4 pieces, tip detached at 0.5). Then take
+        # the highest lower threshold that connects every load and kept region, and report it
+        t = self.threshold
+        while (not pieces["loads_carried"] or pieces.get("non_design_detached")) and t > 0.2 + 1e-9:
+            t = round(t - 0.05, 2)
+            s2, p2 = self.clean(((rho >= t) & base) | self.solid)
+            if p2["loads_carried"] and not p2.get("non_design_detached"):
+                solid, pieces, self.threshold = s2, p2, t
+                break
         Eb = np.where(self.active & ~self.void, np.where(solid, self.E, self.e_min), 0.0)
         loop_tol, self.s.solver_tol = self.s.solver_tol, min(self.s.solver_tol, 1e-8)
         us = self.analyse(Eb, warm=False)
@@ -733,7 +763,7 @@ class Genesis:
             "settings": {**{k: (list(v) if isinstance(v, tuple) else v) for k, v in self.s.__dict__.items()}, "solver_tol": loop_tol},
             "objective": c, "objective_binary": c_bin, "objective_full": c_full,
             "stiffness_kept": c_full / c_bin if c_bin > 0 else None, "volume_fraction": self.volume_fraction(rho),
-            "volume_fraction_binary": float(solid[self.active & ~self.void].mean()),
+            "volume_fraction_binary": float(solid[self.active & ~self.void].mean()), "threshold": self.threshold,
             "grey_share": grey, "min_member_m": thin * self.h, "min_member_cells": thin,
             "pieces": pieces, "termination": reason, "iterations": len(history), "elapsed_s": elapsed,
             "solver": dict(self.stats), "history": history, "warnings": warn,

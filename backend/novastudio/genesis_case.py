@@ -166,7 +166,7 @@ def trilinear(grid, P):
 
 
 # ------------------------------------------------------------------ setup
-def precheck(case: dict) -> str:
+def precheck(case: dict, lang: str | None = None) -> str:
     """Case-level limits of Genesis, checked from the case alone (no mesh), so a request that cannot run is refused
     at once with its reason instead of failing inside the job. Returns the physics ('elastic' / 'thermal')."""
     from .templates import get as template
@@ -178,6 +178,9 @@ def precheck(case: dict) -> str:
     allowed = STRUCTURAL_ROLES if physics == "elastic" else THERMAL_ROLES
     bad = sorted({r for r in roles.values() if r not in allowed})
     if bad:
+        if lang:                                         # role names as the user sees them in the boundary list
+            from .i18n import t
+            bad = [t(f"role.{r}", lang) for r in bad]
         raise StudioError("err.genesis_scope", 400, what=", ".join(bad))
     if case.get("contacts") and any(c.get("type", "bonded") != "bonded" for c in case["contacts"].values()):
         raise StudioError("err.genesis_scope", 400, what="contact")
