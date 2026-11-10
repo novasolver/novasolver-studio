@@ -16,6 +16,7 @@ UNITS: dict[str, tuple[float, str]] = {
     "K": (1.0, "temperature"), "degC": (1.0, "temperature"),
     "W/m2": (1.0, "heat_flux"), "kW/m2": (1e3, "heat_flux"),
     "W/m2K": (1.0, "heat_transfer_coeff"),
+    "W/m3": (1.0, "heat_source"), "kW/m3": (1e3, "heat_source"), "W/cm3": (1e6, "heat_source"),
     "W/mK": (1.0, "conductivity"),
     "W": (1.0, "power"), "kW": (1e3, "power"),
     "V": (1.0, "voltage"), "kV": (1e3, "voltage"), "mV": (1e-3, "voltage"),

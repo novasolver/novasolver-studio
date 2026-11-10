@@ -466,7 +466,63 @@ async def job_status(job_id: str, wait_s: float = JOB_WAIT_S, language: Lang = "
     s = f"{r['state']} {round(100 * r['progress'])}% - {r['message']}"
     if r.get("gates"):
         s += f" | {_gates_line(r['gates'])}"
+    if r.get("genesis"):
+        s += "\n" + _genesis_text(r["genesis"])
     return _ok(s, r)
+
+
+def _genesis_text(g: dict) -> str:
+    s = ", ".join(f"{c['label']} {c['value']} {c['unit']}" for c in g["cards"])
+    if g.get("kept") is not None:
+        s += f"\nkeeps {100 * g['kept']:.3g} % of the stiffness (heat: conductance) of the full part"
+    s += f"\n{g['termination']} after {g['iterations']} iterations ({g['elapsed_s']} s); closed surface: {g['surface']['closed']}"
+    for w in g["warnings"]:
+        s += f"\nWARNING: {w['message']}"
+    s += f"\n{g['note']}\nSTL: {g['files']['stl']}"
+    return s
+
+
+@mcp.tool(annotations=WRITE)
+async def run_genesis(case_id: str, volume_fraction: float = 0.3, cells: int = 120000,
+                      min_member_mm: float | None = None, symmetry: list[Literal["x", "y", "z"]] | None = None,
+                      extrusion: Literal["x", "y", "z"] | None = None,
+                      overhang: Literal["+x", "-x", "+y", "-y", "+z", "-z"] | None = None,
+                      keep_faces: list[str] | None = None, keep_bc_faces: bool = True, skin_cells: int = 0,
+                      iterations: int = 150, heat_source_w_m3: float | None = None,
+                      language: Lang = "ja") -> CallToolResult:
+    """Genesis topology optimisation of the case's part: the meshed part is the design space, its face conditions
+    (fixed / symmetry / constraint / load / pressure / moment / bearing / remote-force, or temperature / heat-flux for
+    heat cases) are the supports and loads. Minimises compliance (stiffest part, or lowest heat-weighted temperature)
+    for the volume_fraction of material kept. Manufacturing options: symmetry planes (through the part's centre),
+    extrusion direction (milling/casting: the shape is constant along that axis), overhang = build direction for 3D
+    printing (no overhang beyond 45 degrees). min_member_mm sets the filter and the thinnest member aimed for; the
+    result reports the measured one. Faces with conditions stay solid (keep_bc_faces) and keep_faces adds more.
+    Returns a job_id when it does not finish in ~20 s: call job_status. The result is a closed STL; analyse it again
+    (stress, CalculiX) before use."""
+    spec = {"volume_fraction": volume_fraction, "cells": cells, "symmetry": list(symmetry or []), "extrusion": extrusion,
+            "overhang": overhang, "keep_faces": list(keep_faces or []), "keep_bc_faces": keep_bc_faces,
+            "skin_cells": skin_cells, "iterations": iterations}
+    if min_member_mm is not None:
+        spec["min_member"] = {"value": min_member_mm, "unit": "mm"}
+    if heat_source_w_m3 is not None:
+        spec["heat_source"] = {"value": heat_source_w_m3, "unit": "W/m3"}
+    r, e = await _call(C.run_genesis, language, case_id, spec, 20.0, language)
+    if e:
+        return e
+    if r["done"] and r.get("genesis"):
+        return _ok("Done. " + _genesis_text(r["genesis"]), r)
+    if r["done"]:
+        return CallToolResult(content=[TextContent(type="text", text=f"Failed: {r['job']['message']}")],
+                              structured_content=r, is_error=True)
+    return _ok(f"Running as {r['job_id']}. Call job_status (it waits up to {JOB_WAIT_S:.0f} s for the job).", r)
+
+
+@mcp.tool(annotations=RO)
+async def genesis_result(case_id: str, run_id: str | None = None, language: Lang = "ja") -> CallToolResult:
+    """Result of the latest (or given) Genesis run: kept volume, measured thinnest member, compliance or temperature
+    rise, convergence, warnings, the convergence history and the STL download path."""
+    r, e = await _call(C.genesis_result, language, case_id, run_id, language)
+    return e or _ok(_genesis_text(r), r)
 
 
 @mcp.tool(annotations=DESTRUCTIVE)

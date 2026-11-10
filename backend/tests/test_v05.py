@@ -214,7 +214,7 @@ def test_07_validation_and_i18n():
 def test_08_mcp_tool_count():
     from novastudio import mcp_server
     tools = asyncio.run(mcp_server.mcp.list_tools())
-    assert len(tools) == 35
+    assert len(tools) == 37
     assert 'export_results' in {t.name for t in tools}
 
 

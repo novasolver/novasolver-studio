@@ -35,6 +35,26 @@ from scipy import ndimage
 from . import fem_tet10 as fe
 
 MAX_ELEMENTS = 2_000_000
+# the coarsest multigrid grid is factorised directly at every design update. Smaller is cheaper to factorise but costs
+# CG iterations: on the 40k-cell cantilever case 5k dofs took 4.1 s per design step against 3.6 s with 40k
+COARSE_DOFS = 20000
+
+
+def grid_shape(cells, dpn, coarse_dofs=COARSE_DOFS, max_cells=MAX_ELEMENTS):
+    """Pad a box of `cells` (nx, ny, nz) so the multigrid can coarsen until the coarsest grid has at most
+    `coarse_dofs`: every dimension a multiple of 2^L and at least 2^(L+1). Padding cells are void and cost
+    nothing in the operator (only active cells are visited)."""
+    cells = np.maximum(4, np.asarray(cells, int))
+    best = None
+    for L in range(2, 8):
+        m = 2 ** L
+        shape = np.maximum(((cells + m - 1) // m) * m, 2 * m)
+        if np.prod(shape) > max_cells and best is not None:
+            break
+        best = shape
+        if np.prod(shape // m + 1) * dpn <= coarse_dofs:
+            break
+    return tuple(int(s) for s in best)
 
 
 class Cancelled(Exception):
@@ -139,7 +159,7 @@ class Multigrid:
     """CG preconditioned by a geometric V-cycle. Coarse grids halve every direction while all dimensions stay even;
     coarse moduli are the mean of the 8 children (rediscretisation), coarse element matrices scale with h."""
 
-    def __init__(self, shape, h, dpn, Kunit, fixed_mask, coarse_dofs=40000, smooth=3, omega=0.6):
+    def __init__(self, shape, h, dpn, Kunit, fixed_mask, coarse_dofs=COARSE_DOFS, smooth=3, omega=0.6):
         self.levels, self.P = [], []
         self.smooth, self.omega = smooth, omega
         lv = Level(shape, h, dpn, Kunit, fixed_mask)
@@ -150,10 +170,9 @@ class Multigrid:
             P = sp.kron(_p1d(sc[0]), sp.kron(_p1d(sc[1]), _p1d(sc[2]))).tocsr()
             if dpn > 1:
                 P = sp.kron(P, sp.identity(dpn)).tocsr()
-            # a coarse dof is constrained when the fine dof at the same place is
-            nf = np.array(s) + 1
-            idx = np.arange(np.prod(nf)).reshape(nf)[::2, ::2, ::2].ravel()
-            cfm = fm.reshape(-1, dpn)[idx].ravel() if dpn > 1 else fm[idx]
+            # a coarse dof is constrained when it interpolates to any constrained fine dof: supports on odd fine nodes
+            # (any real part) must not vanish on the coarse grid, or the coarse operator is singular
+            cfm = np.asarray(P.T @ fm.astype(float)).ravel() > 0
             hh = 2 * hh
             lv = Level(sc, hh, dpn, Kunit * (2 ** (len(self.levels))), cfm)
             self.levels.append(lv); self.P.append(P)
@@ -213,6 +232,12 @@ class Multigrid:
             z = self.vcycle(r)
             rz_new = r @ z
             p = z + (rz_new / rz) * p; rz = rz_new
+        # robustness: an exact solve when the preconditioned iteration stalls (memory permitting)
+        free = np.nonzero(~lv.dead)[0]
+        if len(free) <= 400000:
+            x = np.zeros_like(b)
+            x[free] = fe.spd_factor(lv.assemble()[free][:, free]).solve(b[free])
+            return x, maxiter
         raise RuntimeError(f"Genesis solver did not converge (relative residual {np.linalg.norm(r) / nb:.1e})")
 
 
@@ -233,6 +258,13 @@ class AMFilter:
     def __init__(self, axis=2, direction=1, P=40.0, eps=1e-4, xi0=0.5):
         self.axis, self.dir, self.P, self.eps, self.xi0 = axis, direction, P, eps, xi0
         self.Q = P + math.log(5) / math.log(xi0)
+        self.start = 0          # oriented layer index of the build plate: the lowest layer of the part
+
+    def set_envelope(self, active):
+        """The plate sits under the lowest layer that holds any part cell (padding below the part is not air
+        the part must bridge)."""
+        occ = self._orient(active).reshape(active.shape[self.axis], -1).any(axis=1)
+        self.start = int(np.argmax(occ)) if occ.any() else 0
 
     def _orient(self, a):
         a = np.moveaxis(a, self.axis, 0)
@@ -252,8 +284,9 @@ class AMFilter:
         n = X.shape[0]
         Y = np.empty_like(X)
         self.cache = []
-        Y[0] = X[0]                                     # base plate supports the first layer
-        for i in range(1, n):
+        s0 = self.start
+        Y[:s0 + 1] = X[:s0 + 1]                         # the plate supports the first layer of the part
+        for i in range(s0 + 1, n):
             S = self._supports(Y[i - 1])                 # (5,a,b)
             Ssum = np.sum((S + self.eps) ** self.P, axis=0)
             smax = Ssum ** (1 / self.Q) - self.eps ** (self.P / self.Q)                 # smooth max (Langelaar Eq. 5)
@@ -269,8 +302,9 @@ class AMFilter:
         G = self._orient(gy).copy()
         n = G.shape[0]
         gx = np.zeros_like(G)
-        for i in range(n - 1, 0, -1):
-            S, Ssum, smax, d, sq = self.cache[i - 1]
+        s0 = self.start
+        for i in range(n - 1, s0, -1):
+            S, Ssum, smax, d, sq = self.cache[i - s0 - 1]
             dy_dx = 0.5 * (1 - d / sq)
             dy_ds = 0.5 * (1 + d / sq)
             gx[i] += G[i] * dy_dx
@@ -281,7 +315,7 @@ class AMFilter:
             g[1:-1, 1:-1] += gS[0]; g[:-2, 1:-1] += gS[1]; g[2:, 1:-1] += gS[2]
             g[1:-1, :-2] += gS[3]; g[1:-1, 2:] += gS[4]
             G[i - 1] += g[1:-1, 1:-1]
-        gx[0] += G[0]
+        gx[:s0 + 1] += G[:s0 + 1]
         return self._back(gx)
 
 
@@ -299,7 +333,9 @@ class Settings:
     extrusion: int | None = None       # axis along which the part must be prismatic (milling / casting)
     overhang: tuple | None = None      # (axis, +1|-1) build direction for additive manufacturing
     timeout_s: float = 3600.0
-    solver_tol: float = 1e-6
+    # CG tolerance inside the loop: 1e-4 gave the same design and compliance as 1e-6 on the cantilever case at 2/3 of
+    # the time (OC needs the sign and size of the sensitivities, not 6 digits); the final 0/1 analysis uses 1e-8
+    solver_tol: float = 1e-4
 
 
 # ======================================================================== problem
@@ -359,6 +395,8 @@ class Genesis:
         self.wsum = ndimage.convolve(act, self.kernel, mode="constant")
         self.wsum[~self.active] = 1.0
         self.am = AMFilter(*s.overhang) if s.overhang else None
+        if self.am:
+            self.am.set_envelope(self.active)
         for a in s.symmetry:
             if not np.array_equal(self.active, np.flip(self.active, a)):
                 raise ValueError(f"symmetry about axis {a}: the design envelope is not symmetric")
@@ -538,21 +576,22 @@ class Genesis:
         return out, {"pieces": int(n), "kept": len(keep), "removed_share": max(0.0, removed),
                      "loads_carried": carried, "non_design_detached": detached}
 
-    def min_member(self, solid):
-        """Thinnest member: twice the largest inscribed-ball radius along the medial axis, as the minimum over the
-        local maxima of the distance transform (cells; resolution about one cell)."""
-        if not solid.any():
-            return 0.0
-        dt = ndimage.distance_transform_edt(np.pad(solid, 1))[1:-1, 1:-1, 1:-1]
-        ridge = solid & (dt >= ndimage.maximum_filter(dt, size=3) - 1e-9)
-        return float(2 * dt[ridge].min() - 1) if ridge.any() else 1.0
+    def min_member(self, solid, cover=0.95):
+        """Thinnest member, in cells: `cover` of the volume lies in members at least this thick (local thickness).
+        Single voxels at stair steps are not members, a thin plate over a large area is. Resolution half a cell."""
+        return min_member_cells(solid, cover)
 
     def _finish(self, rho, c, history, reason, elapsed):
         solid = (rho >= 0.5) & self.active & ~self.void
         solid, pieces = self.clean(solid | self.solid)
         Eb = np.where(self.active & ~self.void, np.where(solid, self.E, self.e_min), 0.0)
+        loop_tol, self.s.solver_tol = self.s.solver_tol, min(self.s.solver_tol, 1e-8)
         us = self.analyse(Eb, warm=False)
         c_bin = float(sum(w * f @ u for w, f, u in zip(self.weights, self.loads, us)))
+        # reference: the whole design space filled with material (the part as it was). The share of its stiffness
+        # (or heat conductance) the optimised part keeps is the honest figure; the grey SIMP start is not a design
+        Efull = np.where(self.active & ~self.void, self.E, 0.0)
+        c_full = float(sum(w * f @ u for w, f, u in zip(self.weights, self.loads, self.analyse(Efull, warm=False))))
         grey = float(np.mean((rho[self.design] > 0.1) & (rho[self.design] < 0.9)))
         thin = self.min_member(solid)
         warn = []
@@ -571,8 +610,9 @@ class Genesis:
         res = {
             "method": "SIMP_voxel_H8_multigrid_OC", "physics": self.physics,
             "grid": list(self.shape), "cell_m": self.h, "cells_active": int((self.active & ~self.void).sum()),
-            "settings": {k: (list(v) if isinstance(v, tuple) else v) for k, v in self.s.__dict__.items()},
-            "objective": c, "objective_binary": c_bin, "volume_fraction": self.volume_fraction(rho),
+            "settings": {**{k: (list(v) if isinstance(v, tuple) else v) for k, v in self.s.__dict__.items()}, "solver_tol": loop_tol},
+            "objective": c, "objective_binary": c_bin, "objective_full": c_full,
+            "stiffness_kept": c_full / c_bin if c_bin > 0 else None, "volume_fraction": self.volume_fraction(rho),
             "volume_fraction_binary": float(solid[self.active & ~self.void].mean()),
             "grey_share": grey, "min_member_m": thin * self.h, "min_member_cells": thin,
             "pieces": pieces, "termination": reason, "iterations": len(history), "elapsed_s": elapsed,
@@ -584,6 +624,7 @@ class Genesis:
         else:
             res["max_temperature_rise_k"] = float(max(u.max() for u in us))
         self.solid_final, self.u_final = solid, us
+        self.s.solver_tol = loop_tol
         return res
 
     def von_mises(self, u, solid):
@@ -696,6 +737,39 @@ def surface_checks(P, F):
     vol = float(np.einsum("ij,ij->i", P[F[:, 0]], np.cross(P[F[:, 1]], P[F[:, 2]])).sum() / 6)
     return {"triangles": int(len(F)), "closed": bool(np.all(cnt % 2 == 0)), "manifold_edges": bool(np.all(cnt == 2)),
             "oriented": bool(np.all(dcnt == 1)), "volume_m3": vol}
+
+
+def min_member_cells(solid, cover=0.95):
+    """See Genesis.min_member. Local thickness (Hildebrand-Ruegsegger): a cell has thickness >= t when a ball
+    inside the part with a centre at distance >= t from the void reaches it. On the grid refined twice a member m
+    cells thick is 2m fine cells thick and its centre sits at distance m from the void, so the answer in cells is
+    the largest t whose balls still reach `cover` of the volume. The sharp edges of square bars are reached only
+    by smaller balls; `cover` leaves them out."""
+    if not solid.any():
+        return 0.0
+    idx = np.nonzero(solid)
+    box = tuple(slice(a.min(), a.max() + 1) for a in idx)
+    fine = np.pad(solid[box], 1).repeat(2, 0).repeat(2, 1).repeat(2, 2)
+    dt = ndimage.distance_transform_edt(fine)
+    total = int(fine.sum())
+    ts = np.unique(dt[fine])
+
+    def covered(t):
+        centres = dt >= t - 1e-9
+        reach = ndimage.distance_transform_edt(~centres)
+        # every cell closer to c than dt(c) is solid: the largest ball inside the part centred at c. One fine cell
+        # (half a cell) of slack absorbs the staircase of a voxel surface; without it a round rod 7 cells across
+        # measures 1 cell
+        return int(np.count_nonzero(fine & (reach < t + 1.0))) >= cover * total
+
+    lo, hi = 0, len(ts) - 1                     # ts[0] = 1 always covers everything
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if covered(ts[mid]):
+            lo = mid
+        else:
+            hi = mid - 1
+    return float(ts[lo])
 
 
 # ======================================================================== reference problems

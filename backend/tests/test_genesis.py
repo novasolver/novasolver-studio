@@ -117,6 +117,31 @@ def test_overhang_design_is_self_supporting():
     assert unsupported.sum() <= 0.01 * s.sum()
 
 
+def _lifted_cantilever(nx=12, ny=4, nz=8, gap=2):
+    """Cantilever whose part starts `gap` layers above the bottom of the grid (as in a padded case grid)."""
+    g0 = gx.cantilever(nx=nx, ny=ny, nz=nz)
+    active = np.ones(g0.shape, bool); active[:, :, :gap] = False
+    return gx.Genesis(g0.shape, g0.h, fixed=g0.fixed, loads=g0.loads, active=active)
+
+
+def test_overhang_plate_under_a_lifted_part():
+    """The build plate is the lowest layer of the part, not the bottom of the grid: a lifted part is still printable
+    and the gradient is exact."""
+    _fd_check(_lifted_cantilever(), gx.Settings(filter_radius=1.5, overhang=(2, 1)), np.random.default_rng(6))
+    g = _lifted_cantilever(nx=24, ny=4, nz=14)
+    r = g.optimize(gx.Settings(volume_fraction=0.4, iterations=80, overhang=(2, 1)))
+    assert r["volume_fraction"] == pytest.approx(0.4, abs=5e-3)
+    assert r["pieces"]["loads_carried"]
+
+
+def test_grid_shape_gives_a_small_coarse_grid():
+    for cells, dpn in (((92, 40, 30), 3), ((60, 60, 6), 1), ((7, 7, 7), 3), ((300, 20, 20), 3)):
+        shape = gx.grid_shape(cells, dpn)
+        assert all(s >= c for s, c in zip(shape, cells))
+        g = gx.Multigrid(shape, 1.0, dpn, np.eye(8 * dpn), np.zeros(dpn * int(np.prod(np.add(shape, 1))), bool))
+        assert g.levels[-1].ndof <= gx.COARSE_DOFS or np.prod(shape) > 0.5 * gx.MAX_ELEMENTS, (cells, shape)
+
+
 def test_non_design_solid_kept():
     g = gx.cantilever(nx=16, ny=4, nz=8)
     keep = np.zeros(g.shape, bool); keep[-2:, :, 3:5] = True
@@ -138,6 +163,19 @@ def test_stl_roundtrip(tmp_path):
     P, F = g.surface()
     gx.write_stl(tmp_path / "part.stl", P, F)
     assert (tmp_path / "part.stl").stat().st_size == 84 + 50 * len(F)
+
+
+def test_min_member_is_local_thickness():
+    """Plates and bars read their thickness; stair voxels on a bar are not members; many thin fins are."""
+    mm = gx.min_member_cells
+    assert [mm(np.pad(np.ones((30, 30, m), bool), 3)) for m in range(1, 7)] == [1, 2, 3, 4, 5, 6]
+    assert [mm(np.pad(np.ones((56, m, m), bool), 3)) for m in (2, 4, 6)] == [2, 4, 6]
+    bar = np.zeros((60, 20, 20), bool); bar[2:58, 8:12, 8:12] = True; bar[10:50:6, 12, 8] = True
+    assert mm(bar) == 4
+    x, y, z = np.mgrid[0:60, 0:20, 0:20]
+    assert 5 <= mm((np.hypot(y - 10, z - 10) <= 3.5) & (x > 2) & (x < 57)) <= 7      # round rod, 7 across
+    plate = np.zeros((60, 60, 20), bool); plate[:, :, 2:8] = True; plate[:, 20:40:2, 8:18] = True
+    assert mm(plate) == 1
 
 
 def test_input_validation():

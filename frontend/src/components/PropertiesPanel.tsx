@@ -63,6 +63,7 @@ import { cadPhysicsOf, pickCadFile } from "./ImportCad";
 import { SelectionActions } from './SelectionActions';
 import { ContactPairsSettings, ContactsSettings, StructuralSettings, VectorInput } from './StructuralSettings';
 import { ResultsTools } from './ResultsTools';
+import { GenesisPanel } from './GenesisPanel';
 
 // ------------------------------------------------------------------ shared bits
 
@@ -1100,6 +1101,7 @@ function RunStep() {
           </Tooltip>
         )}
       </Section>
+      <GenesisPanel />
     </>
   );
 }

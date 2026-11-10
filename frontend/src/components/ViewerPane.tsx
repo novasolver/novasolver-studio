@@ -264,7 +264,10 @@ export function ViewerPane() {
   const meshExists = useStore((s) => !!s.payload?.ui.mesh?.state.exists);
   const running = useStore((s) => isActive(s.job));
 
-  const showField = step === "results" && !!field;
+  const genesisField = useStore((s) => s.genesisField);
+  const genesisView = useStore((s) => s.genesisView);
+  const showGenesis = step === "run" && genesisView && !!genesisField;
+  const showField = (step === "results" && !!field) || showGenesis;
 
   useEffect(() => {
     if (!host.current) return;
@@ -336,7 +339,7 @@ export function ViewerPane() {
   const topViewFor = useRef<string | null>(null);
   useEffect(() => {
     if (!viewer) return;
-    viewer.setField(showField ? field : null);
+    viewer.setField(showGenesis ? genesisField : showField ? field : null);
     // 2D flow cases show a slice plane: look straight at it the first time
     if (showField && planar && caseId && topViewFor.current !== caseId) {
       topViewFor.current = caseId;
@@ -344,7 +347,7 @@ export function ViewerPane() {
     } else if (showField && external) {
       viewer.view("fit"); // the flow slice reaches well beyond the body: frame it
     }
-  }, [viewer, field, showField, planar, caseId, external]);
+  }, [viewer, field, showField, showGenesis, genesisField, planar, caseId, external]);
 
   useEffect(() => {
     viewer?.setColormap(colormap);

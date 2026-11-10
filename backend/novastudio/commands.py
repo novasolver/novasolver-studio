@@ -158,7 +158,7 @@ def job_view(j: dict, lang: str) -> dict:
     return {"job_id": j["job_id"], "case_id": j["case_id"], "state": j["state"], "progress": j.get("progress", 0),
             "eta_s": eta, "engine": j.get("engine"), "mode": j.get("mode"), "revision": j.get("revision"),
             "message": t(j.get("message_key", "job." + j["state"]), lang, **j.get("message_args", {})),
-            "gates": j.get("gates")}
+            "gates": j.get("gates"), "study": j.get("study")}
 
 
 def case_payload(case_id: str, lang: str = "ja") -> dict:
@@ -657,7 +657,9 @@ def check_convergence(case_id: str, wait_s: float = 20.0, lang: str = "ja") -> d
 def job_status(job_id: str, lang: str = "ja") -> dict:
     j = jobs.status(job_id)
     v = job_view(j, lang)
-    if j["state"] == "done":
+    if j["state"] == "done" and j.get("study") == "genesis":
+        v["genesis"] = genesis_result(j["case_id"], job_id, lang)
+    elif j["state"] == "done":
         case = store.load(j["case_id"])
         v["gates"] = results.payload(case, lang, job_id)["gates"]
     if j["state"] == "failed":
@@ -670,6 +672,92 @@ def job_status(job_id: str, lang: str = "ja") -> dict:
 
 def stop_job(job_id: str, lang: str = "ja") -> dict:
     return job_view(jobs.stop(job_id), lang)
+
+
+# ------------------------------------------------------------------ Genesis (topology optimisation)
+def run_genesis(case_id: str, settings: dict | None = None, wait_s: float = 20.0, lang: str = "ja") -> dict:
+    """Start a Genesis topology optimisation of the case's part (its mesh is the design envelope, its face conditions
+    the loads and supports). Settings are checked before the job starts, so a wrong option fails at once."""
+    from . import genesis_case
+    from .templates import face_keys
+    case = store.load(case_id)
+    items = checks.run(case, lang)
+    if any(i["level"] == "error" for i in items):
+        raise StudioError("err.blocked", 400, items=[i["message"] for i in items if i["level"] == "error"])
+    spec = genesis_case.validate(settings, set(face_keys(case)))
+    j = jobs.start(case, "preview", "genesis", study="genesis", extra={"genesis": spec})
+    j = jobs.wait(j["job_id"], wait_s)
+    view = job_view(j, lang)
+    if j["state"] == "done":
+        return {"done": True, "job": view, "genesis": genesis_result(case_id, j["job_id"], lang)}
+    if j["state"] == "failed":
+        return {"done": True, "job": view, "genesis": None}
+    return {"done": False, "job_id": j["job_id"], "job": view, "poll_after_s": 10}
+
+
+def _genesis_dir(case_id: str, run_id: str | None):
+    rd = store.case_dir(case_id) / "run"
+    if run_id is not None:
+        if not results.RUN_ID.match(run_id):
+            raise StudioError("err.path", 400, path=f"run_id={run_id}")
+        runs = [rd / run_id]
+    else:
+        runs = sorted(rd.glob("r_*"), reverse=True) if rd.is_dir() else []
+    for jd in runs:
+        if (jd / "genesis.json").is_file():
+            return jd
+    raise StudioError("err.genesis_no_result", 404)
+
+
+def genesis_result(case_id: str, run_id: str | None = None, lang: str = "ja") -> dict:
+    """Summary of a finished Genesis run: numbers in SI and display units, warnings in words, files to download."""
+    import json as _json
+    from .i18n import t
+    jd = _genesis_dir(case_id, run_id)
+    g = _json.loads((jd / "genesis.json").read_text(encoding="utf-8"))
+    r, L = g["result"], lang_of(lang)
+    cards = [{"key": "volume_fraction", "label": t("genesis.card.volume_fraction", L), "value": round(100 * r["volume_fraction_binary"], 1), "unit": "%"},
+             {"key": "min_member", "label": t("genesis.card.min_member", L), "value": round(1e3 * r["min_member_m"], 3), "unit": "mm"}]
+    if g["physics"] == "elastic":
+        cards.insert(0, {"key": "compliance", "label": t("genesis.card.compliance", L), "value": float(f"{r['objective_binary']:.4g}"), "unit": "J"})
+        cards.append({"key": "max_disp", "label": t("genesis.card.max_disp", L), "value": float(f"{1e3 * r['max_displacement_m']:.4g}"), "unit": "mm"})
+    else:
+        cards.insert(0, {"key": "temperature_rise", "label": t("genesis.card.temperature_rise", L),
+                         "value": float(f"{r['max_temperature_rise_k']:.4g}"), "unit": "K"})
+    h0 = g["history"][0]["objective"] if g["history"] else None
+    return {"case_id": case_id, "run_id": jd.name, "physics": g["physics"], "cards": cards,
+            "converged": r["termination"] == "converged", "termination": r["termination"],
+            "iterations": r["iterations"], "elapsed_s": round(r["elapsed_s"], 1),
+            "kept": r.get("stiffness_kept"),
+            "warnings": [{"key": w, "message": t(f"genesis.warn.{'not_converged' if w.startswith('not_converged') else w}", L)} for w in r["warnings"]],
+            "grid": g["setup"]["grid"], "cells_active": g["setup"]["cells_active"], "surface": g["surface"],
+            "settings": g["spec"], "history": [{"i": h["iteration"], "objective": h["objective"] / h0 if h0 else None,
+                                               "volume_fraction": h["volume_fraction"]} for h in g["history"]],
+            "files": {"stl": f"/api/cases/{case_id}/genesis/part.stl?run_id={jd.name}"},
+            "note": t("genesis.note.verify", L), "stale": g["revision"] != store.load(case_id)["revision"]}
+
+
+def genesis_surface(case_id: str, run_id: str | None = None, lang: str = "ja") -> dict:
+    """The optimised part as a viewer field: closed surface, stress (structure) or temperature (heat) per vertex."""
+    import json as _json
+    from .i18n import t
+    import numpy as np
+    jd = _genesis_dir(case_id, run_id)
+    z = np.load(jd / "genesis.npz")
+    g = _json.loads((jd / "genesis.json").read_text(encoding="utf-8"))
+    s = z["scalars"].astype(float)
+    if g["physics"] == "elastic":
+        s, unit, label = s / 1e6, "MPa", t("genesis.field.vm", lang_of(lang))
+    else:
+        s, unit, label = s - 273.15, "°C", t("genesis.field.temp", lang_of(lang))
+    return {"positions": z["positions"].ravel().tolist(), "indices": z["indices"].ravel().tolist(),
+            "scalars": s.tolist(), "range": [float(s.min()), float(s.max())] if len(s) else [0.0, 1.0],
+            "unit": unit, "label": label, "run_id": jd.name}
+
+
+def genesis_stl(case_id: str, run_id: str | None = None) -> dict:
+    jd = _genesis_dir(case_id, run_id)
+    return {"path": str(jd / "part.stl"), "filename": f"genesis_{case_id}_{jd.name}.stl"}
 
 
 def get_results(case_id: str, run_id: str | None = None, lang: str = "ja") -> dict:

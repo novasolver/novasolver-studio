@@ -7,6 +7,8 @@ import type {
   UpdateInfo,
   UpdateJob,
   FieldPayload,
+  GenesisResult,
+  GenesisSettings,
   GeometryPayload,
   Job,
   Lang,
@@ -72,6 +74,10 @@ export interface State {
   fieldErrors: Record<string, string>; // PATCH path -> localized message (400)
   results: ResultsPayload | null;
   resultsLoading: boolean;
+  genesis: GenesisResult | null; // latest Genesis (topology optimisation) result of the open case
+  genesisField: FieldPayload | null; // its optimised shape for the viewer
+  genesisView: boolean; // show the optimised shape instead of the part in the run step
+  genesisBusy: boolean;
   field: FieldPayload | null;
   quantity: string | null;
   colormap: ColormapName;
@@ -140,6 +146,10 @@ let state: State = {
   fieldErrors: {},
   results: null,
   resultsLoading: false,
+  genesis: null,
+  genesisField: null,
+  genesisView: true,
+  genesisBusy: false,
   field: null,
   quantity: null,
   colormap: "viridis",
@@ -376,6 +386,7 @@ export async function setLang(lang: Lang) {
     await refreshCase(false);
     void loadGeometry();
     if (state.results) void loadResults(false, true);
+    if (state.genesis) void loadGenesis(); // labels and warnings in the new language
   }
 }
 
@@ -393,6 +404,8 @@ export function closeCase() {
     payload: null,
     geometry: null,
     results: null,
+    genesis: null,
+    genesisField: null,
     field: null,
     selectedFaces: [],
     hiddenFaces: [], seeThrough: false, faceFilter: null, resultsBeforeUndo: false,
@@ -582,6 +595,8 @@ function openPayload(p: CasePayload, step: StepId = "geometry") {
     flashFaces: [],
     fieldErrors: {},
     results: null,
+    genesis: null,
+    genesisField: null,
     field: null,
     quantity: null,
     selectedMode: 1, selectedStep: null, modeAnimation: false, section: null, probeValue: null,
@@ -593,6 +608,7 @@ function openPayload(p: CasePayload, step: StepId = "geometry") {
   void loadGeometry();
   void refreshRecent();
   if (p.steps.run !== "todo" || p.latest_run) void loadResults(false);
+  void loadGenesis();
 }
 
 /** Find facing faces of separate parts and add them as bonded contact pairs (then each pair's type can change). */
@@ -990,7 +1006,19 @@ function updateJob(j: Job) {
 }
 
 async function onJobFinished(j: Job) {
-  setState({ stopping: false, runBusy: false });
+  setState({ stopping: false, runBusy: false, genesisBusy: false });
+  if (j.study === "genesis") {
+    log(j.state === "done" ? "ok" : j.state === "failed" ? "error" : "warn", t("log.jobFinished", { state: t(`job.state.${j.state}`) }));
+    if (j.state === "failed") {
+      const msg = j.first_error || j.message;
+      if (msg) { log("error", msg); toast(msg, "error"); }
+    }
+    if (j.state === "done") {
+      await loadGenesis();
+      toast(t("genesis.done"), "info");
+    }
+    return; // analysis results and the step stay as they are
+  }
   log(j.state === "done" ? "ok" : j.state === "failed" ? "error" : "warn", t("log.jobFinished", { state: t(`job.state.${j.state}`) }));
   if (j.state === "failed") {
     const msg = j.first_error || j.message;
@@ -1003,6 +1031,41 @@ async function onJobFinished(j: Job) {
   if (j.state === "done") {
     await loadResults(true);
     if (state.step === "run") setState({ step: "results" });
+  }
+}
+
+// ------------------------------------------------------------------ Genesis (topology optimisation)
+/** Latest Genesis result and shape of the open case; silently empty when there is none yet. */
+export async function loadGenesis() {
+  const p = state.payload;
+  if (!p || state.mode === "mock") return;
+  const id = p.case.case_id;
+  try {
+    const g = await api.genesisResult(id);
+    if (state.payload?.case.case_id !== id) return;
+    const f = await api.genesisSurface(id, g.run_id);
+    if (state.payload?.case.case_id !== id) return;
+    setState({ genesis: g, genesisField: f, genesisView: true });
+  } catch {
+    if (state.payload?.case.case_id === id) setState({ genesis: null, genesisField: null });
+  }
+}
+
+export async function runGenesis(settings: GenesisSettings) {
+  const p = state.payload;
+  if (!p || isActive(state.job)) return;
+  setState({ genesisBusy: true });
+  try {
+    const r = await api.genesis(p.case.case_id, settings);
+    log("info", t("genesis.started"));
+    const job: Job = r.job ?? { job_id: r.job_id, state: "queued", progress: 0 };
+    updateJob({ ...job, study: "genesis" });
+    if (!isActive(job)) setState({ genesisBusy: false });
+  } catch (e) {
+    setState({ genesisBusy: false });
+    const msg = errMsg(e);
+    log("error", msg);
+    toast(msg, "error");
   }
 }
 

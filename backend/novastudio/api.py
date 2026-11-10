@@ -289,6 +289,28 @@ async def convergence(case_id: str, lang: str = "ja"):
     return {"job_id": r["job"]["job_id"], "job": r["job"]} if not r["done"] else r
 
 
+@app.post("/api/cases/{case_id}/genesis")
+async def genesis_start(case_id: str, body: dict = Body(default={}), lang: str = "ja"):
+    r = await call(C.run_genesis, case_id, (body or {}).get("settings"), 0.0, lang)
+    return {"job_id": r["job"]["job_id"], "job": r["job"]} if not r["done"] else r
+
+
+@app.get("/api/cases/{case_id}/genesis")
+async def genesis_get(case_id: str, run_id: str | None = None, lang: str = "ja"):
+    return await call(C.genesis_result, case_id, run_id, lang)
+
+
+@app.get("/api/cases/{case_id}/genesis/surface")
+async def genesis_surface(case_id: str, run_id: str | None = None, lang: str = "ja"):
+    return await call(C.genesis_surface, case_id, run_id, lang)
+
+
+@app.get("/api/cases/{case_id}/genesis/part.stl")
+async def genesis_stl(case_id: str, run_id: str | None = None):
+    r = await call(C.genesis_stl, case_id, run_id)
+    return FileResponse(r["path"], media_type="model/stl", filename=r["filename"])
+
+
 @app.get("/api/jobs/{job_id}")
 async def job(job_id: str, lang: str = "ja"):
     return await call(C.job_status, job_id, lang)

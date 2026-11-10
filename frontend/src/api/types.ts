@@ -209,7 +209,43 @@ export interface Job {
   gates?: Gates;
   first_error?: string | null;
   /** set by this GUI when the job is a mesh convergence study (the backend does not echo it) */
-  study?: "convergence";
+  study?: "convergence" | "genesis" | null;
+  genesis?: GenesisResult;
+}
+
+/** Genesis (topology optimisation) result summary; numbers already in display units. */
+export interface GenesisResult {
+  case_id: string;
+  run_id: string;
+  physics: "elastic" | "thermal";
+  cards: { key: string; label: string; value: number; unit: string }[];
+  converged: boolean;
+  termination: string;
+  iterations: number;
+  elapsed_s: number;
+  kept: number | null;
+  warnings: { key: string; message: string }[];
+  grid: { shape: number[]; cell_m: number };
+  cells_active: number;
+  surface: { triangles: number; closed: boolean; manifold_edges: boolean; oriented: boolean; volume_m3: number };
+  settings: GenesisSettings;
+  history: { i: number; objective: number | null; volume_fraction: number }[];
+  files: { stl: string };
+  note: string;
+  stale: boolean;
+}
+
+export interface GenesisSettings {
+  volume_fraction?: number;
+  cells?: number;
+  min_member?: { value: number; unit: string } | null;
+  symmetry?: ("x" | "y" | "z")[];
+  extrusion?: "x" | "y" | "z" | null;
+  overhang?: string | null;
+  keep_faces?: string[];
+  keep_bc_faces?: boolean;
+  skin_cells?: number;
+  iterations?: number;
 }
 
 export interface CasePayload {

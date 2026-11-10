@@ -22,6 +22,8 @@ import type {
   ProbeLine,
   ProbePoint,
   PrintCheck,
+  GenesisResult,
+  GenesisSettings,
 } from "./types";
 
 type MockModule = typeof import("./mock");
@@ -107,6 +109,10 @@ export function faceRolePath(faceKey: string): string {
 /** URL of the server-rendered PNG of a result (export image). */
 export function renderUrl(caseId: string, quantity: string): string {
   return withLang(`/api/cases/${encodeURIComponent(caseId)}/render.png?quantity=${encodeURIComponent(quantity)}`);
+}
+
+export function genesisStlUrl(caseId: string, runId: string): string {
+  return withLang(`/api/cases/${encodeURIComponent(caseId)}/genesis/part.stl?run_id=${encodeURIComponent(runId)}`);
 }
 
 export function exportUrl(caseId: string, format: string): string {
@@ -215,6 +221,9 @@ export const api = {
     request<ProbeLine>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { line, mode, run_id,step }),
   probePoint: (id: string, at: number[], mode = 1, run_id?: string,step?: number | null) =>
     request<ProbePoint>('POST', `/api/cases/${encodeURIComponent(id)}/probe`, { points: [at], mode, run_id,step }),
+  genesis: (id: string, settings: GenesisSettings) => request<RunResponse & { genesis?: GenesisResult }>("POST", `/api/cases/${encodeURIComponent(id)}/genesis`, { settings }),
+  genesisResult: (id: string) => request<GenesisResult>("GET", `/api/cases/${encodeURIComponent(id)}/genesis`),
+  genesisSurface: (id: string, runId?: string) => request<FieldPayload>("GET", `/api/cases/${encodeURIComponent(id)}/genesis/surface${runId ? "?run_id=" + encodeURIComponent(runId) : ""}`),
   printCheck: (id: string, xy?: number, z?: number) =>
     request<PrintCheck>('GET', `/api/cases/${encodeURIComponent(id)}/print-check${xy || z ? `?${xy ? 'xy=' + xy : ''}${xy && z ? '&' : ''}${z ? 'z=' + z : ''}` : ''}`),
 };

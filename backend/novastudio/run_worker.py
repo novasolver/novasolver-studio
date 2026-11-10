@@ -1010,6 +1010,15 @@ def main(job_dir: str) -> None:
         if eng == "builtin-fem" and _tp(req["case"]["template"])["physics"] == "electric":
             eng = "builtin-electric"
         fn = ENGINES.get(eng)
+        if req.get("study") == "genesis":
+            # topology optimisation: its own result file, so the analysis results of the case stay the latest ones
+            from .genesis_case import run as run_genesis
+            res = run_genesis(req, jd, prog)
+            res.update({"ran": True, "wall_s": round(time.time() - t0, 2), "revision": req["case"]["revision"]})
+            _write_json(jd / "genesis.json", res)
+            if read(jd)["state"] != "stopped":
+                update(jd, state="done", progress=1.0, message_key="job.done", message_args={})
+            return
         if req.get("study") == "convergence":
             res = run_study(req, jd, prog)
         elif fn is None:

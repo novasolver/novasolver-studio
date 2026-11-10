@@ -44,11 +44,11 @@ def update(job_dir: Path, **kw) -> dict:
     return j
 
 
-def start(case: dict, mode: str, engine: str, study: str | None = None) -> dict:
+def start(case: dict, mode: str, engine: str, study: str | None = None, extra: dict | None = None) -> dict:
     job_id = "r_" + time.strftime("%Y%m%d_%H%M%S") + "_" + secrets.token_hex(2)
     jd = case_dir(case["case_id"]) / "run" / job_id
     jd.mkdir(parents=True)
-    _write_json(jd / "request.json", {"case": case, "mode": mode, "engine": engine, "study": study})
+    _write_json(jd / "request.json", {"case": case, "mode": mode, "engine": engine, "study": study, **(extra or {})})
     job = {"job_id": job_id, "case_id": case["case_id"], "revision": case["revision"], "mode": mode, "engine": engine,
            "study": study, "state": "queued", "progress": 0.0, "message_key": "job.queued", "message_args": {},
            "created_at": time.time(), "updated_at": time.time(), "pid": None, "pid_ctime": None}
