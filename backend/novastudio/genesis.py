@@ -744,6 +744,8 @@ class Genesis:
         warn = []
         if not pieces["loads_carried"]:
             warn.append("load_not_carried")
+        if self.threshold < 0.5:
+            warn.append("threshold_lowered")
         if pieces.get("non_design_detached"):
             warn.append("non_design_region_detached")
         if pieces["removed_share"] > 0.02:
