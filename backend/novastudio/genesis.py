@@ -283,7 +283,10 @@ class Multigrid:
             x += w * lv.inv_diag * (r - lv.matvec(x))
         return x
 
-    def solve(self, b, x0=None, tol=1e-6, maxiter=200):
+    def solve(self, b, x0=None, tol=1e-6, maxiter=1000):
+        # 200 was too few: a cantilever extruded along its width (40k cells, 46 % of the cells at the void stiffness
+        # 1e-9) needed 318 iterations late in the run and the job failed at a residual of 1.5e-2. More smoothing, a
+        # larger coarse grid or a 1e-6 void floor did not change that (269-306); the iteration did converge
         lv = self.levels[0]
         if len(self.levels) == 1:
             x = np.zeros_like(b)
