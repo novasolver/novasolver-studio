@@ -1047,6 +1047,10 @@ export async function loadGenesis(view: "show" | "keep" | "auto" = "auto") {
   try {
     const g = await api.genesisResult(id);
     if (state.payload?.case.case_id !== id) return;
+    if (view === "keep" && state.genesisField && state.genesis?.run_id === g.run_id) {
+      setState({ genesis: g }); // language change: new labels at once, the shape does not depend on the language
+      return;
+    }
     const f = await api.genesisSurface(id, g.run_id);
     if (state.payload?.case.case_id !== id) return;
     setState({ genesis: g, genesisField: f, genesisView: view === "keep" ? state.genesisView : view === "show" || !g.stale });

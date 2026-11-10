@@ -683,7 +683,7 @@
   "genesis.card.compliance": "コンプライアンス",
   "genesis.card.temperature_rise": "最高温度上昇",
   "genesis.card.volume_fraction": "残した体積",
-  "genesis.card.min_member": "最も細い部材（実測）",
+  "genesis.card.min_member": "最細部材（実測）",
   "genesis.card.max_disp": "最大変位",
   "genesis.field.vm": "相当応力（格子での推定）",
   "genesis.field.temp": "温度",
