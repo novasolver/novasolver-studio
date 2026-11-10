@@ -807,8 +807,9 @@ def surface_checks(P, F):
     _, cnt = np.unique(key, axis=0, return_counts=True)
     _, dcnt = np.unique(e, axis=0, return_counts=True)
     vol = float(np.einsum("ij,ij->i", P[F[:, 0]], np.cross(P[F[:, 1]], P[F[:, 2]])).sum() / 6)
-    return {"triangles": int(len(F)), "closed": bool(np.all(cnt % 2 == 0)), "manifold_edges": bool(np.all(cnt == 2)),
-            "oriented": bool(np.all(dcnt == 1)), "volume_m3": vol}
+    some = len(F) > 0                                   # no triangles is not a closed part (np.all of nothing is True)
+    return {"triangles": int(len(F)), "closed": some and bool(np.all(cnt % 2 == 0)),
+            "manifold_edges": some and bool(np.all(cnt == 2)), "oriented": some and bool(np.all(dcnt == 1)), "volume_m3": vol}
 
 
 def min_member_cells(solid, cover=0.95):

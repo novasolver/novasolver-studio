@@ -661,7 +661,10 @@ def job_status(job_id: str, lang: str = "ja") -> dict:
     j = jobs.status(job_id)
     v = job_view(j, lang)
     if j["state"] == "done" and j.get("study") == "genesis":
-        v["genesis"] = genesis_result(j["case_id"], job_id, lang)
+        try:
+            v["genesis"] = genesis_result(j["case_id"], job_id, lang)
+        except StudioError:                          # result removed (case deleted): the job status still answers
+            v["genesis"] = None
     elif j["state"] == "done":
         case = store.load(j["case_id"])
         v["gates"] = results.payload(case, lang, job_id)["gates"]

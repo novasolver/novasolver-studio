@@ -340,14 +340,15 @@ export function ViewerPane() {
   useEffect(() => {
     if (!viewer) return;
     viewer.setField(showGenesis ? genesisField : showField ? field : null);
-    // 2D flow cases show a slice plane: look straight at it the first time
-    if (showField && planar && caseId && topViewFor.current !== caseId) {
+    // 2D flow cases show a slice plane: look straight at it the first time (analysis results only, not a Genesis shape)
+    const resultsField = step === "results" && !!field;
+    if (resultsField && planar && caseId && topViewFor.current !== caseId) {
       topViewFor.current = caseId;
       viewer.view("top");
-    } else if (showField && external) {
+    } else if (resultsField && external) {
       viewer.view("fit"); // the flow slice reaches well beyond the body: frame it
     }
-  }, [viewer, field, showField, showGenesis, genesisField, planar, caseId, external]);
+  }, [viewer, field, showField, showGenesis, genesisField, planar, caseId, external, step]);
 
   useEffect(() => {
     viewer?.setColormap(colormap);

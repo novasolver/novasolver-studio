@@ -102,6 +102,20 @@ def test_supports_cover_large_triangles():
     assert d.max() <= 0.75 and w.sum() == pytest.approx(1800.0)
 
 
+def test_inside_mesh_large_tet_next_to_small_ones():
+    """A point in a large tet whose 40 nearest centroids belong to small tets beside it is still inside."""
+    big = np.array([[0, 0, 0], [10.0, 0, 0], [0, 10.0, 0], [0, 0, 10.0]])
+    nodes, tets = [big], [[0, 1, 2, 3]]
+    rng = np.random.default_rng(0)
+    for i in range(40):                                   # tiny tets just below the z = 0 face, near (1, 1, 0)
+        c = np.array([1.0, 1.0, -0.05]) + rng.uniform(-0.03, 0.03, 3)
+        nodes.append(c + 0.01 * np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, -1]]))
+        tets.append(list(range(4 + 4 * i, 8 + 4 * i)))
+    nodes = np.concatenate(nodes)
+    inside = GC.inside_mesh(np.array([[1.0, 1.0, 0.02], [1.0, 1.0, -1.0], [6.0, 6.0, 6.0]]), nodes, np.array(tets))
+    assert inside.tolist() == [True, False, False]
+
+
 def test_genesis_run_does_not_hide_the_analysis(ws):
     cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
     wait_genesis(C.run_genesis(cid, {"cells": 4000, "iterations": 12}, wait_s=120, lang="en"))

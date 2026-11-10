@@ -80,6 +80,11 @@ def test_two_load_cases_gradient():
     _fd_check(g, gx.Settings(), np.random.default_rng(5))
 
 
+def test_empty_surface_is_not_closed():
+    chk = gx.surface_checks(np.zeros((0, 3)), np.zeros((0, 3), int))
+    assert not chk["closed"] and not chk["oriented"] and not chk["manifold_edges"]
+
+
 def test_cantilever_optimisation():
     g = gx.cantilever(nx=32, ny=4, nz=16)
     r = g.optimize(gx.Settings(volume_fraction=0.4, iterations=120))

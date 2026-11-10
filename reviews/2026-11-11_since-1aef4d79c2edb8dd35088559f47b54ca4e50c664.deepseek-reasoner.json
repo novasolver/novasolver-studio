@@ -1,0 +1,343 @@
+{
+ "model": "deepseek-reasoner",
+ "usage": {
+  "prompt_tokens": 158718,
+  "completion_tokens": 748563,
+  "prompt_cache_hit_tokens": 44800
+ },
+ "problems": [
+  "backend/novastudio/genesis.py: answer cut off"
+ ],
+ "findings": [
+  {
+   "severity": "high",
+   "file": "backend/app/fem/genesis.py",
+   "line": 8,
+   "summary": "Marching-tetra triangles are ordered by ascending local vertex index, so many inside/outside masks produce inward-facing triangles and wrong STL normals/signed volume.",
+   "scenario": "Standard tetra 0=(0,0,0),1=(1,0,0),2=(0,1,0),3=(0,0,1) with mask ins={1}: triangle on edges 1-0,1-2,1-3 gets normal +x instead of -x; exported STL is inside-out and surface_checks volume flips sign.",
+   "fix": "Use a 16-entry case table with correct cyclic ordering per mask, or orient each triangle against the tetra centroid before emitting.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/genesis.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/app/fem/genesis.py",
+   "line": 35,
+   "summary": "surface_checks reports an empty triangle set as closed, manifold and oriented because np.all over empty edge-count arrays is True.",
+   "scenario": "Surface extraction fails and returns F with zero rows: closed=True, manifold_edges=True, oriented=True, volume_m3=0.0, so the invalid empty surface can pass validation.",
+   "fix": "Return False for closed/manifold/oriented when len(F)==0 (or require triangles>0).",
+   "confidence": "high",
+   "chunk": "backend/novastudio/genesis.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/topology.py",
+   "line": 232,
+   "summary": "connected() reports True whenever exactly one component touches the load and it also touches supports, even if other solid islands are disconnected.",
+   "scenario": "Thresholded design has one load-bearing piece plus a floating lump -> connected() returns True, so 'thresholded_design_disconnected' warning is suppressed and a disconnected concept geometry is exported.",
+   "fix": "Also verify the number of components covering solid elements equals 1 (e.g. len(set(label.tolist()))==1), not just len(a)==1.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/topology3d.py, backend/novastudio/units.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_genesis.py, backend/tests/test_genesis_case.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/genesis.py",
+   "line": 52,
+   "summary": "grid_shape can return a grid larger than max_cells, bypassing MAX_ELEMENTS because the oversized first candidate is always accepted.",
+   "scenario": "cells=(1000,1000,1): z is padded to 8 -> shape=(1000,1000,8)=8M > MAX_ELEMENTS; on L=2 best is None so the >max_cells break never fires and 8M elements/nodes get allocated -> OOM/freeze.",
+   "fix": "Also reject/clamp the first candidate when prod(shape) > max_cells (raise or reduce resolution) instead of unconditionally setting best.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/genesis.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/genesis_case.py",
+   "line": 234,
+   "summary": "Structural body loads (gravity/rotation) are only recorded in info['ignored'], the Genesis run proceeds without them.",
+   "scenario": "case with gravity enabled plus a small point load -> optimization ignores self-weight and designs a too-thin part",
+   "fix": "Raise err.genesis_scope for gravity/rotation, or apply body loads to the grid.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/genesis_case.py, backend/novastudio/jobs.py, backend/novastudio/mcp_server.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/genesis_case.py",
+   "line": 92,
+   "summary": "inside_mesh tests only the k=32 nearest tets by centroid, so interior points can be classified outside when small tets cluster around a large one.",
+   "scenario": "graded mesh (thin features next to large tets) -> envelope gets holes in thin regions -> missing/weak members",
+   "fix": "Use a spatial index over tets with bounding-box prefilter or increase k adaptively.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/genesis_case.py, backend/novastudio/jobs.py, backend/novastudio/mcp_server.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/genesis_case.py",
+   "line": 72,
+   "summary": "run() writes part.stl/genesis.npz but the returned result has no 'files'/'note' keys, while _genesis_text unconditionally reads g['files']['stl'] and g['note'].",
+   "scenario": "genesis job finishes -> stored genesis.json lacks 'files' -> job_status/genesis_result prints STL path from a missing key (KeyError) or shows a path that does not exist.",
+   "fix": "Add the written artifact paths (stl, npz) and the note to the dict returned by run(), and use .get() in _genesis_text.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/genesis_case.py, backend/novastudio/jobs.py, backend/novastudio/mcp_server.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/mcp_server.py",
+   "line": 552,
+   "summary": "genesis_result passes the whole controller payload to _genesis_text, but job_status passes r['genesis']; the two call shapes cannot both be right, so one path raises KeyError('cards').",
+   "scenario": "genesis_result after a finished genesis job -> _genesis_text gets the wrapper dict -> KeyError -> tool errors instead of returning the result.",
+   "fix": "Use `(r.get('genesis') or r)` in both call sites, or give C.genesis_result the same wrapper shape as job_status.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/genesis_case.py, backend/novastudio/jobs.py, backend/novastudio/mcp_server.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/topology3d.py",
+   "line": 144,
+   "summary": "Assembly row/col arrays (ne*900 int64 each) plus per-call stiffness data far exceed the 288 MB the MAX_ELEMENTS guard assumes.",
+   "scenario": "40k tet mesh -> self.rows+self.cols ~576 MB (int64) + transient 288 MB data + Ke0 288 MB -> >1.2 GB, MemoryError on a typical laptop.",
+   "fix": "Store only the 30 local dofs per element and build CSR with per-element offsets/indptr, or cap MAX_ELEMENTS lower / use int32.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/topology3d.py, backend/novastudio/units.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_genesis.py, backend/tests/test_genesis_case.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/tests/test_v06.py",
+   "line": 264,
+   "summary": "Follower-pressure tangent test calls undefined `user@example.com()`, so the test raises NameError instead of validating the tangent.",
+   "scenario": "Running `pytest backend/tests/test_v06.py::test_10_follower_pressure_tangent` reaches the assert and raises NameError before comparing `diff`.",
+   "fix": "Restore the intended expression, e.g. `np.testing.assert_allclose(diff, K @ v, rtol=1e-7, atol=1e-3)`.",
+   "confidence": "medium",
+   "chunk": "backend/tests/test_topology3d.py, backend/tests/test_v05.py, backend/tests/test_v06.py, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/GenesisPanel.tsx, frontend/src/components/PropertiesPanel.tsx, frontend/src/components/StatusBar.tsx"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/components/ViewerPane.tsx",
+   "line": 344,
+   "summary": "showField now also covers the genesis view, so the one-shot 'top' camera for planar cases and the external-flow refit fire during the run step and consume topViewFor.",
+   "scenario": "2D planar case: entering the run step with genesis shows view('top') and sets topViewFor=caseId; switching to results no longer looks straight at the flow slice plane.",
+   "fix": "Gate the camera block on step === 'results' && !!field instead of showField.",
+   "confidence": "medium",
+   "chunk": "frontend/src/components/ViewerPane.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/state/store.ts",
+   "line": 1054,
+   "summary": "runGenesis submits the job without awaiting settle(), so PATCHes still in flight (loads, boundary conditions, material) are not applied before the optimisation starts.",
+   "scenario": "User edits a load and immediately clicks Genesis -> the topology optimisation solves with the previous boundary conditions and the optimised shape is unusable.",
+   "fix": "`await settle();` before calling api.genesis, as runCase/detectContacts do.",
+   "confidence": "medium",
+   "chunk": "frontend/src/components/ViewerPane.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/state/store.ts",
+   "line": 1056,
+   "summary": "The runGenesis guard only checks isActive(state.job), not runBusy/genesisBusy, so an analysis run and a genesis run can be submitted concurrently for the same case.",
+   "scenario": "User clicks Run (runBusy=true, state.job not yet set) then clicks Genesis -> two jobs are queued on one case and results overwrite each other.",
+   "fix": "Also return early when state.runBusy || state.genesisBusy, and check genesisBusy in runCase.",
+   "confidence": "medium",
+   "chunk": "frontend/src/components/ViewerPane.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "medium",
+   "file": "frontend/src/state/store.ts",
+   "line": 391,
+   "summary": "genesisBusy is only cleared in onJobFinished; closeCase/openPayload never reset it, so switching cases during a genesis job leaves the flag set forever.",
+   "scenario": "Start Genesis (slow job), open another case -> the poll tick returns on job_id mismatch, onJobFinished never fires, genesisBusy stays true and the Genesis button stays disabled.",
+   "fix": "Reset genesisBusy (and keep genesisView consistent) in openPayload/closeCase.",
+   "confidence": "medium",
+   "chunk": "frontend/src/components/ViewerPane.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/commands.py",
+   "line": 696,
+   "summary": "_genesis_dir validates run_id with results.RUN_ID.match (prefix match) before joining it into the run path; if that pattern is not $-anchored, '../' sequences escape the case run dir.",
+   "scenario": "GET /api/cases/A/genesis/part.stl?run_id=r_x/../../other/run/r_y -> serves part.stl of another case",
+   "fix": "Use fullmatch (or a strict ^...$ regex) and resolve/verify the joined path stays under rd.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/api.py, backend/novastudio/commands.py"
+  },
+  {
+   "severity": "medium",
+   "file": "backend/novastudio/commands.py",
+   "line": 659,
+   "summary": "job_status calls genesis_result for every poll of a done genesis job; genesis_result raises StudioError/KeyError when genesis.json is missing or store.load fails, so the whole /api/jobs/{id} request errors out.",
+   "scenario": "Genesis job marked done but genesis.json not yet flushed/removed -> client polling job status gets 404/500 and loses completion state",
+   "fix": "Wrap genesis_result in try/except in job_status and return the job with genesis=None on failure.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/api.py, backend/novastudio/commands.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/app/fem/genesis.py",
+   "line": 25,
+   "summary": "write_stl assumes the name argument is bytes; a str name raises AttributeError on ljust.",
+   "scenario": "write_stl(path, P, F, name='part') -> AttributeError: 'str' object has no attribute 'ljust'.",
+   "fix": "Encode str names to bytes before padding/truncating.",
+   "confidence": "high",
+   "chunk": "backend/novastudio/genesis.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/genesis_case.py",
+   "line": 55,
+   "summary": "bad('min_member') inside the try raises StudioError which the except Exception then replaces with the '{value, unit}' message, giving the wrong diagnostic for a non-positive value.",
+   "scenario": "min_member = {value: 0, unit: 'mm'} -> user sees a format/conversion error hint instead of the range error",
+   "fix": "Validate the converted number outside the try or re-raise StudioError before the generic handler.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/genesis_case.py, backend/novastudio/jobs.py, backend/novastudio/mcp_server.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/tests/test_genesis.py",
+   "line": 88,
+   "summary": "Warning check compares a string to warning dicts, so it never fails and can hide a load_not_carried result.",
+   "scenario": "If optimize() returns [{'key':'load_not_carried'}], `\"load_not_carried\" not in r[\"warnings\"]` is still True, so the test passes despite the load not being carried.",
+   "fix": "Use `not any(w.get('key') == 'load_not_carried' for w in r['warnings'])`.",
+   "confidence": "medium",
+   "chunk": "backend/novastudio/topology3d.py, backend/novastudio/units.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_genesis.py, backend/tests/test_genesis_case.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/tests/test_v05.py",
+   "line": 216,
+   "summary": "MCP tool-count assertion was raised to 37 in test_v05 and test_v06, but no MCP tool registration change is shown; if the server still exposes 35 tools both tests fail.",
+   "scenario": "`test_08_mcp_tool_count` runs `mcp.list_tools()` and gets 35 entries from an unchanged mcp_server -> assertion `37 == 35` fails.",
+   "fix": "Add the two Genesis MCP tools to mcp_server or keep the count at 35 until they are registered.",
+   "confidence": "medium",
+   "chunk": "backend/tests/test_topology3d.py, backend/tests/test_v05.py, backend/tests/test_v06.py, frontend/src/api/client.ts, frontend/src/api/types.ts, frontend/src/components/GenesisPanel.tsx, frontend/src/components/PropertiesPanel.tsx, frontend/src/components/StatusBar.tsx"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/commands.py",
+   "line": 738,
+   "summary": "genesis_surface subtracts 273.15 from thermal scalars, assuming they are absolute Kelvin; if the stored field is the temperature rise (result card is max_temperature_rise_k), every displayed value is off by 273.15.",
+   "scenario": "scalar=50 (rise in K) -> shown as -223.15 °C instead of 50 K/°C rise",
+   "fix": "Confirm the stored unit; if it is a rise, do not subtract 273.15 (or add T_ambient explicitly).",
+   "confidence": "low",
+   "chunk": "backend/novastudio/api.py, backend/novastudio/commands.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/genesis_case.py",
+   "line": 214,
+   "summary": "Boundary loop calls face_cells(tri) unconditionally; face_cells assumes a triangle array (tri[:, :3]) and crashes for node-set faces, unlike the rollers branch which guards 1D input.",
+   "scenario": "boundary with role 'bearing'/'remote-force' stored as a flat node-index array under face_<key> -> IndexError, request 500",
+   "fix": "Guard for tri.ndim<2 like the rollers loop and map nodes via trilinear.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/genesis_case.py, backend/novastudio/jobs.py, backend/novastudio/mcp_server.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/genesis_case.py",
+   "line": 118,
+   "summary": "sample_faces builds a dense (Nsel x npts x 3) float64 array per subdivision level, which can exhaust memory on large surface meshes.",
+   "scenario": "large part with 100k triangles sharing max subdivision n=24 -> ~0.8 GB temporary allocation -> OOM",
+   "fix": "Process triangles in batches/chunks and append points incrementally.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/genesis_case.py, backend/novastudio/jobs.py, backend/novastudio/mcp_server.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/jobs.py",
+   "line": 40,
+   "summary": "extra is splatted last into request.json, so it can silently overwrite 'case', 'engine', 'mode' or 'study'.",
+   "scenario": "controller passes extra containing 'case'/'study' -> worker runs a different case or study than the job record (job.json) reports, results attributed to wrong case.",
+   "fix": "Merge as {\"case\": case, \"mode\": mode, \"engine\": engine, \"study\": study, \"extra\": {...}} or reject reserved keys.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/genesis_case.py, backend/novastudio/jobs.py, backend/novastudio/mcp_server.py, backend/novastudio/run_worker.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/topology.py",
+   "line": 318,
+   "summary": "cantilever_box divides by len(edge) with no guard; an empty mid-height node set raises ZeroDivisionError.",
+   "scenario": "Any mesh where no free-end node lands within tol=1e-9*length of z=H/2 -> edge empty -> -load/len(edge) raises ZeroDivisionError and the reference problem fails to build.",
+   "fix": "Validate len(edge)>0 and raise a clear ValueError, or select the nearest node layer instead of an exact-tolerance match.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/topology3d.py, backend/novastudio/units.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_genesis.py, backend/tests/test_genesis_case.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/topology3d.py",
+   "line": 97,
+   "summary": "cKDTree.sparse_distance_matrix already emits the zero self-distances, so the manual diagonal append doubles H[e,e] to 2*radius*v_e.",
+   "scenario": "density filter built with radius r -> self weight becomes 2r instead of r, changing rho=Hx/Hs and biasing the optimised design.",
+   "fix": "Drop the manual (i,i) append, or strip zero/near-zero distances from pairs before adding them.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/topology3d.py, backend/novastudio/units.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_genesis.py, backend/tests/test_genesis_case.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/topology3d.py",
+   "line": 191,
+   "summary": "scipy.sparse.linalg.cg only accepts the `rtol` keyword from scipy >=1.12; older scipy raises TypeError.",
+   "scenario": "Bundled/older scipy (<1.12) -> every solve() call crashes with unexpected keyword argument 'rtol'.",
+   "fix": "Pass tol= or feature-detect scipy version and choose rtol vs tol.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/topology3d.py, backend/novastudio/units.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_genesis.py, backend/tests/test_genesis_case.py"
+  },
+  {
+   "severity": "low",
+   "file": "backend/novastudio/units.py",
+   "line": 18,
+   "summary": "Thermal conductivity has no unit entry (e.g. W/mK), although the new ThermalProblem takes k in W/(m.K).",
+   "scenario": "User enters conductivity with a unit for a thermal case -> unit lookup fails because 'W/mK' isn't in UNITS, blocking thermal case creation.",
+   "fix": "Add 'W/mK' (and 'W/(m.K)') with factor 1.0 and a thermal_conductivity dimension.",
+   "confidence": "low",
+   "chunk": "backend/novastudio/topology3d.py, backend/novastudio/units.py, backend/tests/test_electric.py, backend/tests/test_faces_undo.py, backend/tests/test_genesis.py, backend/tests/test_genesis_case.py"
+  },
+  {
+   "severity": "low",
+   "file": "frontend/src/state/store.ts",
+   "line": 1062,
+   "summary": "If the genesis POST already returns a finished job, updateJob does not call onJobFinished, so the new result is never loaded.",
+   "scenario": "Fast genesis job: POST returns state 'done' -> no loadGenesis() and no toast, the optimised shape only appears after reopening the case.",
+   "fix": "Mirror runCase: if the returned job is not active, setState({job}) and call onJobFinished(job).",
+   "confidence": "low",
+   "chunk": "frontend/src/components/ViewerPane.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "low",
+   "file": "frontend/src/state/store.ts",
+   "line": 1050,
+   "summary": "loadGenesis clears genesis/genesisField on any thrown error, including transient network failures, discarding an already displayed optimised shape.",
+   "scenario": "Language switch triggers loadGenesis; one request times out -> the genesis view disappears until the case is reopened.",
+   "fix": "Only clear state when the backend reports 'no result' (404/empty), keep the old value otherwise.",
+   "confidence": "low",
+   "chunk": "frontend/src/components/ViewerPane.tsx, frontend/src/state/store.ts"
+  },
+  {
+   "severity": "low",
+   "file": "solver/topopt_simp.py",
+   "line": 359,
+   "summary": "volume_fraction_binary uses mean() over a possibly empty mask, producing NaN (and a RuntimeWarning) that serializes as invalid JSON.",
+   "scenario": "all cells are void/non-active (empty design domain) -> solid[empty].mean() is nan -> 'volume_fraction_binary': NaN in API response",
+   "fix": "Guard: n = (self.active & ~self.void).sum(); value = float(solid[mask].mean()) if n else 0.0",
+   "confidence": "low",
+   "chunk": "backend/novastudio/genesis.py"
+  },
+  {
+   "severity": "low",
+   "file": "solver/topopt_simp.py",
+   "line": 363,
+   "summary": "von Mises uses us[0], but the mask 'solid' is the final binary part; if us holds multiple solutions the stress comes from the wrong density field.",
+   "scenario": "us=[u_full(grey), u_bin]; us[0] is the grey displacement -> von_mises masked to the binarized solid reports stresses of a different design",
+   "fix": "Use the displacement that corresponds to the reported solid density (e.g., the binary solution), not us[0]",
+   "confidence": "low",
+   "chunk": "backend/novastudio/genesis.py"
+  },
+  {
+   "severity": "low",
+   "file": "solver/topopt_simp.py",
+   "line": 416,
+   "summary": "The surface field forces every self.solid cell to 1.0; if self.solid is the pre-cleanup mask this reintroduces detached floating bits the cleanup removed.",
+   "scenario": "solid_final had a detached blob removed, but self.solid still marks it -> field=1.0 there -> exported surface contains the floating piece despite 'floating_material_removed'",
+   "fix": "Restrict the final sharpening to self.solid_final (or verify self.solid==solid_final) so removed material stays at 0",
+   "confidence": "low",
+   "chunk": "backend/novastudio/genesis.py"
+  }
+ ]
+}

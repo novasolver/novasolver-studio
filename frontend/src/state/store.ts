@@ -406,6 +406,7 @@ export function closeCase() {
     results: null,
     genesis: null,
     genesisField: null,
+    genesisBusy: false,
     field: null,
     selectedFaces: [],
     hiddenFaces: [], seeThrough: false, faceFilter: null, resultsBeforeUndo: false,
@@ -597,6 +598,7 @@ function openPayload(p: CasePayload, step: StepId = "geometry") {
     results: null,
     genesis: null,
     genesisField: null,
+    genesisBusy: false,
     field: null,
     quantity: null,
     selectedMode: 1, selectedStep: null, modeAnimation: false, section: null, probeValue: null,
@@ -1048,21 +1050,29 @@ export async function loadGenesis(view: "show" | "keep" | "auto" = "auto") {
     const f = await api.genesisSurface(id, g.run_id);
     if (state.payload?.case.case_id !== id) return;
     setState({ genesis: g, genesisField: f, genesisView: view === "keep" ? state.genesisView : view === "show" || !g.stale });
-  } catch {
-    if (state.payload?.case.case_id === id) setState({ genesis: null, genesisField: null });
+  } catch (e) {
+    // only "no Genesis result" clears the shape; a transient failure keeps what is shown
+    if (state.payload?.case.case_id === id && e instanceof ApiError && e.status === 404) setState({ genesis: null, genesisField: null });
   }
 }
 
 export async function runGenesis(settings: GenesisSettings) {
   const p = state.payload;
-  if (!p || isActive(state.job)) return;
+  if (!p || state.runBusy || state.genesisBusy || isActive(state.job)) return;
   setState({ genesisBusy: true });
   try {
+    await settle(); // edits still being saved (loads, supports) must be in the case the optimisation reads
     const r = await api.genesis(p.case.case_id, settings);
     log("info", t("genesis.started"));
-    const job: Job = r.job ?? { job_id: r.job_id, state: "queued", progress: 0 };
-    updateJob({ ...job, study: "genesis" });
-    if (!isActive(job)) setState({ genesisBusy: false });
+    const job: Job = { ...(r.job ?? { job_id: r.job_id, state: "queued", progress: 0 }), study: "genesis" };
+    if (state.job?.job_id === job.job_id && !isActive(state.job)) {
+      setState({ genesisBusy: false }); // the poll already delivered the completion
+    } else if (isActive(job)) {
+      updateJob(job);
+    } else {
+      setState({ job });
+      void onJobFinished(job); // finished within the request: load the shape now
+    }
   } catch (e) {
     setState({ genesisBusy: false });
     const msg = errMsg(e);
@@ -1073,7 +1083,7 @@ export async function runGenesis(settings: GenesisSettings) {
 
 export async function runCase(mode?: "preview" | "final") {
   const p = state.payload;
-  if (!p || state.runBusy || isActive(state.job)) return;
+  if (!p || state.runBusy || state.genesisBusy || isActive(state.job)) return;
   const m = mode ?? ((p.case.run?.mode as "preview" | "final") || "preview");
   setState({ runBusy: true });
   try {
@@ -1103,7 +1113,7 @@ export async function runCase(mode?: "preview" | "final") {
  */
 export async function checkConvergence() {
   const p = state.payload;
-  if (!p || state.runBusy || isActive(state.job)) return;
+  if (!p || state.runBusy || state.genesisBusy || isActive(state.job)) return;
   setState({ runBusy: true });
   try {
     await settle();

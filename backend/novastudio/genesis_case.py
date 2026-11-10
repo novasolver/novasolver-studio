@@ -114,6 +114,22 @@ def inside_mesh(points, nodes, tets, chunk=200000):
         lam = np.einsum("nkij,nkj->nki", Minv[idx], P[:, None, :] - o[idx])
         ok = (lam >= -1e-9).all(axis=2) & (lam.sum(axis=2) <= 1 + 1e-9)
         out[s:s + chunk] = ok.any(axis=1)
+    # the nearest centroids can all belong to small tets next to a large one that holds the point (graded meshes):
+    # a point inside tet T lies within T's centroid-to-corner radius, so test every such tet for the remaining points
+    rad = np.linalg.norm(nodes[tets[:, :4]] - cen[:, None], axis=2).max(axis=1)
+    if len(tets) > k:
+        d0, _ = tree.query(points, k=1)
+        todo = np.nonzero(~out & (d0 <= rad.max()))[0]
+        for s in range(0, len(todo), 2000):
+            ids = todo[s:s + 2000]
+            for i, cand in zip(ids, tree.query_ball_point(points[ids], rad.max())):
+                cand = np.asarray(cand, int)
+                if not len(cand):
+                    continue
+                cand = cand[np.linalg.norm(cen[cand] - points[i], axis=1) <= rad[cand]]
+                lam = np.einsum("kij,kj->ki", Minv[cand], points[i] - o[cand])
+                if ((lam >= -1e-9).all(axis=1) & (lam.sum(axis=1) <= 1 + 1e-9)).any():
+                    out[i] = True
     return out
 
 
