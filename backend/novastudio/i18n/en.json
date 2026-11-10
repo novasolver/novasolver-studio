@@ -683,7 +683,7 @@
   "genesis.card.compliance": "Compliance",
   "genesis.card.temperature_rise": "Maximum temperature rise",
   "genesis.card.volume_fraction": "Volume kept",
-  "genesis.card.min_member": "Thinnest member (measured)",
+  "genesis.card.min_member": "Thinnest (measured)",
   "genesis.card.max_disp": "Maximum displacement",
   "genesis.field.vm": "Von Mises stress (grid estimate)",
   "genesis.field.temp": "Temperature",
