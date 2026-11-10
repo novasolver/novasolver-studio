@@ -329,6 +329,8 @@ class Settings:
     tol: float = 0.01
     beta_max: float = 16.0
     beta_every: int = 25
+    eta_erode: float | None = None     # eroded (robust) design for the analysis, e.g. 0.8 (experimental: mixed results)
+    min_member_cells: float | None = None   # thinnest member asked for; warn when the result has thinner ones
     symmetry: tuple = ()               # axes (0,1,2) whose mid-plane is a mirror plane
     extrusion: int | None = None       # axis along which the part must be prismatic (milling / casting)
     overhang: tuple | None = None      # (axis, +1|-1) build direction for additive manufacturing
@@ -421,19 +423,25 @@ class Genesis:
     def _filter_T(self, g):
         return ndimage.convolve(g * self.active / self.wsum, self.kernel, mode="constant") * self.active
 
-    def _project(self, t):
-        b, n = self.beta, self.eta
+    def _project(self, t, eta=None):
+        b, n = self.beta, (self.eta if eta is None else eta)
         den = math.tanh(b * n) + math.tanh(b * (1 - n))
         th = np.tanh(b * (t - n))
         return (math.tanh(b * n) + th) / den, b * (1 - th ** 2) / den
 
-    def physical(self, z):
+    def _pre(self, z):
+        """Symmetry, filter, overhang: everything before the projection (the AM filter caches for its adjoint)."""
         x = self._sym(np.where(self.design, z, np.where(self.solid, 1.0, 0.0)))
         xf = self._filter(x)
         if self.s.extrusion is not None:          # the truncated kernel at the ends would break the prism again
             xf = self._sym(xf)
-        xa = self.am.forward(xf) if self.am else xf
-        rho, drho = self._project(xa)
+        return self.am.forward(xf) if self.am else xf
+
+    def physical(self, z):
+        return self._post(self._pre(z), self.eta)
+
+    def _post(self, xa, eta):
+        rho, drho = self._project(xa, eta)
         rho = np.where(self.solid, 1.0, np.where(self.design, rho, 0.0))
         drho = np.where(self.design, drho, 0.0)
         return rho, drho
@@ -471,16 +479,25 @@ class Genesis:
         return np.einsum("ei,ij,ej->e", ue, self.Ku, ue).reshape(self.shape)
 
     def evaluate(self, z):
-        rho, drho = self.physical(z)
-        us = self.analyse(self.moduli(rho))
+        """Compliance of the eroded design (projection threshold eta_erode > 0.5), volume of the blueprint (0.5).
+        Optimising the eroded design is the compliance form of the robust formulation (Wang, Lazarov, Sigmund 2011;
+        Lazarov et al. 2016): a member only counts once it survives erosion, so the blueprint cannot keep members
+        thinner than about the filter diameter. Same cost as the plain projection: one analysis per step."""
+        xa = self._pre(z)
+        rho, drho_b = self._post(xa, self.eta)
+        if self.s.eta_erode:
+            rho_a, drho = self._post(xa, self.s.eta_erode)
+        else:
+            rho_a, drho = rho, drho_b
+        us = self.analyse(self.moduli(rho_a))
         c, g = 0.0, np.zeros(self.shape)
-        dEdrho = self.s.penal * rho ** (self.s.penal - 1) * (self.E - self.e_min)
+        dEdrho = self.s.penal * rho_a ** (self.s.penal - 1) * (self.E - self.e_min)
         for w, f, u in zip(self.weights, self.loads, us):
             c += w * float(f @ u)
             g -= w * dEdrho * self.element_energy(u)
         nact = float(self.active.sum() - self.void.sum())
         dc = self.chain_T(g, drho)
-        dv = self.chain_T(np.where(self.active & ~self.void, 1.0 / nact, 0.0), drho)
+        dv = self.chain_T(np.where(self.active & ~self.void, 1.0 / nact, 0.0), drho_b)
         if not np.isfinite(c) or c <= 0 or not np.isfinite(dc).all():
             raise ValueError("nonfinite or nonpositive response")
         return c, dc, dv, rho, us
@@ -516,7 +533,11 @@ class Genesis:
             z, since = znew, since + 1
             if time.monotonic() - t0 > s.timeout_s:
                 reason = "time_budget"; break
-            settled = since >= 5 and change < s.tol
+            # settled: the design stops moving, or (at full projection, where single cells keep flipping) the
+            # objective stops changing: < 0.1 % over the last 5 steps of this beta
+            recent = [h["objective"] for h in history[-5:]]
+            flat = since >= 5 and (max(recent) - min(recent)) <= 1e-3 * abs(recent[-1])
+            settled = since >= 5 and (change < s.tol or flat)
             if self.beta >= s.beta_max:
                 if settled:
                     reason = "converged"; break
@@ -603,7 +624,7 @@ class Genesis:
             warn.append("floating_material_removed")
         if grey > 0.1:
             warn.append("intermediate_densities")
-        if thin < 2 * self.s.filter_radius - 1.5:
+        if self.s.min_member_cells and thin < 0.7 * self.s.min_member_cells:
             warn.append("thin_members_below_target")
         if reason != "converged":
             warn.append("not_converged_" + reason)

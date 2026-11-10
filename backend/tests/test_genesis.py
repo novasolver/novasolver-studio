@@ -60,6 +60,7 @@ def _fd_check(g, settings, rng, n=4, beta=4.0):
     {"extrusion": 1},
     {"overhang": (2, 1)},
     {"overhang": (0, -1), "symmetry": (1,)},
+    {"eta_erode": 0.8},
 ])
 def test_gradients_match_finite_differences(opts):
     g = gx.cantilever(nx=12, ny=4, nz=6)
@@ -176,6 +177,34 @@ def test_min_member_is_local_thickness():
     assert 5 <= mm((np.hypot(y - 10, z - 10) <= 3.5) & (x > 2) & (x < 57)) <= 7      # round rod, 7 across
     plate = np.zeros((60, 60, 20), bool); plate[:, :, 2:8] = True; plate[:, 20:40:2, 8:18] = True
     assert mm(plate) == 1
+
+
+def test_tension_bar_keeps_the_volume_share_of_stiffness():
+    """Known optimum: an end face pulled uniformly, the other end held. The stiffest layout of a volume share v is a
+    straight bar of v times the section, whose stiffness is v times the full block's (k = EA/L). With nu = 0 no
+    layout of that volume can do better (stiffness_kept <= v); the load is spread over the whole end face, so the
+    bar has to widen there and lands a few % below (measured 0.376 for v = 0.4)."""
+    nx, ny, nz = 24, 8, 8
+    g0 = gx.cantilever(nx=nx, ny=ny, nz=nz)
+    f = np.zeros((g0.nn, 3))
+    end = gx.node_index(g0.shape, *np.meshgrid(nx, np.arange(ny + 1), np.arange(nz + 1), indexing="ij")).ravel()
+    f[end, 0] = 1.0 / len(end)
+    g = gx.Genesis(g0.shape, g0.h, fixed=g0.fixed, loads=f.ravel(), nu=0.0)
+    r = g.optimize(gx.Settings(volume_fraction=0.4, iterations=80))
+    v = r["volume_fraction_binary"]
+    assert 0.9 * v <= r["stiffness_kept"] <= v * (1 + 1e-6)
+    assert r["pieces"]["loads_carried"]
+
+
+def _thin_share(solid, t):
+    """Share of the volume not reached by inscribed balls of local thickness t cells (see min_member_cells)."""
+    from scipy import ndimage
+    idx = np.nonzero(solid)
+    box = tuple(slice(a.min(), a.max() + 1) for a in idx)
+    fine = np.pad(solid[box], 1).repeat(2, 0).repeat(2, 1).repeat(2, 2)
+    dt = ndimage.distance_transform_edt(fine)
+    reach = ndimage.distance_transform_edt(~(dt >= t - 1e-9))
+    return 1 - np.count_nonzero(fine & (reach < t + 1.0)) / fine.sum()
 
 
 def test_input_validation():

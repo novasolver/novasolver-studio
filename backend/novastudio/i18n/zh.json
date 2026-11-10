@@ -680,7 +680,7 @@
   "genesis.voxelising": "Genesis：正在将零件划分为网格",
   "genesis.iterating": "Genesis：优化第 {iteration} 步",
   "genesis.surface": "Genesis：正在输出形状",
-  "genesis.card.compliance": "柔度（越小越刚）",
+  "genesis.card.compliance": "柔度",
   "genesis.card.temperature_rise": "最高温升",
   "genesis.card.volume_fraction": "保留体积",
   "genesis.card.min_member": "最细构件（实测）",

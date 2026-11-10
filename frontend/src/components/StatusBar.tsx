@@ -92,7 +92,7 @@ export function StatusBar() {
               ) : (
                 <>
                   <span className="anim-pulse h-1.5 w-1.5 rounded-full bg-accent-fill" />
-                  <span className="text-fg-2">{job.study ? t("conv.running") : `${t("statusbar.job")} ${t(`job.state.${job.state}`)}`}</span>
+                  <span className="text-fg-2">{job.study === "convergence" ? t("conv.running") : job.study === "genesis" ? t("genesis.running") : `${t("statusbar.job")} ${t(`job.state.${job.state}`)}`}</span>
                   <span className="h-1 w-24 overflow-hidden rounded-full bg-line">
                     <span
                       className="block h-full rounded-full bg-accent-fill transition-[width] duration-300 ease-[var(--ease-out)]"

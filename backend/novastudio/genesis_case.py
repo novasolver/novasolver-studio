@@ -300,10 +300,16 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
 
     g = gx.Genesis(grid["shape"], h, physics=physics, E=E, nu=nu, active=active, solid=keep,
                    fixed=fixed.ravel(), loads=load.ravel(), origin=origin)
-    r_cells = 1.5
+    # a requested thinnest member m: filter radius m cells. Measured on a 48x16x24 cantilever at 30 %: radius 3
+    # left 17 % of the volume thinner than 3 cells, radius 1.5 left 46 %. The filter does not guarantee the size;
+    # the result is measured and the warning reports members below 70 % of m. The eroded (robust) design helped
+    # on that case (6 %) but made a 32x12x16 one worse (32 % against 23 %), so it is not used here
+    r_cells, target, erode = 1.5, None, None
     if spec["min_member"] is not None:
-        r_cells = max(1.2, units.to_si(spec["min_member"]) / (2 * h) + 0.5)
+        target = units.to_si(spec["min_member"]) / h
+        r_cells = max(1.5, target)
     settings = gx.Settings(volume_fraction=float(spec["volume_fraction"]), filter_radius=float(r_cells),
+                           eta_erode=erode, min_member_cells=target,
                            iterations=spec["iterations"], symmetry=tuple(sym),
                            extrusion=AXES[spec["extrusion"]] if spec["extrusion"] else None,
                            overhang=(AXES[spec["overhang"][1]], 1 if spec["overhang"][0] == "+" else -1) if spec["overhang"] else None)

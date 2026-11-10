@@ -680,7 +680,7 @@
   "genesis.voxelising": "Genesis: dividing the part into cells",
   "genesis.iterating": "Genesis: optimisation step {iteration}",
   "genesis.surface": "Genesis: writing the shape",
-  "genesis.card.compliance": "Compliance (lower is stiffer)",
+  "genesis.card.compliance": "Compliance",
   "genesis.card.temperature_rise": "Maximum temperature rise",
   "genesis.card.volume_fraction": "Volume kept",
   "genesis.card.min_member": "Thinnest member (measured)",

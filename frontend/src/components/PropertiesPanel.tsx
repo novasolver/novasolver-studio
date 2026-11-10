@@ -968,7 +968,7 @@ function JobCard() {
       <div className="flex items-center justify-between gap-2 text-body">
         <span className="flex min-w-0 items-center gap-2 font-medium text-fg">
           {queued ? <Hourglass size={14} className="shrink-0 text-fg-3" /> : <Spinner className="shrink-0 text-accent-text" />}
-          <span className="truncate">{queued ? t("job.state.queued") : job.study ? t("conv.running") : t(`job.state.${job.state}`)}</span>
+          <span className="truncate">{queued ? t("job.state.queued") : job.study === "convergence" ? t("conv.running") : job.study === "genesis" ? t("genesis.running") : t(`job.state.${job.state}`)}</span>
         </span>
         {!queued && <span className="tnum shrink-0 text-fg-2">{Math.round(progress * 100)}%</span>}
       </div>
@@ -980,7 +980,7 @@ function JobCard() {
           />
         </div>
       )}
-      {job.study && (
+      {job.study === "convergence" && (
         <ol className="mt-2.5 flex items-center gap-1 text-label">
           {STUDY_LEVELS.map((size, i) => (
             <li key={size} className="flex min-w-0 items-center gap-1">
@@ -1199,7 +1199,7 @@ function ConvergenceAction({ variant }: { variant: "primary" | "secondary" | "ag
   const runBusy = useStore((s) => s.runBusy);
   const stale = useStore((s) => !!s.results?.stale);
   const offline = useStore((s) => s.mode === "mock");
-  if (isActive(job) && job?.study) {
+  if (isActive(job) && job?.study === "convergence") {
     return (
       <div className="mt-3">
         <JobCard />

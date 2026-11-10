@@ -680,7 +680,7 @@
   "genesis.voxelising": "Genesis: 部品を格子に分けています",
   "genesis.iterating": "Genesis: 最適化 {iteration} 回目",
   "genesis.surface": "Genesis: 形状を書き出しています",
-  "genesis.card.compliance": "コンプライアンス（小さいほど高剛性）",
+  "genesis.card.compliance": "コンプライアンス",
   "genesis.card.temperature_rise": "最高温度上昇",
   "genesis.card.volume_fraction": "残した体積",
   "genesis.card.min_member": "最も細い部材（実測）",

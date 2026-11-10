@@ -612,5 +612,6 @@
   "genesis.show": "最適化した形を表示",
   "genesis.download": "STL を保存",
   "genesis.kept": "体積 {vol} % で、元の部品（すべて材料）の剛性の {pct} % を保ちます。",
-  "genesis.keptHeat": "体積 {vol} % で、元の部品（すべて材料）の熱の逃げやすさの {pct} % を保ちます。"
+  "genesis.keptHeat": "体積 {vol} % で、元の部品（すべて材料）の熱の逃げやすさの {pct} % を保ちます。",
+  "genesis.running": "Genesis で形をつくっています"
 }
