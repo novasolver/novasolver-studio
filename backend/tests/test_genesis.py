@@ -113,6 +113,27 @@ def test_binary_threshold_keeps_the_volume_of_a_grey_design():
     assert kept >= g.volume_fraction(grey) - 0.02
 
 
+def test_bridge_diagonals_joins_hinges():
+    from scipy import ndimage
+    # a staircase diagonal one cell thick in x-z, extruded along y: edge contacts only
+    s = np.zeros((8, 3, 8), bool)
+    for i in range(8):
+        s[i, :, i] = True
+    rho = np.broadcast_to(np.random.default_rng(0).uniform(0, 0.4, (8, 1, 8)), s.shape)   # a prism design
+    out, added = gx.bridge_diagonals(s, rho, np.ones(s.shape, bool))
+    assert ndimage.label(s)[1] == 8 and ndimage.label(out)[1] == 1
+    assert added == 7 * 3 and (out | ~s).all()                     # one bridge per step and row, nothing removed
+    assert np.array_equal(out, np.broadcast_to(out.any(axis=1, keepdims=True), out.shape))   # still a prism
+    # corner contact: two cells touching at one vertex
+    c = np.zeros((4, 4, 4), bool); c[1, 1, 1] = c[2, 2, 2] = True
+    out, added = gx.bridge_diagonals(c, np.zeros(c.shape), np.ones(c.shape, bool))
+    assert ndimage.label(out)[1] == 1 and added == 2
+    # bridges only where allowed; a face-connected part is left alone
+    blk = np.zeros((4, 4, 4), bool); blk[1:3, 1:3, 1:3] = True
+    out, added = gx.bridge_diagonals(blk, np.zeros(blk.shape), np.ones(blk.shape, bool))
+    assert added == 0 and np.array_equal(out, blk)
+
+
 def test_empty_surface_is_not_closed():
     chk = gx.surface_checks(np.zeros((0, 3)), np.zeros((0, 3), int))
     assert not chk["closed"] and not chk["oriented"] and not chk["manifold_edges"]

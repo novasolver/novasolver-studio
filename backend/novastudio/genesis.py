@@ -723,17 +723,25 @@ class Genesis:
     def _finish(self, rho, c, history, reason, elapsed):
         self.threshold = self.binary_threshold(rho)
         base = self.active & ~self.void
-        solid, pieces = self.clean(((rho >= self.threshold) & base) | self.solid)
+
+        def cut(t):
+            s, added = bridge_diagonals(((rho >= t) & base) | self.solid, rho, base)
+            self.bridged = added
+            return self.clean(s)
+        solid, pieces = cut(self.threshold)
         # the joint of a member to a kept face can sit just under the threshold while the design carries the load
         # through it (cantilever extruded along z, 12k cells, 150 steps: 4 pieces, tip detached at 0.5). Then take
         # the highest lower threshold that connects every load and kept region, and report it
         t = self.threshold
         while (not pieces["loads_carried"] or pieces.get("non_design_detached")) and t > 0.2 + 1e-9:
             t = round(t - 0.05, 2)
-            s2, p2 = self.clean(((rho >= t) & base) | self.solid)
+            s2, p2 = cut(t)
             if p2["loads_carried"] and not p2.get("non_design_detached"):
                 solid, pieces, self.threshold = s2, p2, t
                 break
+        else:
+            if t != self.threshold:
+                solid, pieces = cut(self.threshold)          # nothing better: the part at the first threshold
         Eb = np.where(self.active & ~self.void, np.where(solid, self.E, self.e_min), 0.0)
         loop_tol, self.s.solver_tol = self.s.solver_tol, min(self.s.solver_tol, 1e-8)
         us = self.analyse(Eb, warm=False)
@@ -769,6 +777,7 @@ class Genesis:
             "objective": c, "objective_binary": c_bin, "objective_full": c_full,
             "stiffness_kept": c_full / c_bin if c_bin > 0 else None, "volume_fraction": self.volume_fraction(rho),
             "volume_fraction_binary": float(solid[self.active & ~self.void].mean()), "threshold": self.threshold,
+            "cells_bridged": int(self.bridged),
             "grey_share": grey, "min_member_m": thin * self.h, "min_member_cells": thin,
             "pieces": pieces, "termination": reason, "iterations": len(history), "elapsed_s": elapsed,
             "solver": dict(self.stats), "history": history, "warnings": warn,
@@ -918,6 +927,66 @@ def surface_checks(P, F):
     some = len(F) > 0                                   # no triangles is not a closed part (np.all of nothing is True)
     return {"triangles": int(len(F)), "closed": some and bool(np.all(cnt % 2 == 0)),
             "manifold_edges": some and bool(np.all(cnt == 2)), "oriented": some and bool(np.all(dcnt == 1)), "volume_m3": vol}
+
+
+def bridge_diagonals(solid, rho, allowed, max_passes=20):
+    """Join cells that touch only along an edge or at a corner by adding the bridging cell of higher density.
+    A staircase diagonal one cell thick is connected in the grey design (the shared edge nodes carry force) but
+    is a hinge in the 0/1 part: the face-connected cleanup removed it (cantilever extruded along its width: 11
+    pieces, tip detached) and its STL would not be manifold. Returns the new solid and the number of cells added."""
+    solid = solid.copy()
+    n = solid.shape
+    added = 0
+    for _ in range(max_passes):
+        changed = 0
+        # edge contacts: P and P + da e_a + db e_b solid, both bridges P + da e_a, P + db e_b empty
+        for a, b in ((0, 1), (0, 2), (1, 2)):
+            for da, db in ((1, 1), (1, -1)):
+                # views aligned on the base cell P = (i, j); shifts are relative to it on the cropped window
+                ia = slice(max(0, -da), n[a] - max(0, da))
+                ib = slice(max(0, -db), n[b] - max(0, db))
+                def at(oa, ob, arr):
+                    s = [slice(None)] * 3
+                    s[a] = slice(ia.start + oa, ia.stop + oa)
+                    s[b] = slice(ib.start + ob, ib.stop + ob)
+                    return arr[tuple(s)]
+                P, Q = at(0, 0, solid), at(da, db, solid)
+                B1, B2 = at(da, 0, solid), at(0, db, solid)
+                hit = P & Q & ~B1 & ~B2
+                if not hit.any():
+                    continue
+                r1 = np.where(at(da, 0, allowed), at(da, 0, rho), -1.0)
+                r2 = np.where(at(0, db, allowed), at(0, db, rho), -1.0)
+                use1 = hit & (r1 >= r2) & (r1 >= 0)
+                use2 = hit & ~use1 & (r2 >= 0)
+                v1, v2 = at(da, 0, solid), at(0, db, solid)          # views into `solid`: assignment writes through
+                v1[use1] = True
+                v2[use2] = True
+                changed += int(use1.sum() + use2.sum())
+        # corner contacts: P and P + (dx, dy, dz) solid with no solid cell on any of the 6 paths between them;
+        # add the face neighbour of higher density, the remaining edge contact is joined in the next pass
+        for d in ((1, 1, 1), (1, 1, -1), (1, -1, 1), (1, -1, -1)):
+            win = tuple(slice(max(0, -di), ni - max(0, di)) for di, ni in zip(d, n))
+            def at3(o, arr):
+                return arr[tuple(slice(w.start + oi, w.stop + oi) for w, oi in zip(win, o))]
+            P, Q = at3((0, 0, 0), solid), at3(d, solid)
+            between = [(d[0], 0, 0), (0, d[1], 0), (0, 0, d[2]), (d[0], d[1], 0), (d[0], 0, d[2]), (0, d[1], d[2])]
+            free = np.ones(P.shape, bool)
+            for o in between:
+                free &= ~at3(o, solid)
+            hit = P & Q & free
+            if not hit.any():
+                continue
+            cand = [(o, np.where(at3(o, allowed), at3(o, rho), -1.0)) for o in between[:3]]
+            best = np.argmax(np.stack([c for _, c in cand]), axis=0)
+            for k, (o, c) in enumerate(cand):
+                sel = hit & (best == k) & (c >= 0)
+                at3(o, solid)[sel] = True
+                changed += int(sel.sum())
+        added += changed
+        if not changed:
+            break
+    return solid, added
 
 
 def min_member_cells(solid, cover=0.95):
