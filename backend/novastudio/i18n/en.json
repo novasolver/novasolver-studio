@@ -700,5 +700,9 @@
   "err.genesis_no_load": "Genesis: there is no load (or heat input).",
   "err.genesis_temperatures": "Genesis: all temperature faces must have the same temperature (the heat sink).",
   "err.genesis_extrusion": "Genesis: this part cannot be made prismatic along {axis}.",
-  "err.genesis_no_result": "No Genesis result yet. Run Genesis first."
+  "err.genesis_no_result": "No Genesis result yet. Run Genesis first.",
+  "genesis.warn.body_loads_ignored": "Gravity and rotation loads are not included in Genesis (the shape uses the face loads only).",
+  "genesis.warn.constraint_not_met": "Kept regions (loaded faces etc.) make the final shape break the manufacturing or symmetry setting in places.",
+  "err.genesis_load_outside": "Genesis: the symmetry / extrusion setting trims part of the part, and {share} % of the load would sit where there is no material. Check the setting.",
+  "err.genesis_min_member": "Genesis: at this resolution the thinnest member can be at most {max_mm} mm. Use a coarser resolution or a smaller value."
 }

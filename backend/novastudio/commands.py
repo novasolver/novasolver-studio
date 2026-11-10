@@ -63,7 +63,10 @@ def list_templates(lang: str = "ja") -> dict:
 # ------------------------------------------------------------------ cases
 
 def _latest_job(case_id: str) -> dict | None:
-    js = jobs.list_for_case(case_id)
+    # a finished Genesis run is not an analysis: it must not hide the latest analysis results or mark the run step
+    # done (a running one stays visible so the app can follow it after a reload)
+    js = [j for j in jobs.list_for_case(case_id)
+          if j.get("study") != "genesis" or j["state"] in ("queued", "running")]
     if not js:
         return None
     j = js[0]

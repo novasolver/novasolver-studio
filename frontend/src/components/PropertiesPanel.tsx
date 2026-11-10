@@ -1101,7 +1101,7 @@ function RunStep() {
           </Tooltip>
         )}
       </Section>
-      <GenesisPanel />
+      <GenesisPanel key={p.case.case_id} />
     </>
   );
 }

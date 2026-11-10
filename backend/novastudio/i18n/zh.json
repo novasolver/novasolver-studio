@@ -700,5 +700,9 @@
   "err.genesis_no_load": "Genesis：没有载荷（或热输入）。",
   "err.genesis_temperatures": "Genesis：所有指定温度的面必须为同一温度（散热端）。",
   "err.genesis_extrusion": "Genesis：该零件无法沿 {axis} 方向做成等截面形状。",
-  "err.genesis_no_result": "还没有 Genesis 结果。请先运行 Genesis。"
+  "err.genesis_no_result": "还没有 Genesis 结果。请先运行 Genesis。",
+  "genesis.warn.body_loads_ignored": "Genesis 未考虑重力和旋转载荷（仅按面载荷求形状）。",
+  "genesis.warn.constraint_not_met": "由于保留区域（受载面等），最终形状未完全满足制造方式或对称条件。",
+  "err.genesis_load_outside": "Genesis：对称/挤出条件裁去了部分零件，{share} % 的载荷将落在没有材料的位置。请检查设置。",
+  "err.genesis_min_member": "Genesis：在此分辨率下最小构件尺寸最多为 {max_mm} mm。请降低分辨率或减小数值。"
 }

@@ -386,7 +386,7 @@ export async function setLang(lang: Lang) {
     await refreshCase(false);
     void loadGeometry();
     if (state.results) void loadResults(false, true);
-    if (state.genesis) void loadGenesis(); // labels and warnings in the new language
+    if (state.genesis) void loadGenesis("keep"); // labels and warnings in the new language
   }
 }
 
@@ -1014,7 +1014,7 @@ async function onJobFinished(j: Job) {
       if (msg) { log("error", msg); toast(msg, "error"); }
     }
     if (j.state === "done") {
-      await loadGenesis();
+      await loadGenesis("show");
       toast(t("genesis.done"), "info");
     }
     return; // analysis results and the step stay as they are
@@ -1035,8 +1035,10 @@ async function onJobFinished(j: Job) {
 }
 
 // ------------------------------------------------------------------ Genesis (topology optimisation)
-/** Latest Genesis result and shape of the open case; silently empty when there is none yet. */
-export async function loadGenesis() {
+/** Latest Genesis result and shape of the open case; silently empty when there is none yet.
+ * view: "show" after a run finishes, "keep" to leave the user's choice (language change), "auto" on opening a case
+ * (the shape replaces the part only while it matches the current case revision). */
+export async function loadGenesis(view: "show" | "keep" | "auto" = "auto") {
   const p = state.payload;
   if (!p || state.mode === "mock") return;
   const id = p.case.case_id;
@@ -1045,7 +1047,7 @@ export async function loadGenesis() {
     if (state.payload?.case.case_id !== id) return;
     const f = await api.genesisSurface(id, g.run_id);
     if (state.payload?.case.case_id !== id) return;
-    setState({ genesis: g, genesisField: f, genesisView: true });
+    setState({ genesis: g, genesisField: f, genesisView: view === "keep" ? state.genesisView : view === "show" || !g.stale });
   } catch {
     if (state.payload?.case.case_id === id) setState({ genesis: null, genesisField: null });
   }

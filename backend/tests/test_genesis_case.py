@@ -60,6 +60,69 @@ def test_load_transfer_keeps_the_total(ws):
     assert g.solid.any()                                    # loaded and fixed faces are kept
 
 
+def _built(cid, spec):
+    from novastudio import geometry
+    case = store.load(cid)
+    geometry.generate_mesh(case)
+    m = dict(np.load(geometry.mesh_dir(case) / "mesh.npz"))
+    return GC.build(case, m, GC.validate(spec, set(case["boundaries"])))
+
+
+def test_extrusion_on_a_padded_case_grid(ws):
+    """The grid pads the part, so 'prismatic' is over the part's span: the cantilever is a prism along its axis."""
+    cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
+    # across the width (y): the end faces are prisms too, so the final part is exactly prismatic
+    g, setup = _built(cid, {"cells": 8000, "extrusion": "y"})
+    r = g.optimize(setup["settings"].__class__(**{**setup["settings"].__dict__, "iterations": 20}))
+    sol = g.solid_final
+    assert np.array_equal(sol, np.broadcast_to(sol.any(axis=1, keepdims=True), sol.shape) & g.active)
+    assert "constraint_not_met" not in r["warnings"] and r["volume_fraction_binary"] > 0.1
+    # along the length (x): the kept end faces cannot be prisms along x; the result says so
+    g, setup = _built(cid, {"cells": 8000, "extrusion": "x"})
+    r = g.optimize(setup["settings"].__class__(**{**setup["settings"].__dict__, "iterations": 20}))
+    assert "constraint_not_met" in r["warnings"]
+
+
+def test_trimming_never_drops_a_load(ws):
+    """Engine: a load on a node no active cell holds is refused, not silently lost."""
+    from novastudio import genesis as gx
+    g0 = gx.cantilever(nx=8, ny=2, nz=4)
+    active = np.ones(g0.shape, bool); active[-1] = False             # the loaded end column is gone
+    with pytest.raises(ValueError, match="outside the part"):
+        gx.Genesis(g0.shape, g0.h, fixed=g0.fixed, loads=g0.loads, active=active)
+
+
+def test_supports_cover_large_triangles():
+    """One mesh triangle 60 cells across: every grid node on it is supported (no patchy point supports)."""
+    P, w = GC.sample_faces(np.array([[0, 0, 0], [60.0, 0, 0], [0, 60.0, 0]]), np.array([[0, 1, 2]]), 0.5)
+    from scipy.spatial import cKDTree
+    J = np.argwhere(np.ones((61, 61), bool)).astype(float)
+    J = J[J.sum(axis=1) <= 60 - 1e-9]
+    d, _ = cKDTree(P[:, :2]).query(J)
+    assert d.max() <= 0.75 and w.sum() == pytest.approx(1800.0)
+
+
+def test_genesis_run_does_not_hide_the_analysis(ws):
+    cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
+    wait_genesis(C.run_genesis(cid, {"cells": 4000, "iterations": 12}, wait_s=120, lang="en"))
+    pl = C.case_payload(cid, "en")
+    assert pl["latest_run"] is None or pl["latest_run"].get("study") != "genesis"
+
+
+def test_min_member_unit_and_cap(ws):
+    cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
+    for bad in ({"min_member": 5}, {"min_member": {"value": 5, "unit": "kN"}}, {"heat_source": {"value": 1, "unit": "W"}}):
+        with pytest.raises(StudioError) as e:
+            C.run_genesis(cid, bad, wait_s=0, lang="en")
+        assert e.value.key == "err.genesis_option"
+    with pytest.raises(StudioError) as e:
+        _built(cid, {"cells": 8000, "min_member": {"value": 1, "unit": "m"}})
+    assert e.value.key == "err.genesis_min_member"
+    with pytest.raises(StudioError) as e:
+        _built(cid, {"cells": 8000, "heat_source": {"value": 1, "unit": "W/m3"}})
+    assert e.value.key == "err.genesis_option"
+
+
 def test_settings_are_checked(ws):
     cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
     for bad in ({"volume_fraction": 2}, {"symmetry": ["w"]}, {"overhang": "z"}, {"keep_faces": ["nope"]},

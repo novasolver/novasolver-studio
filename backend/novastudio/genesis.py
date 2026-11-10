@@ -38,6 +38,10 @@ MAX_ELEMENTS = 2_000_000
 # the coarsest multigrid grid is factorised directly at every design update. Smaller is cheaper to factorise but costs
 # CG iterations: on the 40k-cell cantilever case 5k dofs took 4.1 s per design step against 3.6 s with 40k
 COARSE_DOFS = 20000
+# the density filter is a direct 3D convolution: cost ~ r^3 (one pass on 221k cells: 0.011 s at r = 1.5, 1.44 s at 10)
+MAX_FILTER_CELLS = 8.0
+# exact fallback when CG stalls: SuperLU on 100k unknowns took about 0.4 GB; beyond that, fail with a clear error
+MAX_DIRECT_DOFS = 100000
 
 
 def grid_shape(cells, dpn, coarse_dofs=COARSE_DOFS, max_cells=MAX_ELEMENTS):
@@ -234,7 +238,7 @@ class Multigrid:
             p = z + (rz_new / rz) * p; rz = rz_new
         # robustness: an exact solve when the preconditioned iteration stalls (memory permitting)
         free = np.nonzero(~lv.dead)[0]
-        if len(free) <= 400000:
+        if len(free) <= MAX_DIRECT_DOFS:
             x = np.zeros_like(b)
             x[free] = fe.spd_factor(lv.assemble()[free][:, free]).solve(b[free])
             return x, maxiter
@@ -379,6 +383,15 @@ class Genesis:
         L = np.atleast_2d(np.asarray(loads, float))
         if L.shape[1] != self.ndof or not np.isfinite(L).all() or not np.any(L):
             raise ValueError("loads: finite nonzero (ncase, ndof) array required")
+        # load on a node that no active cell holds is dropped by the solver: refuse it rather than lose it silently
+        live = np.zeros(self.nn, bool)
+        nx, ny, nz = self.shape
+        i, j, k = np.nonzero(self.active & ~self.void)
+        for cx, cy, cz in _CORNER:
+            live[node_index(self.shape, i + cx, j + cy, k + cz)] = True
+        Ln = np.abs(L).reshape(len(L), self.nn, self.dpn).sum(axis=(0, 2))
+        if Ln[~live].sum() > 1e-9 * Ln.sum():
+            raise ValueError(f"loads: {100 * Ln[~live].sum() / Ln.sum():.3g} % of the load sits outside the part")
         self.loads = L
         self.weights = np.ones(len(L)) if weights is None else np.asarray(weights, float)
         Ke, Kt, self.B0, self.D = hex_matrices(self.h, self.nu if physics == "elastic" else None)
@@ -404,15 +417,24 @@ class Genesis:
                 raise ValueError(f"symmetry about axis {a}: the design envelope is not symmetric")
         if s.extrusion is not None:
             a = s.extrusion
-            if not np.array_equal(self.active, np.broadcast_to(self.active.any(axis=a, keepdims=True), self.shape)):
+            # prismatic within the part's span along the axis (the grid around it may be padded)
+            occ = self.active.any(axis=tuple(i for i in range(3) if i != a))
+            span = np.zeros(self.shape[a], bool)
+            span[np.argmax(occ):len(occ) - np.argmax(occ[::-1])] = True
+            span = span.reshape([-1 if i == a else 1 for i in range(3)])
+            if not np.array_equal(self.active, np.broadcast_to(self.active.any(axis=a, keepdims=True), self.shape) & span):
                 raise ValueError("extrusion: the design envelope is not prismatic along that axis")
+            self._ext_count = np.maximum(1, self.active.sum(axis=a, keepdims=True))
 
     def _sym(self, z):
         x = z
         for a in self.s.symmetry:
             x = 0.5 * (x + np.flip(x, a))
         if self.s.extrusion is not None:
-            x = np.broadcast_to(x.mean(axis=self.s.extrusion, keepdims=True), self.shape).copy()
+            # mean over the part's cells of each column (padding cells do not dilute it); masked so the map stays
+            # symmetric (its own adjoint): A = M P M with P the column average
+            a = self.s.extrusion
+            x = self.active * np.broadcast_to((x * self.active).sum(axis=a, keepdims=True) / self._ext_count, self.shape)
         return x
 
     _sym_T = _sym          # both maps are symmetric (self-adjoint) averaging operators
@@ -626,6 +648,9 @@ class Genesis:
             warn.append("intermediate_densities")
         if self.s.min_member_cells and thin < 0.7 * self.s.min_member_cells:
             warn.append("thin_members_below_target")
+        # kept (non-design) cells are imposed after the symmetry / extrusion / overhang maps: check the final part
+        if not self.constraints_met(solid):
+            warn.append("constraint_not_met")
         if reason != "converged":
             warn.append("not_converged_" + reason)
         res = {
@@ -639,14 +664,40 @@ class Genesis:
             "pieces": pieces, "termination": reason, "iterations": len(history), "elapsed_s": elapsed,
             "solver": dict(self.stats), "history": history, "warnings": warn,
         }
+        # maxima over the nodes of the part: empty cells (stiffness e_min) move and heat up without meaning
+        on = np.zeros(self.nn, bool)
+        i, j, k = np.nonzero(solid)
+        for cx, cy, cz in _CORNER:
+            on[node_index(self.shape, i + cx, j + cy, k + cz)] = True
         if self.physics == "elastic":
-            res["max_displacement_m"] = float(max(np.linalg.norm(u.reshape(-1, 3), axis=1).max() for u in us))
+            res["max_displacement_m"] = float(max(np.linalg.norm(u.reshape(-1, 3), axis=1)[on].max() for u in us))
             res["von_mises_max_pa"] = float(self.von_mises(us[0], solid).max())
         else:
-            res["max_temperature_rise_k"] = float(max(u.max() for u in us))
+            res["max_temperature_rise_k"] = float(max(u[on].max() for u in us))
         self.solid_final, self.u_final = solid, us
         self.s.solver_tol = loop_tol
         return res
+
+    def constraints_met(self, solid, unsupported_share=0.01):
+        """The 0/1 part against the manufacturing settings: mirror symmetry, prism, self-supporting (overhang)."""
+        for a in self.s.symmetry:
+            if not np.array_equal(solid, np.flip(solid, a)):
+                return False
+        if self.s.extrusion is not None:
+            a = self.s.extrusion
+            if not np.array_equal(solid, np.broadcast_to(solid.any(axis=a, keepdims=True), self.shape) & self.active):
+                return False
+        if self.s.overhang:
+            ax, d = self.s.overhang
+            s = np.moveaxis(solid, ax, 0)[::-1 if d < 0 else 1]
+            occ = np.moveaxis(self.active, ax, 0)[::-1 if d < 0 else 1].reshape(s.shape[0], -1).any(axis=1)
+            s0 = int(np.argmax(occ))
+            p = np.pad(s, ((0, 0), (1, 1), (1, 1)))
+            below = (p[:-1, 1:-1, 1:-1] | p[:-1, :-2, 1:-1] | p[:-1, 2:, 1:-1] | p[:-1, 1:-1, :-2] | p[:-1, 1:-1, 2:])
+            uns = s[s0 + 1:] & ~below[s0:]
+            if uns.sum() > unsupported_share * max(1, s.sum()):
+                return False
+        return True
 
     def von_mises(self, u, solid):
         """Element-centre von Mises stress of the 0/1 part (a voxel estimate; staircase surfaces overstate peaks)."""

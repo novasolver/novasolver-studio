@@ -700,5 +700,9 @@
   "err.genesis_no_load": "Genesis: 荷重（または熱の入力）がありません。",
   "err.genesis_temperatures": "Genesis: 温度を指定する面は、すべて同じ温度にしてください（放熱先）。",
   "err.genesis_extrusion": "Genesis: この部品は {axis} 方向の押し出し形状にできません。",
-  "err.genesis_no_result": "Genesis の結果がありません。先に Genesis を実行してください。"
+  "err.genesis_no_result": "Genesis の結果がありません。先に Genesis を実行してください。",
+  "genesis.warn.body_loads_ignored": "重力・回転の荷重は Genesis では考慮していません（面の荷重だけで形を求めました）。",
+  "genesis.warn.constraint_not_met": "固定領域（荷重面など）のため、最終形状が作り方・対称の条件を完全には満たしていません。",
+  "err.genesis_load_outside": "Genesis: 対称・押し出しの条件で部品の一部を外したため、荷重の {share} % が材料のない位置になります。条件を見直してください。",
+  "err.genesis_min_member": "Genesis: この解像度で指定できる最小部材の太さは {max_mm} mm までです。解像度を下げるか、値を小さくしてください。"
 }

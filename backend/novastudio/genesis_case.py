@@ -35,7 +35,20 @@ DEFAULTS = {"volume_fraction": 0.3, "cells": 120000, "min_member": None, "symmet
 LIMITS = {"cells": (2000, 1500000), "iterations": (10, 400), "skin_cells": (0, 5)}
 
 
+def _quantity(q, dim: str) -> float:
+    """A {value, unit} (or '5 mm') of the given dimension, in SI; a bare number is refused (its unit is unknown)."""
+    if isinstance(q, str):
+        q = units.parse(q)
+    if not isinstance(q, dict) or not isinstance(q.get("value"), (int, float)) or isinstance(q.get("value"), bool):
+        raise ValueError("not a quantity")
+    if units.dimension(q.get("unit", "-")) != dim:
+        raise ValueError("wrong unit")
+    return float(units.to_si(q))
+
+
 def validate(spec: dict | None, faces: set[str]) -> dict:
+    if spec is not None and not isinstance(spec, dict):
+        raise StudioError("err.genesis_option", 400, option="settings (an object)")
     spec = dict(spec or {})
     unknown = set(spec) - set(DEFAULTS)
     if unknown:
@@ -51,13 +64,15 @@ def validate(spec: dict | None, faces: set[str]) -> dict:
             bad(f"{k} ({lo}..{hi})")
     if s["min_member"] is not None:
         try:
-            if units.to_si(s["min_member"]) <= 0:
-                bad("min_member")
+            ok = _quantity(s["min_member"], "length") > 0
         except Exception:
-            bad("min_member ({value, unit})")
-    if not isinstance(s["symmetry"], list) or any(a not in AXES for a in s["symmetry"]) or len(set(s["symmetry"])) != len(s["symmetry"]):
+            ok = False
+        if not ok:
+            bad("min_member ({value, unit: mm})")
+    if not isinstance(s["symmetry"], list) or any(not isinstance(a, str) or a not in AXES for a in s["symmetry"]) \
+            or len(set(s["symmetry"])) != len(s["symmetry"]):
         bad("symmetry (list of x/y/z)")
-    if s["extrusion"] is not None and s["extrusion"] not in AXES:
+    if s["extrusion"] is not None and (not isinstance(s["extrusion"], str) or s["extrusion"] not in AXES):
         bad("extrusion (x/y/z)")
     if s["overhang"] is not None:
         o = s["overhang"]
@@ -65,13 +80,13 @@ def validate(spec: dict | None, faces: set[str]) -> dict:
             bad("overhang (+z, -x, ...: build direction)")
     if s["extrusion"] is not None and s["overhang"] is not None:
         bad("extrusion and overhang together")
-    if not isinstance(s["keep_faces"], list) or any(f not in faces for f in s["keep_faces"]):
+    if not isinstance(s["keep_faces"], list) or any(not isinstance(f, str) or f not in faces for f in s["keep_faces"]):
         bad("keep_faces (face keys of this case)")
     if not isinstance(s["keep_bc_faces"], bool):
         bad("keep_bc_faces")
     if s["heat_source"] is not None:
         try:
-            units.to_si(s["heat_source"])
+            _quantity(s["heat_source"], "heat_source")
         except Exception:
             bad("heat_source ({value, unit: W/m3})")
     return s
@@ -107,7 +122,9 @@ def sample_faces(nodes, tri, spacing):
     P = nodes[tri[:, :3]]
     edge = np.linalg.norm(P[:, [1, 2, 0]] - P, axis=2).max(axis=1)
     area = 0.5 * np.linalg.norm(np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]), axis=1)
-    n = np.clip(np.ceil(edge / spacing), 1, 24).astype(int)
+    # subdivision from the spacing (a fixed cap left a large mesh triangle as scattered point supports on a fine
+    # grid); 1000 per edge bounds a degenerate input at 500k points per triangle
+    n = np.clip(np.ceil(edge / spacing), 1, 1000).astype(int)
     pts, wts = [], []
     for m in np.unique(n):
         sel = n == m
@@ -231,6 +248,8 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
             for c in range(3):
                 np.add.at(load[:, c], nd.ravel(), (ww * fmesh[used, c][:, None]).ravel())
         info["applied_n"] = fmesh.sum(axis=0).tolist()
+        if spec["heat_source"] is not None:
+            raise StudioError("err.genesis_option", 400, option="heat_source (heat cases only)")
         if case.get("physics", {}).get("gravity", {}).get("enabled") or case.get("physics", {}).get("rotation", {}).get("enabled"):
             info["ignored"] = ["body_loads"]
         if not all(fixed[:, c].any() for c in range(3)):
@@ -289,7 +308,12 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
         keep &= active
     if spec["extrusion"] is not None:
         a = AXES[spec["extrusion"]]
-        prism = np.broadcast_to(active.all(axis=a, keepdims=True), shape)
+        # the grid pads the part: a prism is a full column over the part's extent along the axis, not the grid's
+        occ = active.any(axis=tuple(i for i in range(3) if i != a))
+        span = np.zeros(shape[a], bool)
+        span[np.argmax(occ):len(occ) - np.argmax(occ[::-1])] = True
+        full = np.compress(span, active, axis=a).all(axis=a, keepdims=True)       # columns filled over the span
+        prism = np.broadcast_to(full, shape) & span.reshape([-1 if i == a else 1 for i in range(3)])
         info["extrusion_trimmed"] = float((active & ~prism).sum() / active.sum())
         if prism.sum() < 0.5 * active.sum():
             raise StudioError("err.genesis_extrusion", 400, axis=spec["extrusion"])
@@ -297,6 +321,16 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
         keep &= active
     if spec["overhang"]:
         info["build_direction"] = spec["overhang"]
+    # loads and heat on grid nodes that no cell holds any more (trimmed by symmetry / extrusion) would be dropped
+    # by the solver without a word: refuse instead
+    live = np.zeros(nn, bool)
+    en = gx.Level(grid["shape"], h, 1, np.zeros((8, 8)), np.zeros(nn, bool)).enodes_all
+    live[np.unique(en[np.nonzero(active.ravel())[0]])] = True
+    lost = float(np.abs(load[~live]).sum() / max(np.abs(load).sum(), 1e-300))
+    if lost > 1e-6:
+        raise StudioError("err.genesis_load_outside", 400, share=f"{100 * lost:.3g}")
+    if not all(fixed[live][:, c].any() for c in range(dpn)):
+        raise StudioError("err.genesis_supports", 400)
 
     g = gx.Genesis(grid["shape"], h, physics=physics, E=E, nu=nu, active=active, solid=keep,
                    fixed=fixed.ravel(), loads=load.ravel(), origin=origin)
@@ -306,7 +340,10 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
     # on that case (6 %) but made a 32x12x16 one worse (32 % against 23 %), so it is not used here
     r_cells, target, erode = 1.5, None, None
     if spec["min_member"] is not None:
-        target = units.to_si(spec["min_member"]) / h
+        target = _quantity(spec["min_member"], "length") / h
+        if target > gx.MAX_FILTER_CELLS:
+            # the filter is a direct convolution: its cost grows with r^3 (r = 10 cells: 1.4 s a pass, ~35 passes a step)
+            raise StudioError("err.genesis_min_member", 400, max_mm=f"{1e3 * gx.MAX_FILTER_CELLS * h:.3g}")
         r_cells = max(1.5, target)
     settings = gx.Settings(volume_fraction=float(spec["volume_fraction"]), filter_radius=float(r_cells),
                            eta_erode=erode, min_member_cells=target,
@@ -331,6 +368,8 @@ def run(req: dict, jd: Path, prog) -> dict:
     stop = jd / "STOP"
     r = g.optimize(setup["settings"], progress=lambda key, frac, args: prog(key, 0.05 + 0.85 * frac, args),
                    cancelled=stop.exists)
+    if "body_loads" in setup["info"].get("ignored", []):
+        r["warnings"].insert(0, "body_loads_ignored")        # gravity / rotation are not in the Genesis loads
     prog("genesis.surface", 0.93)
     P, F = g.surface()
     chk = gx.surface_checks(P, F)
