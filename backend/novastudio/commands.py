@@ -731,14 +731,17 @@ def genesis_result(case_id: str, run_id: str | None = None, lang: str = "ja") ->
     r, L = g["result"], lang_of(lang)
     cards = [{"key": "volume_fraction", "label": t("genesis.card.volume_fraction", L), "value": round(100 * r["volume_fraction_binary"], 1), "unit": "%"},
              {"key": "min_member", "label": t("genesis.card.min_member", L), "value": round(1e3 * r["min_member_m"], 3), "unit": "mm"}]
-    if g["physics"] == "elastic":
+    # load (or heat) not reaching the supports: the stiffness and temperature figures belong to a part held only by the
+    # void's residual stiffness (seen: compliance 258,500 J, max displacement 296,300 mm), so they are not shown
+    carried = not {"load_not_carried", "heat_not_carried"} & set(r["warnings"])
+    if carried and g["physics"] == "elastic":
         cards.insert(0, {"key": "compliance", "label": t("genesis.card.compliance", L), "value": float(f"{r['objective_binary']:.4g}"), "unit": "J"})
         cards.append({"key": "max_disp", "label": t("genesis.card.max_disp", L), "value": float(f"{1e3 * r['max_displacement_m']:.4g}"), "unit": "mm"})
-    else:
+    elif carried:
         cards.insert(0, {"key": "temperature_rise", "label": t("genesis.card.temperature_rise", L),
                          "value": float(f"{r['max_temperature_rise_k']:.4g}"), "unit": "K"})
     h0 = g["history"][0]["objective"] if g["history"] else None
-    return {"case_id": case_id, "run_id": jd.name, "physics": g["physics"], "cards": cards,
+    return {"case_id": case_id, "run_id": jd.name, "physics": g["physics"], "cards": cards, "load_carried": carried,
             "converged": r["termination"] == "converged", "termination": r["termination"],
             "iterations": r["iterations"], "elapsed_s": round(r["elapsed_s"], 1),
             "kept": r.get("stiffness_kept"),

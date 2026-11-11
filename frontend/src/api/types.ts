@@ -236,6 +236,7 @@ export interface GenesisResult {
   note: string;
   stale: boolean;
   revision?: number; // case revision the run was made from: the panel compares it with the open case
+  load_carried?: boolean; // false: the load (heat) does not reach the supports; stiffness/temperature cards left out
 }
 
 export interface GenesisSettings {

@@ -20,7 +20,7 @@ def section(g):
     """(field 2D, axes (a, b, c), span lo/hi along a in cells) of a finished extruded design."""
     a = g.s.extrusion
     b, c = [i for i in range(3) if i != a]
-    f = gx.coarse_field(g)
+    f = gx.surface_field(g)                                    # the STL's field: analysed cells >= 0.6, outside <= 0.4
     occ = g.active.any(axis=(b, c))
     lo, hi = int(np.argmax(occ)), int(len(occ) - np.argmax(occ[::-1]))
     sec = np.moveaxis(f, a, 0)[lo:hi].mean(axis=0)            # (n_b, n_c)
@@ -134,11 +134,20 @@ def write_step(g, path, tol_cells=0.5):
     """STEP of the extruded part. Returns {"volume_m3", "voxel_volume_m3", "faces", "polygons", "vertices"}."""
     import gmsh
     sec, (a, b, c), (lo, hi) = section(g)
-    voxel_area = float(np.moveaxis(g.solid_final, a, 0)[lo:hi].mean(axis=0).sum())
-    level = level_for_area(sec, voxel_area)
+    vsec = np.moveaxis(g.solid_final, a, 0)[lo:hi].mean(axis=0)
+    voxel_area = float(vsec.sum())
+    # between 0.4 and 0.6 the contour keeps every analysed cell and no outside one (surface_field), so matching the
+    # area cannot cut a thin member off (with the old field a level of 0.53 removed a one-cell bridge)
+    level = level_for_area(sec, voxel_area, lo=0.4, hi=0.6)
     polys = polygons(sec, tol_cells, level=level)
     if not polys:
         raise ValueError("empty section")
+    from scipy import ndimage
+    lab, n = ndimage.label(vsec > 0.5)                         # face-connected pieces of the analysed section
+    size = np.bincount(lab.ravel())[1:]
+    # polygons() drops pieces under about 2 cells; more polygons than pieces = a member cut through, fewer = one lost
+    if not int(np.sum(size >= 3)) <= len(polys) <= n:
+        raise ValueError(f"STEP section has {len(polys)} pieces, the analysed part {n}")
     mm = 1e3
     h = g.h
     gmsh.initialize(["", "-nopopup"])

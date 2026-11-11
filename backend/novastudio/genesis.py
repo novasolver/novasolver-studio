@@ -981,29 +981,36 @@ class Genesis:
         filter), sampled at the grid nodes; marching tetrahedra on the Kuhn split of every cell. Outside the grid the
         field is 0, so the surface is always closed."""
         if field is None:
-            # projected densities restricted to the cleaned part: sharp (beta continuation) and without floating bits.
-            # The densities are remapped so the threshold the 0/1 part was cut at sits at the 0.5 level, and cells of
-            # the part stay at or above 0.6 while the cells around it stay at or below 0.4: the surface then passes
-            # near the faces of the analysed cells. Extracting at 0.5 with a lowered threshold (0.35) put members cut
-            # from densities 0.35-0.5 on their cell centres: a 48x1x12 cantilever kept 59 % of the analysed volume
-            t = min(max(float(getattr(self, "threshold", 0.5) or 0.5), 1e-3), 1 - 1e-3)
-            m = np.where(self.rho <= t, 0.5 * self.rho / t, 0.5 + 0.5 * (self.rho - t) / (1 - t))
-            # A part cell next to an outside cell of value n is raised to 1 - n so the level crosses on the face or just
-            # beyond it, never inside the cell (next to empty space, outside the grid included, that is 1)
-            S = self.solid_final
-            grow = ndimage.binary_dilation(S, iterations=1)
-            out = np.where(grow & ~S, np.minimum(m, 0.4), 0.0)
-            p = np.pad(np.where(S, np.inf, out), 1)
-            nmin = np.full(self.shape, np.inf)
-            for a in range(3):
-                for d in (0, 2):
-                    sl = [slice(1, -1)] * 3
-                    sl[a] = slice(d, d + self.shape[a])
-                    nmin = np.minimum(nmin, p[tuple(sl)])
-            field = np.where(S, np.clip(np.maximum(np.maximum(m, 0.6), 1.0 - nmin), 0.0, 1.0), out)
-            field = np.where(self.solid, 1.0, field)
+            field = surface_field(self)
         # sample points = cell centres (dual grid) with a ring of zeros: the 0.5 level then lies on the voxel faces
         return marching_tets(np.pad(field, 1), self.h, self.origin - 0.5 * self.h, level)
+
+
+def surface_field(g):
+    """Cell field whose 0.5 level is the surface of the finished part, for the STL and the STEP section alike.
+
+    Projected densities restricted to the cleaned part: sharp (beta continuation) and without floating bits. The
+    densities are remapped so the threshold the 0/1 part was cut at sits at the 0.5 level, and cells of the part stay
+    at or above 0.6 while the cells around it stay at or below 0.4, so any level in 0.4-0.6 keeps every analysed cell
+    and no outside one. Extracting at 0.5 with a lowered threshold (0.35) put members cut from densities 0.35-0.5 on
+    their cell centres: a 48x1x12 cantilever kept 59 % of the analysed volume, and the STEP section lost a one-cell
+    bridge between two blocks (second opinion 2026-11-12)."""
+    t = min(max(float(getattr(g, "threshold", 0.5) or 0.5), 1e-3), 1 - 1e-3)
+    m = np.where(g.rho <= t, 0.5 * g.rho / t, 0.5 + 0.5 * (g.rho - t) / (1 - t))
+    # A part cell next to an outside cell of value n is raised to 1 - n so the level crosses on the face or just
+    # beyond it, never inside the cell (next to empty space, outside the grid included, that is 1)
+    S = g.solid_final
+    grow = ndimage.binary_dilation(S, iterations=1)
+    out = np.where(grow & ~S, np.minimum(m, 0.4), 0.0)
+    p = np.pad(np.where(S, np.inf, out), 1)
+    nmin = np.full(S.shape, np.inf)
+    for a in range(3):
+        for d in (0, 2):
+            sl = [slice(1, -1)] * 3
+            sl[a] = slice(d, d + S.shape[a])
+            nmin = np.minimum(nmin, p[tuple(sl)])
+    field = np.where(S, np.clip(np.maximum(np.maximum(m, 0.6), 1.0 - nmin), 0.0, 1.0), out)
+    return np.where(g.solid, 1.0, field)
 
 
 def marching_tets(V, h, origin, level):
@@ -1241,6 +1248,12 @@ def mirror_half(g, axis, settings):
     empty cells on the far side so the multigrid keeps as many levels as the whole grid."""
     if settings.overhang or not mirror_symmetric(g, axis):
         return None                         # the overhang filter's layer-by-layer support has no mirror form here
+    carry = getattr(g, "carry_nodes", None)  # heat put in on faces (clean() checks it reaches the part)
+    if carry is not None:
+        cm = np.zeros(g.nn, bool)
+        cm[carry] = True
+        if not np.array_equal(_nodes(cm, g), np.flip(_nodes(cm, g), axis)):
+            return None
     n = g.shape[axis]
     half = n // 2
     m = 1
@@ -1276,6 +1289,8 @@ def mirror_half(g, axis, settings):
                  e_min_ratio=g.e_min / g.E, plate_from=cells(g.plate_from))
     gh._mirror = (axis, pad, half)
     gh.mirror_axes = tuple(g.mirror_axes) + (axis,)
+    if carry is not None:
+        gh.carry_nodes = np.nonzero(nodes(cm).ravel())[0]
     return gh
 
 
@@ -1342,6 +1357,11 @@ def optimize_symmetric(g, s: Settings, progress=lambda *_: None, cancelled=lambd
         r["warnings"] = [w for w in r["warnings"] if w != "thin_members_below_target"]
         if thin < 0.7 * s.min_member_cells:
             r["warnings"].append("thin_members_below_target")
+    # the load / heat path checked again on the whole part (the half model's check is the same by symmetry; this keeps
+    # it true if a derived problem ever loses the load provenance)
+    lost = "load_not_carried" if g.physics == "elastic" else "heat_not_carried"
+    if lost not in r["warnings"] and not g.clean(solid)[1]["loads_carried"]:
+        r["warnings"].append(lost)
     if "constraint_not_met" in r["warnings"] and g.constraints_met(solid):
         r["warnings"].remove("constraint_not_met")
     elif "constraint_not_met" not in r["warnings"] and not g.constraints_met(solid):
@@ -1430,6 +1450,8 @@ def refine_problem(coarse, fine, settings, band=3):
     g = Genesis(fine.shape, fine.h, physics=fine.physics, E=fine.E, nu=fine.nu, active=fine.active, solid=solid,
                 void=void, fixed=fine.fixed, loads=fine.loads, weights=fine.weights, origin=fine.origin,
                 plate_from=fine.plate_from)
+    if getattr(fine, "carry_nodes", None) is not None:
+        g.carry_nodes = fine.carry_nodes                 # same grid: the heated face nodes are the same
     m = g.active & ~g.void
     target = float(part[m].mean())
     return g, np.clip(field, 0.0, 1.0), part, target

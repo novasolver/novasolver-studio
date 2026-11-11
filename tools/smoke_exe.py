@@ -18,7 +18,7 @@ from mcp.client.stdio import stdio_client
 sys.stdout.reconfigure(encoding="utf-8")
 TIMEOUT_S = 1500
 LARGE = ("cantilever", "cantilever-modal", "thermal-block")     # structural, eigenvalue and scalar solves at the fine mesh
-EXPECTED_TOOLS = 35
+EXPECTED_TOOLS = 37                                             # 35 + run_genesis, genesis_result
 
 
 async def check(exe: str, folder: str) -> None:
