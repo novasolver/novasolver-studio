@@ -1,4 +1,4 @@
-﻿# Second opinion: Codex reviews NovaSolver Studio read-only and writes studio/reviews/<date>_<label>.codex.md
+﻿﻿# Second opinion: Codex reviews NovaSolver Studio read-only and writes studio/reviews/<date>_<label>.codex.md
 # Usage:  powershell -ExecutionPolicy Bypass -File tools\second_opinion.ps1 -Since v0.2.1
 #         powershell -ExecutionPolicy Bypass -File tools\second_opinion.ps1 -Full
 #         add -DeepSeekFirst to run tools\ds_review.py (deepseek-reasoner, cheap) first; Codex then verifies its findings
@@ -15,8 +15,8 @@ $label = if ($Full) { 'full' } else { "since-$Since" }
 $date = Get-Date -Format 'yyyy-MM-dd'
 $out = Join-Path $root "reviews\${date}_$label.codex.md"
 New-Item -ItemType Directory -Force (Join-Path $root 'reviews') | Out-Null
-$scope = if ($Full) { 'the whole code base under backend/ and frontend/src/ (skip node_modules, build, .venv, marketing).' }
-         else { "the changes since $Since (run: git diff $Since..HEAD -- backend frontend/src) and the code they call." }
+$scope = if ($Full) { 'the whole code base under backend/, frontend/src/ and integrations/ (skip node_modules, build, .venv, marketing).' }
+         else { "the changes since $Since (run: git diff $Since..HEAD -- backend frontend/src integrations) and the code they call." }
 $hint = ''
 if ($DeepSeekFirst -and $Since) {
     $env:DEEPSEEK_MODEL = 'deepseek-reasoner'
