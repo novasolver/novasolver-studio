@@ -108,6 +108,10 @@ def send():
     em.execute(em.createSTEPExportOptions(str(step), comp))      # the STEP carries its units; Studio reads them
     cid = L.send(step, "structural", lang())
     set_attr(d, case=cid, sha256=L.sha256(step), file=step.name)
+    if not cid:                                    # Studio was starting: the case id of an earlier send no longer fits
+        old = d.attributes.itemByName(GROUP, "case")
+        if old:
+            old.deleteMe()
     adsk.core.Application.log(f"NovaSolver Studio: {tr('opened', cid=cid) if cid else tr('opening')}")
 
 

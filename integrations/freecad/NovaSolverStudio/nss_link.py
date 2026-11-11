@@ -141,12 +141,14 @@ def list_cases(port):
 
 
 def find_cases(port, digest=None, filename=None, case_id=None):
-    """Cases made from this file, newest first: the case id stored on the document, then the same content hash
-    (Studio 0.7.7+ lists it), then the same file name."""
+    """Cases made from this file, newest first: the case id stored on the document and the cases with the same
+    content hash (Studio 0.7.7+ lists it). Only when neither is found, the cases with the same file name: an edited
+    part sent again under its old name must not pick up the Genesis result of the earlier geometry."""
     cases = list_cases(port)
     out = [c for c in cases if case_id and c["case_id"] == case_id]
     out += [c for c in cases if digest and c.get("source_sha256") == digest and c not in out]
-    out += [c for c in cases if filename and c.get("source_file") == filename and c not in out]
+    if not out:
+        out = [c for c in cases if filename and c.get("source_file") == filename]
     return out
 
 

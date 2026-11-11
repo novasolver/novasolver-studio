@@ -112,6 +112,7 @@ def save(case: dict, bump: bool = True) -> dict:
     d = case_dir(case["case_id"])
     if bump:
         old = load(case["case_id"])
+        (d / "revisions").mkdir(exist_ok=True)     # an empty folder can be lost (cleanup, sync tools)
         _write_json(d / "revisions" / f"{old['revision']}.json", old)
         case["revision"] = old["revision"] + 1
     _write_json(d / "case.json", case)

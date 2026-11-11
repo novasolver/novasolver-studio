@@ -112,6 +112,13 @@ class SendToStudio:
             report(str(e), error=True)
             return
         _set_meta(doc, **{META_CASE: cid, META_SHA: L.sha256(step), META_FILE: step.name})
+        if not cid:                                 # Studio was starting: the case id of an earlier send no longer fits
+            try:
+                m = _meta(doc)
+                m.pop(META_CASE, None)
+                doc.Meta = m
+            except Exception:
+                pass
         FreeCAD.Console.PrintMessage(f"NovaSolver Studio: {tr('opened', cid=cid) if cid else tr('opening')}\n")
 
 

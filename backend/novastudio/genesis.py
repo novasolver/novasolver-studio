@@ -783,7 +783,12 @@ class Genesis:
         sup = pieces_touching(fixed_nodes)
         keep = sup
         carried = True
-        if self.physics == "elastic":
+        if self.physics == "thermal":
+            # heat put in on faces must reach the part: a heated region cut off (or removed) left its input in the
+            # near-empty cells, where it showed 775 K while the part reported 2.7 K (no warning). A heat source
+            # spread over the design space is not checked (carry_nodes leaves it out)
+            loaded_nodes = getattr(self, "carry_nodes", np.zeros(0, int))
+        if self.physics == "elastic" or len(loaded_nodes):
             ld = pieces_touching(loaded_nodes)
             keep = sup & ld if sup & ld else sup
             # every loaded node must sit on a kept piece
@@ -880,6 +885,10 @@ class Genesis:
             c_bin, us = best[6], best[4]
             solid, pieces, self.threshold, bridged = best[2], best[3], -best[1], best[5]
         self.bridged = bridged
+        if not solid.any():
+            # nothing left after the cut and the clean-up (a thermal block at 3-5 % of its volume): no part to report
+            from .store import StudioError
+            raise StudioError("err.genesis_empty", 400)
         # reference: the whole design space filled with material (the part as it was). The share of its stiffness
         # (or heat conductance) the optimised part keeps is the honest figure; the grey SIMP start is not a design
         Efull = np.where(self.active & ~self.void, self.E, 0.0)
@@ -888,7 +897,7 @@ class Genesis:
         thin = self.min_member(solid)
         warn = []
         if not pieces["loads_carried"]:
-            warn.append("load_not_carried")
+            warn.append("load_not_carried" if self.physics == "elastic" else "heat_not_carried")
         if self.threshold < 0.5:
             warn.append("threshold_lowered")
         if getattr(self, "beta_capped", False):
@@ -972,10 +981,26 @@ class Genesis:
         filter), sampled at the grid nodes; marching tetrahedra on the Kuhn split of every cell. Outside the grid the
         field is 0, so the surface is always closed."""
         if field is None:
-            # projected densities restricted to the cleaned part: sharp (beta continuation) and without floating bits
-            grow = ndimage.binary_dilation(self.solid_final, iterations=1)
-            field = np.where(grow, self.rho, 0.0)
-            field = np.where(self.solid_final & (field < 0.5), 0.5 + 1e-3, field)
+            # projected densities restricted to the cleaned part: sharp (beta continuation) and without floating bits.
+            # The densities are remapped so the threshold the 0/1 part was cut at sits at the 0.5 level, and cells of
+            # the part stay at or above 0.6 while the cells around it stay at or below 0.4: the surface then passes
+            # near the faces of the analysed cells. Extracting at 0.5 with a lowered threshold (0.35) put members cut
+            # from densities 0.35-0.5 on their cell centres: a 48x1x12 cantilever kept 59 % of the analysed volume
+            t = min(max(float(getattr(self, "threshold", 0.5) or 0.5), 1e-3), 1 - 1e-3)
+            m = np.where(self.rho <= t, 0.5 * self.rho / t, 0.5 + 0.5 * (self.rho - t) / (1 - t))
+            # A part cell next to an outside cell of value n is raised to 1 - n so the level crosses on the face or just
+            # beyond it, never inside the cell (next to empty space, outside the grid included, that is 1)
+            S = self.solid_final
+            grow = ndimage.binary_dilation(S, iterations=1)
+            out = np.where(grow & ~S, np.minimum(m, 0.4), 0.0)
+            p = np.pad(np.where(S, np.inf, out), 1)
+            nmin = np.full(self.shape, np.inf)
+            for a in range(3):
+                for d in (0, 2):
+                    sl = [slice(1, -1)] * 3
+                    sl[a] = slice(d, d + self.shape[a])
+                    nmin = np.minimum(nmin, p[tuple(sl)])
+            field = np.where(S, np.clip(np.maximum(np.maximum(m, 0.6), 1.0 - nmin), 0.0, 1.0), out)
             field = np.where(self.solid, 1.0, field)
         # sample points = cell centres (dual grid) with a ring of zeros: the 0.5 level then lies on the voxel faces
         return marching_tets(np.pad(field, 1), self.h, self.origin - 0.5 * self.h, level)

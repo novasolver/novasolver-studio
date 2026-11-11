@@ -184,8 +184,24 @@ def precheck(case: dict, lang: str | None = None) -> str:
             from .i18n import t
             bad = [t(f"role.{r}", lang) for r in bad]
         raise StudioError("err.genesis_scope", 400, what=", ".join(bad))
+    def scope(key, english):
+        if lang:
+            from .i18n import t
+            return t(f"genesis.scope.{key}", lang)
+        return english
     if case.get("contacts") and any(c.get("type", "bonded") != "bonded" for c in case["contacts"].values()):
         raise StudioError("err.genesis_scope", 400, what="contact")
+    # contact pairs join separate surfaces (sliding, separating, or bonded across a gap); the voxel grid would fuse
+    # them into one continuum (hertz-cylinder passed the check before)
+    if case.get("contact_pairs"):
+        raise StudioError("err.genesis_scope", 400, what=scope("contact_pairs", "contact pairs"))
+    if physics == "elastic":
+        # thermal expansion loads are not in the Genesis loads: a 300 degC uniform load gave the same shape as none
+        tl = case.get("physics", {}).get("thermal_load") or {}
+        if isinstance(tl, str):
+            tl = {"mode": tl}
+        if tl.get("mode", "none") != "none":
+            raise StudioError("err.genesis_scope", 400, what=scope("thermal_load", "thermal load (thermal expansion)"))
     if physics == "thermal":
         temps = set()
         for b in case["boundaries"].values():
@@ -318,6 +334,9 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
                 c, nd, ww = trilinear(grid, P)
                 np.add.at(load[:, 0], nd.ravel(), (ww * (q * w)[:, None]).ravel())
             info["faces"][face] = b["role"]
+        # nodes whose heat must reach the part: the heat-flux faces (a heat source over the whole design space is
+        # spread over cells that may be removed, so it is not part of this check)
+        carry = np.nonzero(load[:, 0] != 0)[0]
         if spec["heat_source"] is not None:
             qv = units.to_si(spec["heat_source"])
             en = gx.Level(grid["shape"], h, 1, np.zeros((8, 8)), np.zeros(nn, bool)).enodes_all
@@ -385,6 +404,8 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
 
     g = gx.Genesis(grid["shape"], h, physics=physics, E=E, nu=nu, active=active, solid=keep,
                    fixed=fixed.ravel(), loads=load.ravel(), origin=origin, plate_from=body)
+    if physics == "thermal":
+        g.carry_nodes = carry
     # a requested thinnest member m: filter radius m cells. Measured on a 48x16x24 cantilever at 30 %: radius 3
     # left 17 % of the volume thinner than 3 cells, radius 1.5 left 46 %. The filter does not guarantee the size;
     # the result is measured and the warning reports members below 70 % of m. The eroded (robust) design helped
@@ -453,7 +474,7 @@ def refine(case, m, spec, g, r, prog, cancelled):
     info.update(grid=list(f_shape), cell_m=f_h, cells_active=int(f_active.sum()), cells_design=int(gb.design.sum()),
                 objective_before=c_ref, objective_after=rf["objective_binary"], volume_before=vol_ref, volume_after=vol,
                 iterations=rf["iterations"], termination=rf["termination"], elapsed_s=time.time() - t0)
-    bad_w = {"load_not_carried", "constraint_not_met", "non_design_region_detached"}
+    bad_w = {"load_not_carried", "heat_not_carried", "constraint_not_met", "non_design_region_detached"}
     # better = stiffer (lower compliance) and stiffer per volume; the 0/1 cut may add a little material (up to
     # 1.5 points: a 6k-cell extruded cantilever came out 4.7 times stiffer with 1.1 points more)
     c_new = rf["objective_binary"]
@@ -523,6 +544,7 @@ def run(req: dict, jd: Path, prog) -> dict:
             step = genesis_step.write_step(g, jd / "part.step")
         except Exception as e:                      # the STL is the result; the STEP is a convenience
             step = {"error": f"{type(e).__name__}: {e}"[:300]}
+            (jd / "part.step").unlink(missing_ok=True)   # a file that failed its check is not offered
     # per-vertex value for the viewer: density-weighted stress (structural) or temperature (thermal) of the nearest cell
     cell = np.clip(np.floor((P - g.origin) / g.h).astype(int), 0, np.array(g.shape) - 1)
     if g.physics == "elastic":

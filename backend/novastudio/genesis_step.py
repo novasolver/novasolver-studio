@@ -170,9 +170,17 @@ def write_step(g, path, tol_cells=0.5):
         occ.synchronize()
         nf = len(gmsh.model.getEntities(2))
         gmsh.write(str(path))
+        # the written file read back: its solids must hold the polygons' volume. OCC's in-memory mass of the
+        # extruded surfaces counted the holes as material, the file did not (ring 240 mm3 in gmsh and FreeCAD 1.1.4)
+        gmsh.model.add("check")
+        back = gmsh.model.occ.importShapes(str(path))
+        gmsh.model.occ.synchronize()
+        v_file = sum(gmsh.model.occ.getMass(dim, t) for dim, t in back if dim == 3) / mm ** 3
     finally:
         gmsh.finalize()
-    # the prism's volume from its polygons (exact); OCC's in-memory mass counted the holes as material
+    # the prism's volume from its polygons (exact)
     A = sum(area(o) + sum(area(H) for H in hs) for o, hs in polys)
+    if abs(v_file - A * (hi - lo) * h ** 3) > 0.01 * A * (hi - lo) * h ** 3:
+        raise ValueError(f"STEP solid volume {v_file:.6g} m3 differs from its section {A * (hi - lo) * h ** 3:.6g} m3")
     return {"volume_m3": A * (hi - lo) * h ** 3, "level": level, "voxel_volume_m3": float(g.solid_final.sum()) * h ** 3, "faces": nf,
             "polygons": len(polys), "vertices": nv}

@@ -127,7 +127,7 @@ def _fake_fusion(monkeypatch, tmp_path):
             self.d = {}
 
         def itemByName(self, g, n):
-            return NS(value=self.d[(g, n)]) if (g, n) in self.d else None
+            return NS(value=self.d[(g, n)], deleteMe=lambda: self.d.pop((g, n))) if (g, n) in self.d else None
 
         def add(self, g, n, v):
             self.d[(g, n)] = v
@@ -206,6 +206,12 @@ def test_fusion_addin_send_and_import(studio, tmp_path, monkeypatch):
     assert L.CASE_ID.fullmatch(cid) and addin.get_attr(design, "file") == "Bracket_1.step"
     addin.import_result()
     assert f"{cid} has no Genesis result" in log["messages"][-1]
+    # Studio still starting (no case id back): the earlier case id must not stay on the design
+    real_send = addin.L.send
+    monkeypatch.setattr(addin.L, "send", lambda *a: None)
+    addin.send()
+    assert addin.get_attr(design, "case") is None and addin.get_attr(design, "file") == "Bracket_1.step"
+    monkeypatch.setattr(addin.L, "send", real_send)
     for settings, kind in (({"cells": 3000, "iterations": 10, "extrusion": "y"}, "step"), ({"cells": 3000, "iterations": 10}, "mesh")):
         g = C.create_case("cantilever", {}, "en")["case"]["case_id"]
         C.run_genesis(g, settings, wait_s=600, lang="en")

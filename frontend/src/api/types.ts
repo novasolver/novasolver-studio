@@ -235,6 +235,7 @@ export interface GenesisResult {
   symmetry_hint?: string | null;
   note: string;
   stale: boolean;
+  revision?: number; // case revision the run was made from: the panel compares it with the open case
 }
 
 export interface GenesisSettings {

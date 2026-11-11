@@ -124,6 +124,9 @@ function GenesisResultView() {
   const t = useT();
   const g = useStore((s) => s.genesis)!;
   const cid = useStore((s) => s.payload?.case.case_id)!;
+  // an edit, undo or a change from the AI after the run: compare with the open revision (the fetched flag is older)
+  const rev = useStore((s) => s.payload?.case.revision);
+  const stale = g.revision != null && rev != null ? g.revision !== rev : g.stale;
   return (
     <div className="mt-5">
       <div className="flex items-baseline justify-between">
@@ -143,7 +146,7 @@ function GenesisResultView() {
       )}
       {g.refine && <p className={`prose-ui mt-1 text-label ${g.refine.accepted ? "text-fg-2" : "text-fg-3"}`}>{g.refine.message}</p>}
       {g.symmetry_hint && <p className="prose-ui mt-1 text-label text-fg-2">{g.symmetry_hint}</p>}
-      {g.stale && <p className="prose-ui mt-1 text-label text-orange">{t("genesis.stale")}</p>}
+      {stale && <p className="prose-ui mt-1 text-label text-orange">{t("genesis.stale")}</p>}
       {g.warnings.map((w) => (
         <p key={w.key} className="prose-ui mt-1 text-label text-orange">{w.message}</p>
       ))}

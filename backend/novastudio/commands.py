@@ -753,7 +753,7 @@ def genesis_result(case_id: str, run_id: str | None = None, lang: str = "ja") ->
             "refine": _refine_note(r.get("refine"), g["physics"], L),
             "symmetry_hint": (t("genesis.hint.symmetry", L, axes=", ".join(a.upper() for a in g["setup"]["symmetric_unused"]))
                               if g["setup"].get("symmetric_unused") and not g["spec"].get("overhang") else None),
-            "note": t("genesis.note.verify", L), "stale": g["revision"] != store.load(case_id)["revision"]}
+            "note": t("genesis.note.verify", L), "revision": g["revision"], "stale": g["revision"] != store.load(case_id)["revision"]}
 
 
 def _refine_note(info: dict | None, physics: str, L: str) -> dict | None:
