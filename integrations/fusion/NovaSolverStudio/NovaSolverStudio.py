@@ -63,8 +63,7 @@ def lang():
         u = app().preferences.generalPreferences.userLanguage
         if u == adsk.core.UserLanguages.JapaneseLanguage:
             return "ja"
-        if u in (getattr(adsk.core.UserLanguages, "ChineseSimplifiedLanguage", -1),
-                 getattr(adsk.core.UserLanguages, "ChineseLanguage", -1)):
+        if u == adsk.core.UserLanguages.ChinesePRCLanguage:      # simplified Chinese (defs/adsk/core.py)
             return "zh"
     except Exception:
         pass
@@ -109,7 +108,7 @@ def send():
     em.execute(em.createSTEPExportOptions(str(step), comp))      # the STEP carries its units; Studio reads them
     cid = L.send(step, "structural", lang())
     set_attr(d, case=cid, sha256=L.sha256(step), file=step.name)
-    app().log(f"NovaSolver Studio: {tr('opened', cid=cid) if cid else tr('opening')}")
+    adsk.core.Application.log(f"NovaSolver Studio: {tr('opened', cid=cid) if cid else tr('opening')}")
 
 
 def _choose(cases):
@@ -124,9 +123,11 @@ def _choose(cases):
 def _insert(d, comp, path, kind, label):
     if kind == "step":
         im = app().importManager
-        im.importToTarget(im.createSTEPImportOptions(str(path)), comp)   # written in millimetres
-        occ = comp.occurrences.item(comp.occurrences.count - 1)
-        occ.component.name = label
+        n = comp.occurrences.count
+        if not im.importToTarget(im.createSTEPImportOptions(str(path)), comp):   # written in millimetres
+            raise RuntimeError("Fusion could not import the STEP file")
+        if comp.occurrences.count > n:                                     # STEP comes in as a new component
+            comp.occurrences.item(comp.occurrences.count - 1).component.name = label
         return
     units = adsk.fusion.MeshUnits.MeterMeshUnit                        # Studio's STL is in metres, part coordinates
     if d.designType == adsk.fusion.DesignTypes.ParametricDesignType:
@@ -191,7 +192,7 @@ class _Run(adsk.core.CommandEventHandler):
         try:
             self.fn()
         except Exception as e:
-            app().log(traceback.format_exc())
+            adsk.core.Application.log(traceback.format_exc())
             say(str(e))
 
 

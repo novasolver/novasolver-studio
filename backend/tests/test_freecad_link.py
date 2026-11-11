@@ -176,10 +176,10 @@ def _fake_fusion(monkeypatch, tmp_path):
             commandDefinitions=Defs(), workspaces=NS(itemById=lambda i: NS(toolbarPanels=NS(itemById=lambda j: panel))))
     app = NS(userInterface=ui, activeProduct=design, log=lambda m: None,
              importManager=NS(createSTEPImportOptions=lambda p: p, importToTarget=import_to),
-             preferences=NS(generalPreferences=NS(userLanguage=0)))
+             preferences=NS(generalPreferences=NS(userLanguage=3)))
     adsk = types.ModuleType("adsk")
-    adsk.core = NS(Application=NS(get=lambda: app), CommandEventHandler=Handler, CommandCreatedEventHandler=Handler,
-                   UserLanguages=NS(JapaneseLanguage=1, ChineseSimplifiedLanguage=2))
+    adsk.core = NS(Application=NS(get=lambda: app, log=lambda *a: None), CommandEventHandler=Handler, CommandCreatedEventHandler=Handler,
+                   UserLanguages=NS(JapaneseLanguage=8, ChinesePRCLanguage=0))
     adsk.fusion = NS(Design=NS(cast=lambda p: p), MeshUnits=NS(MeterMeshUnit="metre"),
                      DesignTypes=NS(ParametricDesignType="param"))
     for name, mod in (("adsk", adsk), ("adsk.core", adsk.core), ("adsk.fusion", adsk.fusion)):
