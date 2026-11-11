@@ -626,6 +626,11 @@ class Genesis:
         # previous step is restored and beta stays there
         snap, stage_best, beta_cap = None, math.inf, s.beta_max
         self.beta_capped = False
+        # OC can fall into a two-step cycle (cantilever extruded along y, 40k cells: 3.7 / 6.5 / 3.7 ... at beta 16 for
+        # 50 steps, and the run stopped on a 6.5). A cycle halves the move limit; each beta step keeps its best design,
+        # which is what a step hands on and what the run returns
+        base_move = lambda: s.move if self.beta < 8 else s.move / 2
+        move, best_z = base_move(), z.copy()
         for it in range(s.iterations):
             if cancelled():
                 raise Cancelled()
@@ -633,8 +638,14 @@ class Genesis:
             history.append({"iteration": it, "objective": c, "volume_fraction": self.volume_fraction(rho),
                             "beta": self.beta, "elapsed_s": time.monotonic() - t0})
             progress("genesis.iterating", min(0.95, (it + 1) / s.iterations), {"iteration": it + 1, "objective": c})
-            stage_best = min(stage_best, c)
-            znew = self._oc(z, dc, dv, s.volume_fraction, s.move if self.beta < 8 else s.move / 2)
+            if c < stage_best:
+                stage_best, best_z = c, z.copy()
+            if since >= 3:
+                o = [h["objective"] for h in history[-4:]]
+                d = np.diff(o)
+                if d[0] * d[1] < 0 and d[1] * d[2] < 0 and min(abs(d)) > 2e-3 * o[-1]:
+                    move = max(0.01, 0.5 * move)
+            znew = self._oc(z, dc, dv, s.volume_fraction, move)
             change = float(np.max(np.abs(znew - z)[self.design]))
             z, since = znew, since + 1
             if time.monotonic() - t0 > s.timeout_s:
@@ -648,14 +659,19 @@ class Genesis:
                 if stage_best > 1.5 * snap[2]:
                     z, self.beta, beta_cap = snap[0], snap[1], snap[1]
                     self.beta_capped, since, settled = True, 0, False
+                    stage_best, best_z, move = snap[2], snap[0].copy(), 0.5 * base_move()
                 snap = None
             if self.beta >= beta_cap:
                 if settled:
                     reason = "converged"; break
             elif (settled or since >= s.beta_every) and it < s.iterations - 10:
-                snap, stage_best = (z.copy(), self.beta, c), math.inf
-                self.beta, since = min(s.beta_max, 2 * self.beta), 0
+                snap, z = (best_z.copy(), self.beta, stage_best), best_z.copy()
+                self.beta, since, stage_best = min(s.beta_max, 2 * self.beta), 0, math.inf
+                move = base_move()
         c, _, _, rho, us = self.evaluate(z)
+        if stage_best < c:                     # the last step of a cycle can be its worse half
+            z = best_z
+            c, _, _, rho, us = self.evaluate(z)
         self.z, self.rho = z, rho
         return self._finish(rho, c, history, reason, time.monotonic() - t0)
 
@@ -741,24 +757,56 @@ class Genesis:
             s, added = bridge_diagonals(((rho >= t) & base) | self.solid, rho, base)
             self.bridged = added
             return self.clean(s)
-        solid, pieces = cut(self.threshold)
-        # the joint of a member to a kept face can sit just under the threshold while the design carries the load
-        # through it (cantilever extruded along z, 12k cells, 150 steps: 4 pieces, tip detached at 0.5). Then take
-        # the highest lower threshold that connects every load and kept region, and report it
-        t = self.threshold
-        while (not pieces["loads_carried"] or pieces.get("non_design_detached")) and t > 0.2 + 1e-9:
-            t = round(t - 0.05, 2)
-            s2, p2 = cut(t)
-            if p2["loads_carried"] and not p2.get("non_design_detached"):
-                solid, pieces, self.threshold = s2, p2, t
-                break
-        else:
-            if t != self.threshold:
-                solid, pieces = cut(self.threshold)          # nothing better: the part at the first threshold
-        Eb = np.where(self.active & ~self.void, np.where(solid, self.E, self.e_min), 0.0)
         loop_tol, self.s.solver_tol = self.s.solver_tol, min(self.s.solver_tol, 1e-8)
-        us = self.analyse(Eb, warm=False)
-        c_bin = float(sum(w * f @ u for w, f, u in zip(self.weights, self.loads, us)))
+
+        def binary(sol):
+            Eb = np.where(base, np.where(sol, self.E, self.e_min), 0.0)
+            us = self.analyse(Eb, warm=False)
+            return float(sum(w * f @ u for w, f, u in zip(self.weights, self.loads, us))), us
+
+        def ok(p):
+            return p["loads_carried"] and not p.get("non_design_detached")
+        t0 = self.threshold
+        solid, pieces = cut(t0)
+        bridged = self.bridged
+        grey = float(np.mean((rho[self.design] > 0.1) & (rho[self.design] < 0.9)))
+        if grey < 0.03 and ok(pieces):
+            c_bin, us = binary(solid)
+        else:
+            # a grey design is cut where it is stiffest, not at a fixed density: members about two cells thick have
+            # grey edges, and at 0.5 the joints between them open (cantilever extruded along y, 48x8x12, 30 %: 3003 at
+            # 0.5, 1751 at 0.45 with 1 point more volume, the grey design 2138; 40k cells: the tip hung on one-cell
+            # diagonals). The lower cuts may add at most 3 points of volume; every one must carry the loads
+            cands = []
+            v0 = None
+            for k in range(4):
+                t = round(t0 - 0.05 * k, 2)
+                if t < 0.2 - 1e-9:
+                    break
+                s2, p2 = (solid, pieces) if k == 0 else cut(t)
+                v = float(s2[base].mean())
+                v0 = v if v0 is None else v0
+                if k and v > v0 + 0.03:
+                    break
+                if ok(p2) or k == 0:
+                    c2, u2 = binary(s2)
+                    cands.append((c2 if ok(p2) else math.inf, -t, s2, p2, u2, self.bridged, c2))
+            best = min(cands, key=lambda x: (x[0], x[1]))
+            if math.isinf(best[0]):
+                # nothing carries every load: the further cuts of the earlier rule, down to 0.2, before giving up
+                t = round(t0 - 0.05 * len(cands), 2)
+                while t > 0.2 - 1e-9:
+                    s2, p2 = cut(t)
+                    if ok(p2):
+                        c2, u2 = binary(s2)
+                        best = (c2, -t, s2, p2, u2, self.bridged, c2)
+                        break
+                    t = round(t - 0.05, 2)
+            if math.isinf(best[0]):
+                best = cands[0]                      # nothing better: the part at the first threshold
+            c_bin, us = best[6], best[4]
+            solid, pieces, self.threshold, bridged = best[2], best[3], -best[1], best[5]
+        self.bridged = bridged
         # reference: the whole design space filled with material (the part as it was). The share of its stiffness
         # (or heat conductance) the optimised part keeps is the honest figure; the grey SIMP start is not a design
         Efull = np.where(self.active & ~self.void, self.E, 0.0)

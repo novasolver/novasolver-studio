@@ -154,6 +154,16 @@ def test_cantilever_optimisation():
     assert chk["volume_m3"] == pytest.approx(voxel_volume, rel=0.15)
 
 
+def test_two_step_cycle_is_damped():
+    # a one-cell slab (a 2D cantilever) fell into a 3.7 / 6.5 style OC cycle: 150 steps without converging, the run
+    # ended on the worse half and the 0/1 part kept 5.5 % of the full part's stiffness. With the cycle damped: ~47 %
+    g = gx.cantilever(nx=48, ny=1, nz=12)
+    r = g.optimize(gx.Settings(volume_fraction=0.3, iterations=150))
+    assert r["termination"] == "converged"
+    assert r["stiffness_kept"] > 0.4
+    assert r["objective_binary"] < 1.2 * r["objective"]
+
+
 def test_beta_step_that_wrecks_the_design_is_undone():
     # stand-in for thin members vanishing at a sharper projection: from beta 8 on the objective is 3x worse
     g = gx.cantilever(nx=16, ny=4, nz=8)
