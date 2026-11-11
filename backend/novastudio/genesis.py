@@ -37,7 +37,9 @@ from . import fem_tet10 as fe
 MAX_ELEMENTS = 2_000_000
 # the coarsest multigrid grid is factorised directly at every design update. Smaller is cheaper to factorise but costs
 # CG iterations: on the 40k-cell cantilever case 5k dofs took 4.1 s per design step against 3.6 s with 40k
-COARSE_DOFS = 20000
+# coarsest grid solved directly. With the Chebyshev smoother, 40k instead of 20k (one level less on 40k cells) took the
+# stalled system of a y-extruded cantilever (40k cells, beta 16) from 317 CG iterations / 43 s to 194 / 23 s
+COARSE_DOFS = 40000
 # the density filter is a direct 3D convolution: cost ~ r^3 (one pass on 221k cells: 0.011 s at r = 1.5, 1.44 s at 10)
 MAX_FILTER_CELLS = 8.0
 # exact fallback when CG stalls: SuperLU on 100k unknowns took about 0.4 GB; beyond that, fail with a clear error
@@ -210,6 +212,9 @@ class Multigrid:
     def __init__(self, shape, h, dpn, Kunit, fixed_mask, coarse_dofs=COARSE_DOFS, smooth=3, omega=0.6):
         self.levels, self.P = [], []
         self.smooth, self.omega = smooth, omega
+        # Chebyshev (degree 3 on [lmax/30, lmax]) instead of damped Jacobi: fewer CG iterations on sharp 0/1 designs for
+        # about the same work a V-cycle; "jacobi" is kept for comparison
+        self.smoother, self.cheb_degree, self.cheb_ratio = "chebyshev", 3, 30.0
         lv = Level(shape, h, dpn, Kunit, fixed_mask)
         self.levels.append(lv)
         s, hh, fm = shape, h, fixed_mask
@@ -257,7 +262,8 @@ class Multigrid:
         # damped Jacobi weight per level from its spectrum: a fixed 0.6 diverged on some modes (more sweeps took more
         # CG iterations: 180 -> 259 on the pipe elbow); 4 / (3 lambda_max) damps the upper half of the spectrum
         for lv in self.levels[:-1]:
-            lv.omega = 4.0 / (3.0 * 1.05 * lv.lambda_max())
+            lv.lmax = 1.05 * lv.lambda_max()
+            lv.omega = 4.0 / (3.0 * lv.lmax)
         last = self.levels[-1]
         A = last.assemble()
         free = np.nonzero(~last.dead)[0]
@@ -271,17 +277,43 @@ class Multigrid:
             if self.factor is not None:
                 x[self.cfree] = self.factor.solve(r[self.cfree])
             return x
-        w = getattr(lv, "omega", self.omega)
-        x = w * lv.inv_diag * r
-        for _ in range(self.smooth - 1):
-            x += w * lv.inv_diag * (r - lv.matvec(x))
-        rc = self.P[l].T @ (r - lv.matvec(x))
+        if self.smoother == "chebyshev":
+            x, res = self._cheb(lv, r, np.zeros_like(r), r.copy())
+            rc = self.P[l].T @ res
+        else:
+            w = getattr(lv, "omega", self.omega)
+            x = w * lv.inv_diag * r
+            for _ in range(self.smooth - 1):
+                x += w * lv.inv_diag * (r - lv.matvec(x))
+            rc = self.P[l].T @ (r - lv.matvec(x))
         rc[self.levels[l + 1].dead] = 0.0
         x += self.P[l] @ self.vcycle(rc, l + 1)
         x[lv.dead] = 0.0
-        for _ in range(self.smooth):
-            x += w * lv.inv_diag * (r - lv.matvec(x))
+        if self.smoother == "chebyshev":
+            x, _ = self._cheb(lv, r, x, r - lv.matvec(x))
+        else:
+            for _ in range(self.smooth):
+                x += w * lv.inv_diag * (r - lv.matvec(x))
         return x
+
+    def _cheb(self, lv, r, x, res):
+        """Chebyshev smoother on D^-1 A over [lmax / ratio, lmax]: a polynomial in D^-1 A, so the V-cycle stays
+        symmetric for CG. Returns x and the residual r - A x."""
+        b = lv.lmax
+        a = b / self.cheb_ratio
+        theta, delta = 0.5 * (b + a), 0.5 * (b - a)
+        sigma = theta / delta
+        rho = 1.0 / sigma
+        d = lv.inv_diag * res / theta
+        for k in range(self.cheb_degree):
+            x = x + d
+            res = res - lv.matvec(d)
+            if k == self.cheb_degree - 1:
+                break
+            rho_new = 1.0 / (2.0 * sigma - rho)
+            d = rho_new * rho * d + (2.0 * rho_new / delta) * (lv.inv_diag * res)
+            rho = rho_new
+        return x, res
 
     def solve(self, b, x0=None, tol=1e-6, maxiter=1000):
         # 200 was too few: a cantilever extruded along its width (40k cells, 46 % of the cells at the void stiffness
