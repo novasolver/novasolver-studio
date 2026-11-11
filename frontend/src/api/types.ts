@@ -231,6 +231,8 @@ export interface GenesisResult {
   settings: GenesisSettings;
   history: { i: number; objective: number | null; volume_fraction: number }[];
   files: { stl: string; stl_smooth?: string; step?: string };
+  refine?: { accepted: boolean; message: string; gain_pct?: number; grid?: number[] } | null;
+  symmetry_hint?: string | null;
   note: string;
   stale: boolean;
 }
@@ -246,6 +248,7 @@ export interface GenesisSettings {
   keep_bc_faces?: boolean;
   skin_cells?: number;
   iterations?: number;
+  refine?: boolean;
 }
 
 export interface CasePayload {

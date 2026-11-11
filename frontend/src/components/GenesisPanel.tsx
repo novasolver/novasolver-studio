@@ -30,6 +30,7 @@ export function GenesisPanel() {
   const [build, setBuild] = useState("+z");
   const [extrude, setExtrude] = useState<"x" | "y" | "z">("z");
   const [sym, setSym] = useState<string[]>([]);
+  const [refine, setRefine] = useState(false);
   if (!p || offline || !["structural", "thermal"].includes(p.ui.physics ?? "")) return null;
   const mm = Number(minMember);
   const minOk = !minMember.trim() || (Number.isFinite(mm) && mm > 0);
@@ -39,6 +40,7 @@ export function GenesisPanel() {
     symmetry: sym as ("x" | "y" | "z")[],
     extrusion: making === "mill" ? extrude : null,
     overhang: making === "print" ? build : null,
+    refine: refine && res !== "fine",
     ...(minMember.trim() && minOk ? { min_member: { value: mm, unit: "mm" } } : {}),
   });
   const active = isActive(job);
@@ -92,6 +94,14 @@ export function GenesisPanel() {
             ))}
           </div>
         </Field>
+        <label className="flex items-start gap-2 text-body text-fg" title={t("genesis.refineHint")}>
+          <input type="checkbox" className="mt-[3px]" checked={refine && res !== "fine"} disabled={res === "fine"}
+            onChange={(e) => setRefine(e.target.checked)} />
+          <span className="min-w-0">
+            {t("genesis.refine")}
+            <span className="prose-ui block text-label text-fg-3">{t(res === "fine" ? "genesis.refineFine" : "genesis.refineHint")}</span>
+          </span>
+        </label>
         {!active && (
           <Button variant="secondary" className="w-full justify-center" disabled={!ready || busy} onClick={() => void runGenesis(settings())}>
             {busy ? <Spinner /> : <Sparkles size={14} strokeWidth={1.5} />}
@@ -131,6 +141,8 @@ function GenesisResultView() {
       {g.kept != null && (
         <p className="prose-ui mt-2 text-label text-fg-2">{t(g.physics === "elastic" ? "genesis.kept" : "genesis.keptHeat", { pct: fmt(100 * g.kept, 3), vol: fmt(g.cards.find((c) => c.key === "volume_fraction")?.value ?? 0, 3) })}</p>
       )}
+      {g.refine && <p className={`prose-ui mt-1 text-label ${g.refine.accepted ? "text-fg-2" : "text-fg-3"}`}>{g.refine.message}</p>}
+      {g.symmetry_hint && <p className="prose-ui mt-1 text-label text-fg-2">{g.symmetry_hint}</p>}
       {g.stale && <p className="prose-ui mt-1 text-label text-orange">{t("genesis.stale")}</p>}
       {g.warnings.map((w) => (
         <p key={w.key} className="prose-ui mt-1 text-label text-orange">{w.message}</p>

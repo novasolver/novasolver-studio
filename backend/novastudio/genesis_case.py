@@ -31,7 +31,7 @@ STRUCTURAL_ROLES = {"fixed", "symmetry", "constraint", "load", "pressure", "mome
 THERMAL_ROLES = {"temperature", "heat-flux", "insulated", "free"}
 DEFAULTS = {"volume_fraction": 0.3, "cells": 120000, "min_member": None, "symmetry": [], "extrusion": None,
             "overhang": None, "keep_faces": [], "keep_bc_faces": True, "skin_cells": 0, "iterations": 150,
-            "heat_source": None}
+            "heat_source": None, "refine": False}
 LIMITS = {"cells": (2000, 1500000), "iterations": (10, 400), "skin_cells": (0, 5)}
 
 
@@ -84,6 +84,8 @@ def validate(spec: dict | None, faces: set[str]) -> dict:
         bad("keep_faces (face keys of this case)")
     if not isinstance(s["keep_bc_faces"], bool):
         bad("keep_bc_faces")
+    if not isinstance(s["refine"], bool):
+        bad("refine (true/false)")
     if s["heat_source"] is not None:
         try:
             _quantity(s["heat_source"], "heat_source")
@@ -404,6 +406,71 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
     return g, {"settings": settings, "info": info, "physics": physics}
 
 
+# ------------------------------------------------------------------ refinement
+REFINE_MAX_CELLS = 400_000          # cells of the finer grid inside the part
+REFINE_ITERATIONS = 40
+
+
+def _compliance(g, Ebox):
+    us = g.analyse(Ebox, warm=False)
+    return float(sum(w * f @ u for w, f, u in zip(g.weights, g.loads, us)))
+
+
+def refine(case, m, spec, g, r, prog, cancelled):
+    """Second pass on a grid about twice as fine: the finished part is sampled onto it and only the cells near its
+    surface are optimised again, with the same minimum member in millimetres (filter radius scaled with the grid).
+    Kept only when the refined part is at least as stiff (or conducts at least as well) as the first part analysed
+    on the same fine grid, at no more volume. Returns (Genesis, result) of the refined part or (None, None), and
+    the comparison in r["refine"]."""
+    n0 = int(g.active.sum())
+    fac = min(2.0, (REFINE_MAX_CELLS / n0) ** (1 / 3))
+    info = r["refine"] = {"factor": round(fac, 3), "accepted": False}
+    if fac < 1.4:
+        info["skipped"] = "grid_too_large"
+        return None, None
+    t0 = time.time()
+    f, setup2 = build(case, m, dict(spec, cells=int(round(spec["cells"] * fac ** 3))))
+    s2 = setup2["settings"]
+    radius = min(gx.MAX_FILTER_CELLS, max(s2.filter_radius, g.s.filter_radius * g.h / f.h))
+    gb, z0, part, target = gx.refine_problem(g, f, s2, band=max(3, int(math.ceil(radius)) + 1))
+    s3 = gx.Settings(**{**s2.__dict__, "volume_fraction": target, "filter_radius": radius,
+                        "iterations": REFINE_ITERATIONS, "beta_every": 10})
+    gb.configure(s3)
+    tol, gb.s.solver_tol = gb.s.solver_tol, 1e-8
+    mm = gb.active & ~gb.void
+    c_ref = _compliance(gb, np.where(mm, np.where(part, gb.E, gb.e_min), 0.0))      # the first part, fine grid
+    c_full = _compliance(gb, np.where(f.active, gb.E, 0.0))                          # all material, fine grid
+    gb.s.solver_tol = tol
+    rf = gx.optimize_symmetric(gb, s3, progress=lambda key, frac, args: prog("genesis.refining", 0.6 + 0.3 * frac, args),
+                               cancelled=cancelled, z0=z0, beta0=4.0)
+    vol_ref = float(part[f.active].mean())
+    vol = float(gb.solid_final[f.active].mean())
+    info.update(grid=list(f.shape), cell_m=f.h, cells_active=int(f.active.sum()), cells_design=int(gb.design.sum()),
+                objective_before=c_ref, objective_after=rf["objective_binary"], volume_before=vol_ref, volume_after=vol,
+                iterations=rf["iterations"], termination=rf["termination"], elapsed_s=time.time() - t0)
+    bad_w = {"load_not_carried", "constraint_not_met", "non_design_region_detached"}
+    # better = stiffer (lower compliance) and stiffer per volume; the 0/1 cut may add a little material (up to
+    # 1.5 points: a 6k-cell extruded cantilever came out 4.7 times stiffer with 1.1 points more)
+    c_new = rf["objective_binary"]
+    if bad_w & set(rf["warnings"]) or c_new >= c_ref or c_new * vol >= c_ref * vol_ref or vol > vol_ref + 0.015:
+        info["reason"] = "not_better"
+        return None, None
+    info["accepted"] = True
+    out = dict(rf)
+    out["refine"] = info
+    out.update(objective_full=c_full, stiffness_kept=c_full / rf["objective_binary"], volume_fraction=float(gb.rho[f.active].mean()),
+               volume_fraction_binary=vol, cells_active=int(f.active.sum()),
+               iterations=r["iterations"] + rf["iterations"], elapsed_s=r["elapsed_s"] + info["elapsed_s"],
+               termination=r["termination"] if r["termination"] != "converged" else rf["termination"],
+               history=r["history"] + [{**h, "iteration": r["iterations"] + h["iteration"], "stage": "refine"} for h in rf["history"]],
+               coarse={"grid": r["grid"], "cell_m": r["cell_m"], "objective_binary": r["objective_binary"],
+                       "stiffness_kept": r["stiffness_kept"], "volume_fraction_binary": r["volume_fraction_binary"]})
+    out["warnings"] = [w for w in r["warnings"] if w.startswith("not_converged")] + \
+                      [w for w in rf["warnings"] if not w.startswith("not_converged")]
+    out["user_keep"] = f.solid
+    return gb, out
+
+
 # ------------------------------------------------------------------ job
 def run(req: dict, jd: Path, prog) -> dict:
     from .run_worker import _mesh_for_run
@@ -416,8 +483,26 @@ def run(req: dict, jd: Path, prog) -> dict:
     t0 = time.time()
     stop = jd / "STOP"
     # mirror planes shared by the supports and loads are solved on the half model (same design, about half the time)
-    r = gx.optimize_symmetric(g, setup["settings"], progress=lambda key, frac, args: prog(key, 0.05 + 0.85 * frac, args),
+    # mirror planes the conditions have but the settings do not use: a hint (the half model would take about half the time)
+    setup["info"]["symmetric_unused"] = [k for k, a in AXES.items()
+                                         if a not in setup["settings"].symmetry and gx.mirror_symmetric(g, a)]
+    span = 0.55 if spec["refine"] else 0.85
+    r = gx.optimize_symmetric(g, setup["settings"], progress=lambda key, frac, args: prog(key, 0.05 + span * frac, args),
                               cancelled=stop.exists)
+    keep = g.solid
+    if spec["refine"]:
+        try:
+            gb, rb = refine(case, m, spec, g, r, prog, stop.exists)
+        except gx.Cancelled:
+            raise
+        except Exception as e:                      # the first part stands; the finish is an addition
+            r.setdefault("refine", {})
+            r["refine"].update(accepted=False, reason="error", error=f"{type(e).__name__}: {e}"[:300])
+            gb = None
+        if gb is not None:
+            g, r, keep = gb, rb, rb.pop("user_keep")
+            setup["info"]["grid"] = {"shape": rb["grid"], "cell_m": g.h, "origin_m": g.origin.tolist()}
+            setup["info"]["cells_active"] = rb["cells_active"]
     if "body_loads" in setup["info"].get("ignored", []):
         r["warnings"].insert(0, "body_loads_ignored")        # gravity / rotation are not in the Genesis loads
     prog("genesis.surface", 0.93)
@@ -444,7 +529,7 @@ def run(req: dict, jd: Path, prog) -> dict:
         idx = gx.node_index(g.shape, *np.clip(np.rint((P - g.origin) / g.h).astype(int), 0, np.array(g.shape)).T)
         scal = Tn[idx]
     np.savez_compressed(jd / "genesis.npz", rho=g.rho.astype(np.float32), solid=g.solid_final, active=g.active,
-                        keep=g.solid, origin=g.origin, h=g.h, positions=P.astype(np.float32), indices=F.astype(np.int32),
+                        keep=keep, origin=g.origin, h=g.h, positions=P.astype(np.float32), indices=F.astype(np.int32),
                         scalars=scal.astype(np.float32))
     history = r.pop("history")
     out = {"kind": "genesis", "physics": g.physics, "spec": spec, "setup": setup["info"], "result": r,

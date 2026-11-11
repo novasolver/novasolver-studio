@@ -750,7 +750,27 @@ def genesis_result(case_id: str, run_id: str | None = None, lang: str = "ja") ->
                       "stl_smooth": f"/api/cases/{case_id}/genesis/part.stl?run_id={jd.name}&smooth=true",
                       **({"step": f"/api/cases/{case_id}/genesis/part.step?run_id={jd.name}"} if (jd / "part.step").is_file() else {})},
             "step": g.get("step"),
+            "refine": _refine_note(r.get("refine"), g["physics"], L),
+            "symmetry_hint": (t("genesis.hint.symmetry", L, axes=", ".join(a.upper() for a in g["setup"]["symmetric_unused"]))
+                              if g["setup"].get("symmetric_unused") and not g["spec"].get("overhang") else None),
             "note": t("genesis.note.verify", L), "stale": g["revision"] != store.load(case_id)["revision"]}
+
+
+def _refine_note(info: dict | None, physics: str, L: str) -> dict | None:
+    """The finishing pass in words (None when it was not asked for)."""
+    from .i18n import t
+    if not info:
+        return None
+    if info.get("skipped"):
+        return {"accepted": False, "message": t("genesis.refine.skipped", L)}
+    if info.get("reason") == "error":
+        return {"accepted": False, "message": t("genesis.refine.failed", L)}
+    if not info.get("accepted"):
+        return {"accepted": False, "message": t("genesis.refine.rejected", L)}
+    gain = 100 * (info["objective_before"] / info["objective_after"] - 1)
+    key = "genesis.refine.accepted" if physics == "elastic" else "genesis.refine.acceptedHeat"
+    return {"accepted": True, "gain_pct": gain, "grid": info["grid"],
+            "message": t(key, L, factor=f"{info['factor']:.2g}", gain=f"{gain:.2g}", vol=f"{100 * info['volume_after']:.3g}", vol0=f"{100 * info['volume_before']:.3g}")}
 
 
 def genesis_surface(case_id: str, run_id: str | None = None, lang: str = "ja") -> dict:

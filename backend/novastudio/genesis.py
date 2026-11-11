@@ -1177,6 +1177,28 @@ def _nodes(a, g):
     return a.reshape(*(np.array(g.shape) + 1), -1)
 
 
+def mirror_symmetric(g, axis):
+    """The problem is its own mirror image about the grid's mid-plane along `axis` (a cell boundary): envelope,
+    kept and empty regions, supports, and loads (normal component reversed)."""
+    if g.shape[axis] % 2:
+        return False
+    eq = lambda m: np.array_equal(m, np.flip(m, axis))
+    if not (eq(g.active) and eq(g.solid) and eq(g.void)):
+        return False
+    if g.plate_from is not None and not eq(g.plate_from):
+        return False
+    if not eq(_nodes(g.fixed, g)):
+        return False
+    sign = np.ones(g.dpn)
+    if g.dpn == 3:
+        sign[axis] = -1.0
+    for L in g.loads:
+        Ln = _nodes(L, g)
+        if np.abs(Ln - np.flip(Ln, axis) * sign).max() > 1e-9 * np.abs(Ln).max():
+            return False
+    return True
+
+
 def mirror_half(g, axis, settings):
     """Half of a mirror-symmetric problem, or None when it is not one.
 
@@ -1185,24 +1207,9 @@ def mirror_half(g, axis, settings):
     keeps the lower cells; the plane's nodes get half their load and, for structures, a roller (normal displacement
     zero): its compliance is half the whole's and its design the whole's lower half. The half grid is padded with
     empty cells on the far side so the multigrid keeps as many levels as the whole grid."""
-    n = g.shape[axis]
-    if n % 2 or settings.overhang:
+    if settings.overhang or not mirror_symmetric(g, axis):
         return None                         # the overhang filter's layer-by-layer support has no mirror form here
-    eq = lambda m: np.array_equal(m, np.flip(m, axis))
-    if not (eq(g.active) and eq(g.solid) and eq(g.void)):
-        return None
-    if g.plate_from is not None and not eq(g.plate_from):
-        return None
-    F = _nodes(g.fixed, g)
-    if not np.array_equal(F, np.flip(F, axis)):
-        return None
-    sign = np.ones(g.dpn)
-    if g.dpn == 3:
-        sign[axis] = -1.0
-    for L in g.loads:
-        Ln = _nodes(L, g)
-        if np.abs(Ln - np.flip(Ln, axis) * sign).max() > 1e-9 * np.abs(Ln).max():
-            return None
+    n = g.shape[axis]
     half = n // 2
     m = 1
     while n % (2 * m) == 0 and m < 128:
@@ -1333,6 +1340,14 @@ def refine_problem(coarse, fine, settings, band=3):
     q = (X - coarse.origin[:, None]) / coarse.h - 0.5
     field = ndimage.map_coordinates(coarse_field(coarse), q, order=1, mode="constant", cval=0.0).reshape(fine.shape)
     field = np.where(fine.active, field, 0.0)
+    # the coarse part cell by cell as well: interpolation alone thins a member one coarse cell thick below 0.5 and cut
+    # the load face off (cantilever, 6k -> 48k cells: the loaded end became an island and the system singular)
+    c = np.floor(q + 0.5).astype(int)
+    inside = np.all((c >= 0) & (c < np.array(coarse.shape)[:, None]), axis=0)
+    near_solid = np.zeros(int(np.prod(fine.shape)), bool)
+    near_solid[inside] = coarse.solid_final[c[0, inside], c[1, inside], c[2, inside]]
+    near_solid = near_solid.reshape(fine.shape)
+    field = np.where(near_solid, np.maximum(field, 0.5 + 1e-3), field)
     part = ((field >= 0.5) & fine.active) | fine.solid
     d_in = ndimage.distance_transform_edt(part)          # distance to the nearest outside cell
     d_out = ndimage.distance_transform_edt(~part)
@@ -1351,6 +1366,18 @@ def refine_problem(coarse, fine, settings, band=3):
         col = lambda m: np.broadcast_to((m | ~fine.active).all(axis=ext, keepdims=True), fine.shape) & fine.active
         void, inner = col(void), col(inner)
     solid = fine.solid | inner
+    # every analysed piece must reach a support (an island is a singular system): islands become empty, unless they
+    # carry a load (then this refinement cannot be set up)
+    lab, n = ndimage.label(fine.active & ~void)
+    sup = fine.fixed.reshape(fine.nn, -1).any(axis=1)
+    on_sup = sup[fine.mg.levels[0].enodes_all].any(axis=1).reshape(fine.shape)
+    loaded = np.any(fine.loads != 0, axis=0).reshape(fine.nn, -1).any(axis=1)
+    on_load = loaded[fine.mg.levels[0].enodes_all].any(axis=1).reshape(fine.shape)
+    good = set(np.unique(lab[on_sup & (lab > 0)]).tolist())
+    island = (lab > 0) & ~np.isin(lab, list(good))
+    if np.any(island & on_load):
+        raise ValueError("refinement: a loaded region is not connected to a support")
+    void, solid, part = void | island, solid & ~island, part & ~island
     g = Genesis(fine.shape, fine.h, physics=fine.physics, E=fine.E, nu=fine.nu, active=fine.active, solid=solid,
                 void=void, fixed=fine.fixed, loads=fine.loads, weights=fine.weights, origin=fine.origin,
                 plate_from=fine.plate_from)
