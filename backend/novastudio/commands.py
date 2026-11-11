@@ -770,7 +770,7 @@ def _refine_note(info: dict | None, physics: str, L: str) -> dict | None:
     gain = 100 * (info["objective_before"] / info["objective_after"] - 1)
     key = "genesis.refine.accepted" if physics == "elastic" else "genesis.refine.acceptedHeat"
     return {"accepted": True, "gain_pct": gain, "grid": info["grid"],
-            "message": t(key, L, factor=f"{info['factor']:.2g}", gain=f"{gain:.2g}", vol=f"{100 * info['volume_after']:.3g}", vol0=f"{100 * info['volume_before']:.3g}")}
+            "message": t(key, L, factor=f"{info['factor']:.2g}", gain=f"{gain:.0f}" if gain >= 10 else f"{gain:.2g}", vol=f"{100 * info['volume_after']:.3g}", vol0=f"{100 * info['volume_before']:.3g}")}
 
 
 def genesis_surface(case_id: str, run_id: str | None = None, lang: str = "ja") -> dict:

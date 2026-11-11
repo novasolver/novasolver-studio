@@ -478,7 +478,13 @@ def _genesis_text(g: dict) -> str:
     s += f"\n{g['termination']} after {g['iterations']} iterations ({g['elapsed_s']} s); closed surface: {g['surface']['closed']}"
     for w in g["warnings"]:
         s += f"\nWARNING: {w['message']}"
+    if g.get("refine"):
+        s += f"\n{g['refine']['message']}"
+    if g.get("symmetry_hint"):
+        s += f"\nHINT: {g['symmetry_hint']}"
     s += f"\n{g['note']}\nSTL: {g['files']['stl']}"
+    if g["files"].get("step"):
+        s += f"\nSTEP (flat-faced prism for CAD): {g['files']['step']}"
     return s
 
 
@@ -488,7 +494,7 @@ async def run_genesis(case_id: str, volume_fraction: float = 0.3, cells: int = 1
                       extrusion: Literal["x", "y", "z"] | None = None,
                       overhang: Literal["+x", "-x", "+y", "-y", "+z", "-z"] | None = None,
                       keep_faces: list[str] | None = None, keep_bc_faces: bool = True, skin_cells: int = 0,
-                      iterations: int = 150, heat_source_w_m3: float | None = None,
+                      iterations: int = 150, heat_source_w_m3: float | None = None, refine: bool = False,
                       language: Lang = "ja") -> CallToolResult:
     """Genesis topology optimisation of the case's part: the meshed part is the design space, its face conditions
     (fixed / symmetry / constraint / load / pressure / moment / bearing / remote-force, or temperature / heat-flux for
@@ -497,11 +503,14 @@ async def run_genesis(case_id: str, volume_fraction: float = 0.3, cells: int = 1
     extrusion direction (milling/casting: the shape is constant along that axis), overhang = build direction for 3D
     printing (no overhang beyond 45 degrees). min_member_mm sets the filter and the thinnest member aimed for; the
     result reports the measured one. Faces with conditions stay solid (keep_bc_faces) and keep_faces adds more.
-    Returns a job_id when it does not finish in ~20 s: call job_status. The result is a closed STL; analyse it again
-    (stress, CalculiX) before use."""
+    Symmetry planes that the supports and loads share are solved on the half model (same design, about half the time).
+    refine=True adds a finishing pass: the part is re-optimised near its surface on a grid about twice as fine (same
+    minimum member in mm), kept only when it is stiffer; about 2-3x the time, not with cells above ~400k.
+    Returns a job_id when it does not finish in ~20 s: call job_status. The result is a closed STL (with extrusion also
+    a flat-faced STEP); analyse it again (stress, CalculiX) before use."""
     spec = {"volume_fraction": volume_fraction, "cells": cells, "symmetry": list(symmetry or []), "extrusion": extrusion,
             "overhang": overhang, "keep_faces": list(keep_faces or []), "keep_bc_faces": keep_bc_faces,
-            "skin_cells": skin_cells, "iterations": iterations}
+            "skin_cells": skin_cells, "iterations": iterations, "refine": refine}
     if min_member_mm is not None:
         spec["min_member"] = {"value": min_member_mm, "unit": "mm"}
     if heat_source_w_m3 is not None:
