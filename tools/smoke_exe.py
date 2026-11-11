@@ -52,6 +52,22 @@ async def check(exe: str, folder: str) -> None:
                 assert sc.get("done") or sc["state"] == "done", (template, sc)
                 print(f"{template} fine mesh: solved in {time.time() - t0:.0f} s", flush=True)
 
+            # Genesis through the frozen worker: half model (y), extrusion with its STEP (gmsh + contourpy in the
+            # bundle), finishing pass
+            t0 = time.time()
+            gid = await new_case("cantilever")
+            run = await call("run_genesis", case_id=gid, cells=6000, iterations=30, extrusion="y", symmetry=["y"], refine=True)
+            sc = run.structured_content
+            job = sc.get("job_id")
+            while job and not sc.get("done") and sc.get("state") not in ("done", "failed", "stopped"):
+                sc = (await call("job_status", job_id=job)).structured_content
+                assert time.time() - t0 < TIMEOUT_S, "genesis"
+                await asyncio.sleep(3)
+            res = (await call("genesis_result", case_id=gid)).structured_content
+            print(f"genesis: {time.time() - t0:.0f} s, refine: {res['refine']['message'][:80]}", flush=True)
+            assert res["surface"]["closed"] and "step" in res["files"], res["files"]
+            assert res.get("step") and res["step"].get("volume_m3", 0) > 0, res.get("step")
+
             flash = await call("instant_estimate", shape="plate_hole", ratios={"d_over_W": 0.3, "t_over_W": 0.2})
             print(flash.content[0].text[:200], flush=True)
             t0 = time.time()
