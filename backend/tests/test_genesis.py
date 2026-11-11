@@ -325,3 +325,55 @@ def test_smooth_surface_keeps_the_part():
         same = np.all(e[1:] == e[:-1], axis=1)
         return float(np.mean(1 - np.einsum("ij,ij->i", n[tri[1:][same]], n[tri[:-1][same]])))
     assert roughness(S) < 0.7 * roughness(P)
+
+
+def test_extruded_part_exports_a_flat_faced_step(tmp_path):
+    gmsh = pytest.importorskip("gmsh")
+    from novastudio import genesis_step as gs
+    g = gx.cantilever(24, 4, 12)
+    g.optimize(gx.Settings(extrusion=1, iterations=40))
+    info = gs.write_step(g, tmp_path / "part.step")
+    # same material as the voxel part (the contour level is chosen for that; straight edges add a little)
+    assert abs(info["volume_m3"] / info["voxel_volume_m3"] - 1) < 0.08
+    gmsh.initialize(["", "-nopopup"])
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.option.setString("Geometry.OCCTargetUnit", "M")
+        gmsh.open(str(tmp_path / "part.step"))
+        vols = gmsh.model.getEntities(3)
+        assert len(vols) == 1
+        assert abs(gmsh.model.occ.getMass(3, vols[0][1]) / info["volume_m3"] - 1) < 1e-6   # millimetres in the file
+        x0, y0, z0, x1, y1, z1 = gmsh.model.getBoundingBox(-1, -1)
+        top = g.origin + np.array(g.shape) * g.h
+        assert np.allclose([y0, y1], [g.origin[1], top[1]], atol=1e-6)            # the full prism along y
+        assert x0 > g.origin[0] - 0.5 * g.h and x1 < top[0] + 0.5 * g.h
+        assert all(gmsh.model.getType(2, t) == "Plane" for _, t in gmsh.model.getEntities(2))
+    finally:
+        gmsh.finalize()
+
+def test_mirror_filter_is_its_own_adjoint():
+    g = gx.cantilever(12, 6, 6)
+    g.configure(gx.Settings(filter_radius=2.5))
+    g.mirror_axes = (1, 2)
+    rng = np.random.default_rng(1)
+    x, y = rng.standard_normal(g.shape), rng.standard_normal(g.shape)
+    assert np.isclose(np.sum(g._conv(x) * y), np.sum(x * g._conv_T(y)), rtol=1e-12)
+
+
+def test_half_model_gives_the_whole_design():
+    s = gx.Settings(symmetry=(1,), iterations=30)
+    g1, g2 = gx.cantilever(24, 4, 12), gx.cantilever(24, 4, 12)
+    r1, r2 = g1.optimize(s), gx.optimize_symmetric(g2, s)
+    assert r2["half_model"] == [1]
+    assert np.array_equal(g1.solid_final, g2.solid_final)
+    for k in ("objective", "objective_binary", "objective_full", "max_displacement_m", "volume_fraction_binary"):
+        assert np.isclose(r1[k], r2[k], rtol=1e-5), k
+    assert r2["grid"] == list(g1.shape) and r2["settings"]["symmetry"] == [1]
+
+
+def test_half_model_needs_symmetric_loads():
+    g = gx.cantilever(24, 4, 12)
+    L = g.loads.copy().reshape(len(g.loads), -1, 3)
+    L[:, np.nonzero(L[0, :, 2])[0][0], 1] = 1e-3          # a sideways push on one node
+    g.loads = L.reshape(len(g.loads), -1)
+    assert gx.mirror_half(g, 1, gx.Settings()) is None

@@ -115,6 +115,10 @@ export function genesisStlUrl(caseId: string, runId: string, smooth = false): st
   return withLang(`/api/cases/${encodeURIComponent(caseId)}/genesis/part.stl?run_id=${encodeURIComponent(runId)}${smooth ? "&smooth=true" : ""}`);
 }
 
+export function genesisStepUrl(caseId: string, runId: string): string {
+  return withLang(`/api/cases/${encodeURIComponent(caseId)}/genesis/part.step?run_id=${encodeURIComponent(runId)}`);
+}
+
 export function exportUrl(caseId: string, format: string): string {
   return withLang(`/api/cases/${encodeURIComponent(caseId)}/export?format=${encodeURIComponent(format)}`);
 }

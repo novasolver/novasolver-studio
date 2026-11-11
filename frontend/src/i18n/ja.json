@@ -614,6 +614,8 @@
   "genesis.downloadSmooth": "STL（滑らか）",
   "genesis.downloadSmoothHint": "格子の段差をならした曲面。体積と、固定・荷重の面はそのまま。3D プリント・鋳造向け",
   "genesis.downloadRawHint": "計算した形そのまま（格子1マス分の段差が残る）",
+  "genesis.downloadStep": "STEP（角形・CAD用）",
+  "genesis.downloadStepHint": "断面を直線の多角形にして押し出した立体。CADでスケッチと押し出しとして編集できる",
   "genesis.kept": "体積 {vol} % で、元の部品（すべて材料）の剛性の {pct} % を保ちます。",
   "genesis.keptHeat": "体積 {vol} % で、元の部品（すべて材料）の熱の逃げやすさの {pct} % を保ちます。",
   "genesis.running": "Genesis で形をつくっています"

@@ -515,7 +515,7 @@ class Genesis:
         self.s = s
         self.kernel = cone_kernel(max(1.0, s.filter_radius))
         act = self.active.astype(float)
-        self.wsum = ndimage.convolve(act, self.kernel, mode="constant")
+        self.wsum = self._conv(act)
         self.wsum[~self.active] = 1.0
         self.am = AMFilter(*s.overhang) if s.overhang else None
         if self.am:
@@ -548,11 +548,40 @@ class Genesis:
 
     _sym_T = _sym          # both maps are symmetric (self-adjoint) averaging operators
 
+    # axes whose upper end is a mirror plane (half models): the filter sees the mirror image across it, so the half
+    # design is exactly the lower half of the whole one
+    mirror_axes: tuple = ()
+
+    def _conv(self, x):
+        if not self.mirror_axes:
+            return ndimage.convolve(x, self.kernel, mode="constant")
+        r = self.kernel.shape[0] // 2
+        pw = [(0, r if a in self.mirror_axes else 0) for a in range(3)]
+        y = ndimage.convolve(np.pad(x, pw, mode="symmetric"), self.kernel, mode="constant")
+        return y[:x.shape[0], :x.shape[1], :x.shape[2]]
+
+    def _conv_T(self, g):
+        """Adjoint of _conv: convolve the zero-padded field, then fold the mirrored margin back."""
+        if not self.mirror_axes:
+            return ndimage.convolve(g, self.kernel, mode="constant")
+        r = self.kernel.shape[0] // 2
+        y = ndimage.convolve(np.pad(g, [(0, r if a in self.mirror_axes else 0) for a in range(3)]), self.kernel,
+                             mode="constant")
+        for a in self.mirror_axes:                 # folds one axis at a time; the corner blocks fold twice, as padded
+            n = g.shape[a]
+            main = np.take(y, np.arange(n), axis=a)
+            extra = np.take(y, np.arange(n, n + r), axis=a)
+            tail = [slice(None)] * 3
+            tail[a] = slice(n - r, n)
+            main[tuple(tail)] += np.flip(extra, a)
+            y = main
+        return y
+
     def _filter(self, x):
-        return ndimage.convolve(x * self.active, self.kernel, mode="constant") / self.wsum * self.active
+        return self._conv(x * self.active) / self.wsum * self.active
 
     def _filter_T(self, g):
-        return ndimage.convolve(g * self.active / self.wsum, self.kernel, mode="constant") * self.active
+        return self._conv_T(g * self.active / self.wsum) * self.active
 
     def _project(self, t, eta=None):
         b, n = self.beta, (self.eta if eta is None else eta)
@@ -639,19 +668,24 @@ class Genesis:
 
     # ---------------------------------------------------------------- optimisation
     def optimize(self, s: Settings | None = None, progress: Callable = lambda *_: None,
-                 cancelled: Callable[[], bool] = lambda: False):
+                 cancelled: Callable[[], bool] = lambda: False, z0=None, beta0: float = 1.0):
+        """z0 / beta0: start from a given design and projection sharpness (the refinement pass); its band of design
+        cells can hold more than 90 % material, so the range check is only for a fresh start."""
         s = s or Settings()
-        if not 0.03 <= s.volume_fraction <= 0.9:
+        if not (0.03 <= s.volume_fraction <= 0.9 if z0 is None else 0.0 < s.volume_fraction < 1.0):
             raise ValueError("volume_fraction: 0.03..0.9")
         self.configure(s)
         m = self.active & ~self.void
         solid_share = float(self.solid[m].mean())
         if s.volume_fraction <= solid_share:
             raise ValueError("volume_fraction must exceed the share of solid non-design cells")
-        z = np.where(self.design, (s.volume_fraction - solid_share) / float(self.design[m].mean()), 0.0)
+        if z0 is None:
+            z = np.where(self.design, (s.volume_fraction - solid_share) / float(self.design[m].mean()), 0.0)
+        else:
+            z = np.where(self.design, np.asarray(z0, float), 0.0)
         z = np.clip(z, 0, 1)
         history, t0, reason = [], time.monotonic(), "iteration_budget"
-        self.beta, since = 1.0, 0
+        self.beta, since = float(beta0), 0
         # a sharper projection can wipe out members thinner than the filter: the objective jumps and does not come
         # back (cantilever extruded along y, 12k cells: 4.0 at beta 8, 26 then 19 at beta 16, load lost). After each
         # beta step, when the best objective of the new step stays above 1.5x the one before, the design of the
@@ -1136,6 +1170,193 @@ def min_member_cells(solid, cover=0.95):
         else:
             hi = mid - 1
     return float(ts[lo])
+
+
+# ======================================================================== symmetry: half models
+def _nodes(a, g):
+    return a.reshape(*(np.array(g.shape) + 1), -1)
+
+
+def mirror_half(g, axis, settings):
+    """Half of a mirror-symmetric problem, or None when it is not one.
+
+    The mid-plane along `axis` must be a cell boundary (even cell count), and the envelope, kept and empty regions,
+    supports and loads must all be mirror images (the load's normal component with the opposite sign). The half
+    keeps the lower cells; the plane's nodes get half their load and, for structures, a roller (normal displacement
+    zero): its compliance is half the whole's and its design the whole's lower half. The half grid is padded with
+    empty cells on the far side so the multigrid keeps as many levels as the whole grid."""
+    n = g.shape[axis]
+    if n % 2 or settings.overhang:
+        return None                         # the overhang filter's layer-by-layer support has no mirror form here
+    eq = lambda m: np.array_equal(m, np.flip(m, axis))
+    if not (eq(g.active) and eq(g.solid) and eq(g.void)):
+        return None
+    if g.plate_from is not None and not eq(g.plate_from):
+        return None
+    F = _nodes(g.fixed, g)
+    if not np.array_equal(F, np.flip(F, axis)):
+        return None
+    sign = np.ones(g.dpn)
+    if g.dpn == 3:
+        sign[axis] = -1.0
+    for L in g.loads:
+        Ln = _nodes(L, g)
+        if np.abs(Ln - np.flip(Ln, axis) * sign).max() > 1e-9 * np.abs(Ln).max():
+            return None
+    half = n // 2
+    m = 1
+    while n % (2 * m) == 0 and m < 128:
+        m *= 2                              # the whole grid's coarsening factor along the axis
+    pad = (-half) % m
+    if half + pad < 2 * m and m > 2:
+        pad += m
+    cut = [slice(None)] * 3
+    cut[axis] = slice(0, half)
+    ncut = [slice(None)] * 3 + [slice(None)]
+    ncut[axis] = slice(0, half + 1)
+    pc = [(0, 0)] * 3
+    pc[axis] = (pad, 0)
+    cells = lambda x: None if x is None else np.pad(x[tuple(cut)], pc)
+    nodes = lambda x: np.pad(_nodes(x, g)[tuple(ncut)], pc + [(0, 0)])
+    plane = [slice(None)] * 3 + [slice(None)]
+    plane[axis] = pad + half
+    fixed = nodes(g.fixed)
+    if g.dpn == 3:
+        fixed[tuple(plane[:3]) + (axis,)] = True
+    loads = []
+    for L in g.loads:
+        Ln = nodes(L)
+        Ln[tuple(plane)] *= 0.5
+        loads.append(Ln.ravel())
+    origin = g.origin.copy()
+    origin[axis] -= pad * g.h
+    shape = list(g.shape)
+    shape[axis] = half + pad
+    gh = Genesis(shape, g.h, physics=g.physics, E=g.E, nu=g.nu, active=cells(g.active), solid=cells(g.solid),
+                 void=cells(g.void), fixed=fixed.ravel(), loads=np.array(loads), weights=g.weights, origin=origin,
+                 e_min_ratio=g.e_min / g.E, plate_from=cells(g.plate_from))
+    gh._mirror = (axis, pad, half)
+    gh.mirror_axes = tuple(g.mirror_axes) + (axis,)
+    return gh
+
+
+def unmirror_cells(x, axis, pad, half):
+    lo = np.take(x, np.arange(pad, pad + half), axis=axis)
+    return np.concatenate([lo, np.flip(lo, axis)], axis=axis)
+
+
+def unmirror_nodes(u, gh, axis, pad, half):
+    U = _nodes(u, gh)
+    lo = np.take(U, np.arange(pad, pad + half + 1), axis=axis)
+    up = np.flip(np.take(lo, np.arange(half), axis=axis), axis).copy()
+    if gh.dpn == 3:
+        up[..., axis] *= -1.0
+    return np.concatenate([lo, up], axis=axis).ravel()
+
+
+def half_cells(x, gh):
+    """The cells of a whole-model field that the half model `gh` holds (its padding empty)."""
+    a, pad, half = gh._mirror
+    pc = [(0, 0)] * 3
+    pc[a] = (pad, 0)
+    return np.pad(np.take(x, np.arange(half), axis=a), pc)
+
+
+def optimize_symmetric(g, s: Settings, progress=lambda *_: None, cancelled=lambda: False, z0=None, beta0=1.0):
+    """g.optimize(s), solved on the half (or quarter, eighth) model for every symmetry plane that the supports and
+    loads share. The result is mirrored back onto g (rho, solid_final, u_final) and reported for the whole part."""
+    chain, cur, rest = [], g, list(s.symmetry)
+    for a in s.symmetry:
+        sub = Settings(**{**s.__dict__, "symmetry": tuple(b for b in rest if b != a)})
+        gh = mirror_half(cur, a, sub)
+        if gh is None:
+            continue
+        chain.append(gh)
+        cur, rest = gh, [b for b in rest if b != a]
+    if not chain:
+        return g.optimize(s, progress, cancelled, z0=z0, beta0=beta0)
+    if z0 is not None:
+        for gh in chain:
+            z0 = half_cells(z0, gh)
+    s_half = Settings(**{**s.__dict__, "symmetry": tuple(rest)})
+    k = 2.0 ** len(chain)                   # compliance and heat measures of the whole part
+    scaled = lambda key, frac, args: progress(key, frac, {**args, "objective": k * args["objective"]} if "objective" in args else args)
+    r = cur.optimize(s_half, scaled, cancelled, z0=z0, beta0=beta0)
+    rho, solid, us = cur.rho, cur.solid_final, list(cur.u_final)
+    for gh in reversed(chain):
+        a, pad, half = gh._mirror
+        rho, solid = unmirror_cells(rho, a, pad, half), unmirror_cells(solid, a, pad, half)
+        us = [unmirror_nodes(u, gh, a, pad, half) for u in us]
+    g.configure(s)
+    g.rho, g.solid_final, g.u_final = rho, solid, us
+    g.z, g.threshold, g.bridged, g.beta = None, cur.threshold, cur.bridged, cur.beta
+    g.stats = cur.stats
+    for key in ("objective", "objective_binary", "objective_full"):
+        r[key] = k * r[key]
+    for h in r["history"]:
+        h["objective"] *= k
+    thin = g.min_member(solid)
+    r.update(grid=list(g.shape), cells_active=int((g.active & ~g.void).sum()), min_member_cells=thin,
+             min_member_m=thin * g.h, half_model=[gh._mirror[0] for gh in chain],
+             settings={**r["settings"], "symmetry": list(s.symmetry)})
+    if s.min_member_cells:
+        r["warnings"] = [w for w in r["warnings"] if w != "thin_members_below_target"]
+        if thin < 0.7 * s.min_member_cells:
+            r["warnings"].append("thin_members_below_target")
+    if "constraint_not_met" in r["warnings"] and g.constraints_met(solid):
+        r["warnings"].remove("constraint_not_met")
+    elif "constraint_not_met" not in r["warnings"] and not g.constraints_met(solid):
+        r["warnings"].append("constraint_not_met")
+    return r
+
+
+# ======================================================================== refinement
+def coarse_field(g):
+    """Cell field of a finished design whose 0.5 level is its surface (the field Genesis.surface draws)."""
+    grow = ndimage.binary_dilation(g.solid_final, iterations=1)
+    f = np.where(grow, g.rho, 0.0)
+    f = np.where(g.solid_final & (f < 0.5), 0.5 + 1e-3, f)
+    f = np.where(g.solid_final, f, np.minimum(f, 0.5 - 1e-3))       # the cut removed it: stays outside
+    return np.where(g.solid, 1.0, f)
+
+
+def refine_problem(coarse, fine, settings, band=3):
+    """Second pass on a finer grid of the same part (`fine`: a Genesis built for it, not optimised).
+
+    The finished coarse part is sampled at the fine cell centres. Only cells within `band` fine cells of its surface
+    stay design cells; the inside becomes non-design solid and the far outside void (not analysed), so a fine step
+    costs about what the material near the part costs. Symmetry and extrusion stay exact: the frozen masks are
+    shrunk to their mirror-symmetric / prismatic part. Loaded and supported cells are never void.
+    Returns (problem, z0, reference part, target volume fraction of the problem)."""
+    I = np.indices(fine.shape).reshape(3, -1)
+    X = fine.origin[:, None] + (I + 0.5) * fine.h
+    q = (X - coarse.origin[:, None]) / coarse.h - 0.5
+    field = ndimage.map_coordinates(coarse_field(coarse), q, order=1, mode="constant", cval=0.0).reshape(fine.shape)
+    field = np.where(fine.active, field, 0.0)
+    part = ((field >= 0.5) & fine.active) | fine.solid
+    d_in = ndimage.distance_transform_edt(part)          # distance to the nearest outside cell
+    d_out = ndimage.distance_transform_edt(~part)
+    near = np.where(part, d_in <= band, d_out <= band)
+    held = np.zeros(fine.nn, bool)                       # nodes with a load or a support
+    held |= np.any(fine.loads != 0, axis=0).reshape(fine.nn, -1).any(axis=1)
+    held |= fine.fixed.reshape(fine.nn, -1).any(axis=1)
+    touch = held[fine.mg.levels[0].enodes_all].any(axis=1).reshape(fine.shape)
+    void = fine.active & ~part & ~near & ~touch & ~fine.solid
+    inner = fine.active & part & ~near
+    sym, ext = settings.symmetry, settings.extrusion
+    for a in sym:
+        void &= np.flip(void, a)
+        inner &= np.flip(inner, a)
+    if ext is not None:
+        col = lambda m: np.broadcast_to((m | ~fine.active).all(axis=ext, keepdims=True), fine.shape) & fine.active
+        void, inner = col(void), col(inner)
+    solid = fine.solid | inner
+    g = Genesis(fine.shape, fine.h, physics=fine.physics, E=fine.E, nu=fine.nu, active=fine.active, solid=solid,
+                void=void, fixed=fine.fixed, loads=fine.loads, weights=fine.weights, origin=fine.origin,
+                plate_from=fine.plate_from)
+    m = g.active & ~g.void
+    target = float(part[m].mean())
+    return g, np.clip(field, 0.0, 1.0), part, target
 
 
 # ======================================================================== reference problems

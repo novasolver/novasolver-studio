@@ -747,7 +747,9 @@ def genesis_result(case_id: str, run_id: str | None = None, lang: str = "ja") ->
             "settings": g["spec"], "history": [{"i": h["iteration"], "objective": h["objective"] / h0 if h0 else None,
                                                "volume_fraction": h["volume_fraction"]} for h in g["history"]],
             "files": {"stl": f"/api/cases/{case_id}/genesis/part.stl?run_id={jd.name}",
-                      "stl_smooth": f"/api/cases/{case_id}/genesis/part.stl?run_id={jd.name}&smooth=true"},
+                      "stl_smooth": f"/api/cases/{case_id}/genesis/part.stl?run_id={jd.name}&smooth=true",
+                      **({"step": f"/api/cases/{case_id}/genesis/part.step?run_id={jd.name}"} if (jd / "part.step").is_file() else {})},
+            "step": g.get("step"),
             "note": t("genesis.note.verify", L), "stale": g["revision"] != store.load(case_id)["revision"]}
 
 
@@ -793,6 +795,14 @@ def genesis_stl(case_id: str, run_id: str | None = None, smooth: bool = False) -
         gx.write_stl(tmp, S, F)
         tmp.replace(out)
     return {"path": str(out), "filename": f"genesis_{case_id}_{jd.name}_smooth.stl"}
+
+
+def genesis_step(case_id: str, run_id: str | None = None) -> dict:
+    """part.step: the section of an extruded part as straight-edged polygons, extruded (written by the job)."""
+    jd = _genesis_dir(case_id, run_id)
+    if not (jd / "part.step").is_file():
+        raise StudioError("err.genesis_no_step", 404)
+    return {"path": str(jd / "part.step"), "filename": f"genesis_{case_id}_{jd.name}.step"}
 
 
 def get_results(case_id: str, run_id: str | None = None, lang: str = "ja") -> dict:

@@ -614,6 +614,8 @@
   "genesis.downloadSmooth": "STL (smooth)",
   "genesis.downloadSmoothHint": "Grid steps smoothed out; the volume and the support / load faces stay. For 3D printing and casting",
   "genesis.downloadRawHint": "The computed shape as it is (steps of one grid cell remain)",
+  "genesis.downloadStep": "STEP (flat faces, for CAD)",
+  "genesis.downloadStepHint": "The section as straight-edged polygons, extruded: a solid CAD programs edit as a sketch and an extrusion",
   "genesis.kept": "At {vol} % of the volume, it keeps {pct} % of the stiffness of the full part.",
   "genesis.keptHeat": "At {vol} % of the volume, it keeps {pct} % of the heat conductance of the full part.",
   "genesis.running": "Genesis is generating the shape"

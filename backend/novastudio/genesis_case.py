@@ -415,14 +415,24 @@ def run(req: dict, jd: Path, prog) -> dict:
     g, setup = build(case, m, spec, prog)
     t0 = time.time()
     stop = jd / "STOP"
-    r = g.optimize(setup["settings"], progress=lambda key, frac, args: prog(key, 0.05 + 0.85 * frac, args),
-                   cancelled=stop.exists)
+    # mirror planes shared by the supports and loads are solved on the half model (same design, about half the time)
+    r = gx.optimize_symmetric(g, setup["settings"], progress=lambda key, frac, args: prog(key, 0.05 + 0.85 * frac, args),
+                              cancelled=stop.exists)
     if "body_loads" in setup["info"].get("ignored", []):
         r["warnings"].insert(0, "body_loads_ignored")        # gravity / rotation are not in the Genesis loads
     prog("genesis.surface", 0.93)
     P, F = g.surface()
     chk = gx.surface_checks(P, F)
     gx.write_stl(jd / "part.stl", P, F)
+    step = None
+    if g.s.extrusion is not None:
+        # a prism: also a B-rep solid with flat faces (its section as polygons, extruded) for CAD
+        prog("genesis.step", 0.95)
+        from . import genesis_step
+        try:
+            step = genesis_step.write_step(g, jd / "part.step")
+        except Exception as e:                      # the STL is the result; the STEP is a convenience
+            step = {"error": f"{type(e).__name__}: {e}"[:300]}
     # per-vertex value for the viewer: density-weighted stress (structural) or temperature (thermal) of the nearest cell
     cell = np.clip(np.floor((P - g.origin) / g.h).astype(int), 0, np.array(g.shape) - 1)
     if g.physics == "elastic":
@@ -438,7 +448,7 @@ def run(req: dict, jd: Path, prog) -> dict:
                         scalars=scal.astype(np.float32))
     history = r.pop("history")
     out = {"kind": "genesis", "physics": g.physics, "spec": spec, "setup": setup["info"], "result": r,
-           "surface": chk, "history": history, "solve_s": time.time() - t0}
+           "surface": chk, "history": history, "solve_s": time.time() - t0, "step": step}
     if g.physics == "elastic":
         out["result"]["stress_estimate_note"] = "voxel"
     return out

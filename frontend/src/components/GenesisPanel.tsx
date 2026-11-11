@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Download, Sparkles } from "lucide-react";
-import { genesisStlUrl } from "../api/client";
+import { genesisStepUrl, genesisStlUrl } from "../api/client";
 import type { GenesisSettings } from "../api/types";
 import { isActive, runGenesis, setState, useStore, useT } from "../state/store";
 import { Button } from "./ui/Button";
@@ -144,6 +144,12 @@ function GenesisResultView() {
            className="flex h-8 min-w-0 items-center justify-center gap-2 rounded-[6px] border border-line-strong px-2 text-body text-fg hover:bg-hover">
           <Download size={14} strokeWidth={1.5} className="shrink-0" /><span className="truncate">{t("genesis.download")}</span>
         </a>
+        {g.files.step && (
+          <a href={genesisStepUrl(cid, g.run_id)} title={t("genesis.downloadStepHint")}
+             className="col-span-2 flex h-8 min-w-0 items-center justify-center gap-2 rounded-[6px] border border-line-strong px-2 text-body text-fg hover:bg-hover">
+            <Download size={14} strokeWidth={1.5} className="shrink-0" /><span className="truncate">{t("genesis.downloadStep")}</span>
+          </a>
+        )}
       </div>
       <p className="prose-ui mt-2 text-label text-fg-3">{g.note}</p>
     </div>

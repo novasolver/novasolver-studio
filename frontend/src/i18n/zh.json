@@ -614,6 +614,8 @@
   "genesis.downloadSmooth": "STL（平滑）",
   "genesis.downloadSmoothHint": "抹平网格台阶的曲面，体积及约束、载荷面保持不变。适用于 3D 打印和铸造",
   "genesis.downloadRawHint": "计算得到的原始形状（保留一个网格大小的台阶）",
+  "genesis.downloadStep": "STEP（平面・用于 CAD）",
+  "genesis.downloadStepHint": "将截面化为直线多边形后拉伸的实体，可在 CAD 中作为草图和拉伸编辑",
   "genesis.kept": "以 {vol} % 的体积，保留原零件（全部为材料）刚度的 {pct} %。",
   "genesis.keptHeat": "以 {vol} % 的体积，保留原零件（全部为材料）导热能力的 {pct} %。",
   "genesis.running": "Genesis 正在生成形状"
