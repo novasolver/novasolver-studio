@@ -133,6 +133,12 @@ async def addons_freecad():
     return await call(addons.install_freecad)
 
 
+@app.post("/api/addons/fusion")
+async def addons_fusion():
+    from . import addons
+    return await call(addons.install_fusion)
+
+
 @app.get("/api/update")
 async def update_check(force: bool = False, passive: bool = False, lang: str = "ja"):
     from . import updates

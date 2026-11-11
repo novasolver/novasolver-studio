@@ -118,6 +118,7 @@ function ConnectApps({ open }: { open: boolean }) {
         : b.installed === s?.addon_version ? t("addons.installed", { version: b.installed })
           : t("addons.old");
   const fc = s?.freecad;
+  const fu = s?.fusion;
   return (
     <section className="space-y-2">
       <h3 className="text-label font-medium text-fg-2">{t("addons.title")}</h3>
@@ -142,6 +143,15 @@ function ConnectApps({ open }: { open: boolean }) {
                   : fc.installed === "other" ? t("addons.old") : t("addons.notInstalled")}
               action={fc.installs.length > 0 && fc.installed !== "current" ? t(fc.installed ? "addons.update" : "addons.install") : undefined}
               onClick={() => run("freecad", api.installFreecad(), t("addons.freecadDone"))} />
+          )}
+          {fu && (
+            <AddonRow name={`Fusion · ${t("addons.addin")}`} busy={busy === "fusion"}
+              state={!fu.found
+                ? <a href="https://www.autodesk.com/products/fusion-360/personal" target="_blank" rel="noreferrer" className="text-accent-text hover:underline">{t("addons.noFusion")} · {t("addons.get")}</a>
+                : fu.installed === "current" ? t("addons.installed", { version: s.addon_version })
+                  : fu.installed === "other" ? t("addons.old") : t("addons.notInstalled")}
+              action={fu.found && fu.installed !== "current" ? t(fu.installed ? "addons.update" : "addons.install") : undefined}
+              onClick={() => run("fusion", api.installFusion(), t("addons.fusionDone"))} />
           )}
         </div>
       )}

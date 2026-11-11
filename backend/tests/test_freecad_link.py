@@ -108,3 +108,113 @@ def test_import_the_genesis_result(studio, tmp_path):
     assert 0.01 < np.abs(rec["v"]).max() < 2                             # metres: FreeCAD scales it by 1000
     with pytest.raises(ValueError):
         L.pick_file({"case_id": cid, "files": {"stl": "/api/cases/c_x/../../etc"}})
+
+
+# ---------------------------------------------------------------- the Fusion add-in, with a stand-in Fusion API
+
+def _fake_fusion(monkeypatch, tmp_path):
+    import importlib
+    import types
+    from types import SimpleNamespace as NS
+    log = {"messages": [], "exported": [], "imported": [], "meshes": [], "buttons": []}
+
+    class Handler:
+        def __init__(self):
+            pass
+
+    class Attrs:
+        def __init__(self):
+            self.d = {}
+
+        def itemByName(self, g, n):
+            return NS(value=self.d[(g, n)]) if (g, n) in self.d else None
+
+        def add(self, g, n, v):
+            self.d[(g, n)] = v
+
+    class Coll:
+        def __init__(self, items=()):
+            self.items = list(items)
+
+        @property
+        def count(self):
+            return len(self.items)
+
+        def item(self, i):
+            return self.items[i]
+
+    comp = NS(name="Bracket 1", bRepBodies=Coll([object()]), occurrences=Coll())
+    base = NS(startEdit=lambda: None, finishEdit=lambda: None, name="")
+    comp.features = NS(baseFeatures=NS(add=lambda: base))
+
+    def mesh_add(path, units, feature=None):
+        log["meshes"].append((Path(path).read_bytes()[80:84], units, feature is base))
+        return Coll([NS(name="")])
+    comp.meshBodies = NS(add=mesh_add)
+
+    def export(opts):
+        Path(opts[0]).write_bytes((ROOT / "samples" / "l_bracket.step").read_bytes())
+        log["exported"].append(opts)
+
+    def import_to(opts, target):
+        assert Path(opts).read_bytes().startswith(b"ISO-10303-21") and target is comp
+        comp.occurrences.items.append(NS(component=NS(name="")))
+        log["imported"].append(opts)
+        return True
+    design = NS(activeComponent=comp, attributes=Attrs(), designType="param",
+                exportManager=NS(createSTEPExportOptions=lambda p, c: (p, c), execute=export))
+
+    class Defs:
+        def itemById(self, i):
+            return None
+
+        def addButtonDefinition(self, i, name, tip, res):
+            log["buttons"].append((i, name, res))
+            return NS(commandCreated=NS(add=lambda h: None))
+    panel = NS(controls=NS(itemById=lambda i: None, addCommand=lambda cd: NS(isPromoted=False)))
+    ui = NS(messageBox=lambda m, *a: log["messages"].append(m), inputBox=lambda *a: ("1", False),
+            commandDefinitions=Defs(), workspaces=NS(itemById=lambda i: NS(toolbarPanels=NS(itemById=lambda j: panel))))
+    app = NS(userInterface=ui, activeProduct=design, log=lambda m: None,
+             importManager=NS(createSTEPImportOptions=lambda p: p, importToTarget=import_to),
+             preferences=NS(generalPreferences=NS(userLanguage=0)))
+    adsk = types.ModuleType("adsk")
+    adsk.core = NS(Application=NS(get=lambda: app), CommandEventHandler=Handler, CommandCreatedEventHandler=Handler,
+                   UserLanguages=NS(JapaneseLanguage=1, ChineseSimplifiedLanguage=2))
+    adsk.fusion = NS(Design=NS(cast=lambda p: p), MeshUnits=NS(MeterMeshUnit="metre"),
+                     DesignTypes=NS(ParametricDesignType="param"))
+    for name, mod in (("adsk", adsk), ("adsk.core", adsk.core), ("adsk.fusion", adsk.fusion)):
+        monkeypatch.setitem(sys.modules, name, mod)
+    pkg = types.ModuleType("nss_fusion_addin")
+    pkg.__path__ = [str(ROOT / "integrations" / "fusion" / "NovaSolverStudio")]
+    monkeypatch.setitem(sys.modules, "nss_fusion_addin", pkg)
+    sys.modules.pop("nss_fusion_addin.NovaSolverStudio", None)
+    sys.modules.pop("nss_fusion_addin.nss_link", None)
+    addin = importlib.import_module("nss_fusion_addin.NovaSolverStudio")
+    monkeypatch.setattr(addin.L, "studio_program", lambda: None)
+    monkeypatch.setattr(addin.L.webbrowser, "open", lambda u: None)
+    return addin, design, log
+
+
+def test_fusion_addin_send_and_import(studio, tmp_path, monkeypatch):
+    port, _ = studio
+    addin, design, log = _fake_fusion(monkeypatch, tmp_path)
+    addin.run(None)
+    assert [b[0] for b in log["buttons"]] == ["NovaSolverStudio_send", "NovaSolverStudio_import"]
+    assert all(Path(b[2], "32x32.png").is_file() for b in log["buttons"]) and not log["messages"]
+    addin.send()
+    cid = addin.get_attr(design, "case")
+    assert L.CASE_ID.fullmatch(cid) and addin.get_attr(design, "file") == "Bracket_1.step"
+    addin.import_result()
+    assert f"{cid} has no Genesis result" in log["messages"][-1]
+    for settings, kind in (({"cells": 3000, "iterations": 10, "extrusion": "y"}, "step"), ({"cells": 3000, "iterations": 10}, "mesh")):
+        g = C.create_case("cantilever", {}, "en")["case"]["case_id"]
+        C.run_genesis(g, settings, wait_s=600, lang="en")
+        t0 = time.monotonic()
+        while L.genesis(port, g) is None:
+            assert time.monotonic() - t0 < 900
+            time.sleep(2)
+        design.attributes.add("NovaSolverStudio", "case", g)
+        addin.import_result()
+        assert "Inserted Genesis_r_" in log["messages"][-1] and "Check the shape" in log["messages"][-1]
+    assert len(log["imported"]) == 1                                    # the extruded one as a STEP body
+    assert len(log["meshes"]) == 1 and log["meshes"][0][1:] == ("metre", True)   # the other in a base feature

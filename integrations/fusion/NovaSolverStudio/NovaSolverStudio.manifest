@@ -1,0 +1,13 @@
+{
+	"autodeskProduct": "Fusion360",
+	"type": "addin",
+	"id": "68b1eccf-4336-44f8-9503-70934f7a11b3",
+	"author": "NovaSolver",
+	"description": {
+		"": "Send the active component to NovaSolver Studio (free local FEA) and bring the Genesis (topology optimisation) shape back. Talks only to Studio on 127.0.0.1."
+	},
+	"version": "0.1.0",
+	"runOnStartup": true,
+	"supportedOS": "windows|mac",
+	"editEnabled": true
+}

@@ -181,6 +181,7 @@ export const api = {
   addons: () => request<AddonsStatus>("GET", "/api/addons"),
   installBlender: (path: string) => request<{ version: string }>("POST", "/api/addons/blender", { path }),
   installFreecad: () => request<{ path: string }>("POST", "/api/addons/freecad"),
+  installFusion: () => request<{ path: string }>("POST", "/api/addons/fusion"),
   examples: () => request<ExamplesPayload>("GET", "/api/examples"),
   openExample: (name: string) => request<CasePayload>("POST", `/api/examples/${encodeURIComponent(name)}`),
   exampleProgress: (name: string) =>

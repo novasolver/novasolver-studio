@@ -55,6 +55,33 @@ def test_freecad_install_and_state(tmp_path, monkeypatch):
     assert not wb.with_name(addons.WORKBENCH + ".old").exists()
 
 
+def test_fusion_install_and_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(addons, "_roaming", lambda: tmp_path)
+    monkeypatch.setattr(addons.sys, "platform", "win32")
+    assert addons.fusion_status() == {"found": False, "addins_dir": None, "installed": None}
+    with pytest.raises(StudioError):
+        addons.install_fusion()                                         # Fusion never ran here: nothing to install into
+    api = tmp_path / "Autodesk" / "Autodesk Fusion 360" / "API"
+    (api / "AddIns").mkdir(parents=True)
+    assert addons.fusion_status()["found"] and addons.fusion_status()["installed"] is None
+    out = addons.install_fusion()
+    target = api / "AddIns" / addons.FUSION_ADDIN
+    assert out["path"] == str(target) and addons.fusion_status()["installed"] == "current"
+    names = {p.name for p in target.iterdir()}
+    assert {"NovaSolverStudio.py", "NovaSolverStudio.manifest", "nss_link.py", "resources"} <= names
+    assert (target / "resources" / "genesis" / "32x32@2x.png").is_file()
+    (target / "nss_link.py").write_text("# old", encoding="utf-8")
+    assert addons.fusion_status()["installed"] == "other"
+    addons.install_fusion()
+    assert addons.fusion_status()["installed"] == "current"
+
+
+def test_cad_addins_share_one_link_module():
+    a = addons.source_dir() / "freecad" / addons.WORKBENCH / "nss_link.py"
+    b = addons.source_dir() / "fusion" / addons.FUSION_ADDIN / "nss_link.py"
+    assert a.read_bytes() == b.read_bytes(), "copy integrations/freecad/NovaSolverStudio/nss_link.py to the Fusion add-in"
+
+
 def test_blender_install_only_for_a_found_program(monkeypatch, tmp_path):
     monkeypatch.setattr(addons, "_blender_candidates", lambda: [])
     with pytest.raises(StudioError) as e:

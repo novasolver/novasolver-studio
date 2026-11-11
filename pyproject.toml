@@ -45,4 +45,4 @@ markers = ["slow: full finite-element benchmark or nonlinear limit analysis"]
 version = {attr = "novastudio.__version__"}
 
 [tool.setuptools.package-data]
-novastudio = ["i18n/*.json", "estimate_data/*.json", "frontend_dist/*", "frontend_dist/**/*", "samples/*.step", "samples/*.stl", "integrations/blender/novasolver_studio/*", "integrations/freecad/*", "integrations/freecad/NovaSolverStudio/*", "integrations/freecad/NovaSolverStudio/Resources/icons/*"]
+novastudio = ["i18n/*.json", "estimate_data/*.json", "frontend_dist/*", "frontend_dist/**/*", "samples/*.step", "samples/*.stl", "integrations/blender/novasolver_studio/*", "integrations/freecad/*", "integrations/freecad/NovaSolverStudio/*", "integrations/freecad/NovaSolverStudio/Resources/icons/*", "integrations/fusion/NovaSolverStudio/*", "integrations/fusion/NovaSolverStudio/resources/*/*"]

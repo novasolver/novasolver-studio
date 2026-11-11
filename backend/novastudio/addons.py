@@ -21,6 +21,7 @@ BLENDER_MIN = (4, 2)                  # extensions (blender_manifest.toml) and `
 ADDON_ID = "novasolver_studio"
 MACRO = "NovaSolverStudio.FCMacro"
 WORKBENCH = "NovaSolverStudio"        # integrations/freecad/NovaSolverStudio -> FreeCAD's user Mod folder
+FUSION_ADDIN = "NovaSolverStudio"     # integrations/fusion/NovaSolverStudio -> Fusion's API/AddIns folder
 _VERSION = re.compile(r"(\d+)\.(\d+)")
 
 
@@ -257,5 +258,50 @@ def install_freecad() -> dict:
     return {"program": "freecad", "path": str(target), "workbench": str(wb)}
 
 
+# ---------------------------------------------------------------- Fusion
+
+def fusion_api_dir() -> Path | None:
+    """Fusion's per-user API folder (it exists once Fusion has run); add-ins go into its AddIns folder."""
+    if sys.platform == "win32":
+        p = _roaming() / "Autodesk" / "Autodesk Fusion 360" / "API"
+    elif sys.platform == "darwin":
+        p = Path.home() / "Library" / "Application Support" / "Autodesk" / "Autodesk Fusion 360" / "API"
+    else:
+        return None                                   # Fusion runs on Windows and macOS only
+    return p if p.is_dir() else None
+
+
+def fusion_status() -> dict:
+    api = fusion_api_dir()
+    target = api / "AddIns" / FUSION_ADDIN if api else None
+    have = _tree_sha(target) if target else None
+    state = None if have is None else "current" if have == _tree_sha(source_dir() / "fusion" / FUSION_ADDIN) else "other"
+    return {"found": api is not None, "addins_dir": str(target.parent) if target else None, "installed": state}
+
+
+def install_fusion() -> dict:
+    """Copy the add-in into Fusion's AddIns folder (swapped in whole). It starts with Fusion (runOnStartup); in a
+    Fusion already open: Utilities > Add-ins > Scripts and Add-ins, Run."""
+    api = fusion_api_dir()
+    if api is None:
+        raise StudioError("err.addon_install", 404, detail="Fusion was not found on this computer")
+    target = api / "AddIns" / FUSION_ADDIN
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        new, old = target.with_name(FUSION_ADDIN + ".new"), target.with_name(FUSION_ADDIN + ".old")
+        for d in (new, old):
+            shutil.rmtree(d, ignore_errors=True)
+        shutil.copytree(source_dir() / "fusion" / FUSION_ADDIN, new,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "README.md"))
+        if target.exists():
+            os.replace(target, old)
+        os.replace(new, target)
+        shutil.rmtree(old, ignore_errors=True)
+    except OSError as e:
+        raise StudioError("err.addon_install", 500, detail=str(e)[:300])
+    return {"program": "fusion", "path": str(target)}
+
+
 def status() -> dict:
-    return {"addon_version": addon_version(), "blender": blender_installs(), "freecad": freecad_status()}
+    return {"addon_version": addon_version(), "blender": blender_installs(), "freecad": freecad_status(),
+            "fusion": fusion_status()}
