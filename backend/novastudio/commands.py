@@ -154,7 +154,11 @@ def history_payload(case_id: str, lang: str) -> dict:
 def job_view(j: dict, lang: str) -> dict:
     eta = None
     nonlinear = str(j.get('message_key','')).startswith('job.nonlinear')
-    if j["state"] == "running" and not nonlinear and j.get("progress", 0) > 0.02:
+    # Genesis: progress is the step over the step limit, but runs stop earlier when converged and late steps cost up to
+    # ten times the early ones (y-extruded cantilever: 14 CG iterations a solve at first, 150-440 at the end), so a
+    # time left from it would be wrong both ways; the message names the step instead
+    genesis = j.get("study") == "genesis"
+    if j["state"] == "running" and not nonlinear and not genesis and j.get("progress", 0) > 0.02:
         import time
         elapsed = time.time() - j["created_at"]
         eta = max(0.0, elapsed * (1 - j["progress"]) / j["progress"])

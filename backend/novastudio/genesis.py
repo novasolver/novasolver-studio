@@ -669,7 +669,7 @@ class Genesis:
             c, dc, dv, rho, _ = self.evaluate(z)
             history.append({"iteration": it, "objective": c, "volume_fraction": self.volume_fraction(rho),
                             "beta": self.beta, "elapsed_s": time.monotonic() - t0})
-            progress("genesis.iterating", min(0.95, (it + 1) / s.iterations), {"iteration": it + 1, "objective": c})
+            progress("genesis.iterating", min(0.95, (it + 1) / s.iterations), {"iteration": it + 1, "max": s.iterations, "objective": c})
             if c < stage_best:
                 stage_best, best_z = c, z.copy()
             if since >= 3:

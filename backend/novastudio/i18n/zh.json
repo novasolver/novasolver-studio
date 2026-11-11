@@ -678,7 +678,7 @@
   "qty.szx": "剪应力 τzx",
   "genesis.setup": "Genesis：正在准备设计空间",
   "genesis.voxelising": "Genesis：正在将零件划分为网格",
-  "genesis.iterating": "Genesis：优化第 {iteration} 步",
+  "genesis.iterating": "Genesis：优化第 {iteration} 步（最多 {max} 步，收敛后提前结束）",
   "genesis.surface": "Genesis：正在输出形状",
   "genesis.card.compliance": "柔度",
   "genesis.card.temperature_rise": "最高温升",

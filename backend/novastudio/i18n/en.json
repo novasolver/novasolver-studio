@@ -678,7 +678,7 @@
   "qty.szx": "Shear stress τzx",
   "genesis.setup": "Genesis: preparing the design space",
   "genesis.voxelising": "Genesis: dividing the part into cells",
-  "genesis.iterating": "Genesis: optimisation step {iteration}",
+  "genesis.iterating": "Genesis: optimisation step {iteration} (up to {max}; stops earlier once converged)",
   "genesis.surface": "Genesis: writing the shape",
   "genesis.card.compliance": "Compliance",
   "genesis.card.temperature_rise": "Max temperature rise",

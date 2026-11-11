@@ -678,7 +678,7 @@
   "qty.szx": "せん断応力 τzx",
   "genesis.setup": "Genesis: 設計空間を準備しています",
   "genesis.voxelising": "Genesis: 部品を格子に分けています",
-  "genesis.iterating": "Genesis: 最適化 {iteration} 回目",
+  "genesis.iterating": "Genesis: 最適化 {iteration} 回目（最大 {max} 回。収束すれば早く終わります）",
   "genesis.surface": "Genesis: 形状を書き出しています",
   "genesis.card.compliance": "コンプライアンス",
   "genesis.card.temperature_rise": "最高温度上昇",

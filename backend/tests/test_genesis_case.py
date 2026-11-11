@@ -164,3 +164,13 @@ def test_settings_are_checked(ws):
         with pytest.raises(StudioError) as e:
             C.run_genesis(cid, bad, wait_s=0, lang="en")
         assert e.value.key == "err.genesis_option"
+
+
+def test_genesis_job_shows_the_step_not_a_time_left():
+    j = {"job_id": "r_20261111_120000_abcd", "case_id": "c", "state": "running", "progress": 0.4,
+         "created_at": time.time() - 100, "study": "genesis", "message_key": "genesis.iterating",
+         "message_args": {"iteration": 60, "max": 150, "objective": 1.0}}
+    v = C.job_view(j, "en")
+    assert v["eta_s"] is None and "60" in v["message"] and "150" in v["message"]
+    j["study"] = None
+    assert C.job_view(j, "en")["eta_s"] is not None
