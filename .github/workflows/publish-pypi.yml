@@ -26,6 +26,8 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - run: python tools/build_wheel.py
+      - name: Verify metadata-only post-release against published wheel
+        run: python tools/check_metadata_postrelease.py
       - uses: actions/upload-artifact@v4
         with:
           name: python-dist
