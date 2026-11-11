@@ -1,4 +1,4 @@
-﻿﻿# Second opinion: Codex reviews NovaSolver Studio read-only and writes studio/reviews/<date>_<label>.codex.md
+﻿# Second opinion: Codex reviews NovaSolver Studio read-only and writes studio/reviews/<date>_<label>.codex.md
 # Usage:  powershell -ExecutionPolicy Bypass -File tools\second_opinion.ps1 -Since v0.2.1
 #         powershell -ExecutionPolicy Bypass -File tools\second_opinion.ps1 -Full
 #         add -DeepSeekFirst to run tools\ds_review.py (deepseek-reasoner, cheap) first; Codex then verifies its findings
