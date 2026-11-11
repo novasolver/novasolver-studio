@@ -37,4 +37,15 @@ Validation status and actual Claude Code integration testing are recorded separa
 
 Windows / Python 3.12 / Claude Code CLI (Haiku): both manifests pass `claude plugin validate`; exact plugin uvx command exposes 35 MCP tools and solves a coarse cantilever. Claude Code loaded this plugin with `--plugin-dir`, called environment_check, list_templates, create_case, run_simulation, job_status and get_results, and reported reference validation separately from the untested mesh-convergence study. No permission denials.
 
-This test used an isolated workspace and process-local PATH containing uvx. Persistent marketplace installation, CAD import, mesh convergence, other operating systems and Genesis were not tested. Genesis is not in the pinned release.
+This Claude test used an isolated workspace and process-local PATH containing uvx.
+
+Additional direct MCP tests (the same pinned server, not additional Claude-client tests) imported the bundled `l_bracket.step`, generated a real tet10 mesh, and ran coarse/normal/fine built-in FEM studies. Two fresh runs reproduced the results:
+
+| Case | Numerical convergence | Displacement mesh study | Remaining limitation |
+| --- | --- | --- | --- |
+| Cantilever | Passed at all three levels | Passed; GCI 0.403% (5% limit) | Peak stress at the fixed support is not a strength assessment |
+| L-bracket, 100 N in +X | Passed at all three levels | Failed; GCI 7.784% (5% limit) | More mesh/geometry assessment is needed; stress-singularity warning |
+
+The bracket study correctly remains unverified. A completed calculation is not sufficient evidence of mesh independence. Neither displacement study establishes peak-stress convergence or real-world safety.
+
+Persistent marketplace installation and other operating systems remain untested. CalculiX and OpenFOAM were unavailable, so no external-solver result is claimed. Genesis is not in the pinned release.
