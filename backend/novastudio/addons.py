@@ -20,6 +20,7 @@ from .store import StudioError
 BLENDER_MIN = (4, 2)                  # extensions (blender_manifest.toml) and `--command extension` start at 4.2
 ADDON_ID = "novasolver_studio"
 MACRO = "NovaSolverStudio.FCMacro"
+WORKBENCH = "NovaSolverStudio"        # integrations/freecad/NovaSolverStudio -> FreeCAD's user Mod folder
 _VERSION = re.compile(r"(\d+)\.(\d+)")
 
 
@@ -205,24 +206,55 @@ def _sha(p: Path) -> str | None:
         return None
 
 
+def mod_dir() -> Path:
+    """The user Mod folder FreeCAD loads workbenches from: next to user.cfg (FreeCAD 1.1: FreeCAD/v1-1/Mod)."""
+    roots = _freecad_config_roots()
+    return next((r for r in roots if (r / "user.cfg").is_file()), roots[0]) / "Mod"
+
+
+def _tree_sha(folder: Path) -> str | None:
+    if not folder.is_dir():
+        return None
+    h = hashlib.sha256()
+    for p in sorted(folder.rglob("*")):
+        if p.is_file() and "__pycache__" not in p.parts and p.name != "README.md":
+            h.update(p.relative_to(folder).as_posix().encode() + b"\0" + p.read_bytes() + b"\0")
+    return h.hexdigest()
+
+
 def freecad_status() -> dict:
-    target = macro_dir() / MACRO
-    have = _sha(target)
-    state = None if have is None else "current" if have == _sha(source_dir() / "freecad" / MACRO) else "other"
+    """installed: current when the macro and the workbench both match this Studio's copies; other when either is
+    installed but differs (or one is missing)."""
+    target, wb = macro_dir() / MACRO, mod_dir() / WORKBENCH
+    have = (_sha(target), _tree_sha(wb))
+    want = (_sha(source_dir() / "freecad" / MACRO), _tree_sha(source_dir() / "freecad" / WORKBENCH))
+    state = None if have == (None, None) else "current" if have == want else "other"
     return {"installs": [{"path": str(p)} for p in _freecad_candidates()], "macro_dir": str(target.parent),
-            "installed": state}
+            "mod_dir": str(wb.parent), "installed": state}
 
 
 def install_freecad() -> dict:
-    target = macro_dir() / MACRO
+    """The macro (one click from Macro > Macros) and the workbench (send + import the Genesis result; FreeCAD
+    loads it on the next start). The workbench is copied next to the old one and swapped in."""
+    target, wb = macro_dir() / MACRO, mod_dir() / WORKBENCH
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_suffix(".tmp")
         shutil.copyfile(source_dir() / "freecad" / MACRO, tmp)
         os.replace(tmp, target)
+        wb.parent.mkdir(parents=True, exist_ok=True)
+        new, old = wb.with_name(WORKBENCH + ".new"), wb.with_name(WORKBENCH + ".old")
+        for d in (new, old):
+            shutil.rmtree(d, ignore_errors=True)
+        shutil.copytree(source_dir() / "freecad" / WORKBENCH, new,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "README.md"))
+        if wb.exists():
+            os.replace(wb, old)
+        os.replace(new, wb)
+        shutil.rmtree(old, ignore_errors=True)
     except OSError as e:
         raise StudioError("err.addon_install", 500, detail=str(e)[:300])
-    return {"program": "freecad", "path": str(target)}
+    return {"program": "freecad", "path": str(target), "workbench": str(wb)}
 
 
 def status() -> dict:

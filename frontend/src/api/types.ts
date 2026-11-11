@@ -416,5 +416,5 @@ export type WsMessage =
 export interface AddonsStatus {
   addon_version: string;
   blender: { path: string; version: string | null; supported: boolean; installed: string | null }[];
-  freecad: { installs: { path: string }[]; macro_dir: string; installed: "current" | "other" | null };
+  freecad: { installs: { path: string }[]; macro_dir: string; mod_dir?: string; installed: "current" | "other" | null };
 }

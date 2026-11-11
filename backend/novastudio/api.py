@@ -311,6 +311,12 @@ async def genesis_stl(case_id: str, run_id: str | None = None, smooth: bool = Fa
     return FileResponse(r["path"], media_type="model/stl", filename=r["filename"])
 
 
+@app.get("/api/cases/{case_id}/genesis/part.step")
+async def genesis_step(case_id: str, run_id: str | None = None):
+    r = await call(C.genesis_step, case_id, run_id)
+    return FileResponse(r["path"], media_type="model/step", filename=r["filename"])
+
+
 @app.get("/api/jobs/{job_id}")
 async def job(job_id: str, lang: str = "ja"):
     return await call(C.job_status, job_id, lang)

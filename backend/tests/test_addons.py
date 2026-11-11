@@ -41,8 +41,18 @@ def test_freecad_install_and_state(tmp_path, monkeypatch):
     out = addons.install_freecad()
     assert out["path"].endswith(addons.MACRO)
     assert addons.freecad_status()["installed"] == "current"
+    wb = tmp_path / "FreeCAD" / "Mod" / addons.WORKBENCH                # the workbench next to the macro
+    assert out["workbench"] == str(wb)
+    assert {"InitGui.py", "Init.py", "package.xml", "nss_link.py", "nss_commands.py"} <= {p.name for p in wb.iterdir()}
+    assert (wb / "Resources" / "icons" / "nss_genesis.svg").is_file()
     (tmp_path / "FreeCAD" / "Macro" / addons.MACRO).write_text("# an older macro", encoding="utf-8")
     assert addons.freecad_status()["installed"] == "other"
+    addons.install_freecad()
+    (wb / "stale.py").write_text("# left by an older workbench", encoding="utf-8")
+    assert addons.freecad_status()["installed"] == "other"
+    addons.install_freecad()                                            # swapped in whole: nothing old survives
+    assert not (wb / "stale.py").exists() and addons.freecad_status()["installed"] == "current"
+    assert not wb.with_name(addons.WORKBENCH + ".old").exists()
 
 
 def test_blender_install_only_for_a_found_program(monkeypatch, tmp_path):

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+  <name>NovaSolver Studio</name>
+  <description>Send the part to NovaSolver Studio (free local FEA: structural, thermal, flow) and bring the shape
+    Genesis (topology optimisation) made back into the document: a STEP solid for extruded parts, otherwise a mesh.
+    Talks only to Studio on 127.0.0.1.</description>
+  <version>0.1.0</version>
+  <date>2026-11-11</date>
+  <maintainer email="info@novasolver.jp">NovaSolver</maintainer>
+  <license file="LICENSE">GPL-3.0-or-later</license>
+  <url type="website">https://novasolver.jp/studio/</url>
+  <url type="repository" branch="main">https://github.com/novasolver/novasolver-studio</url>
+  <url type="bugtracker">https://github.com/novasolver/novasolver-studio/issues</url>
+  <icon>Resources/icons/NovaSolverStudio.svg</icon>
+  <content>
+    <workbench>
+      <classname>NovaSolverStudioWorkbench</classname>
+      <subdirectory>./</subdirectory>
+      <icon>Resources/icons/NovaSolverStudio.svg</icon>
+      <freecadmin>0.21.0</freecadmin>
+      <tag>FEM</tag>
+      <tag>topology optimization</tag>
+    </workbench>
+  </content>
+</package>

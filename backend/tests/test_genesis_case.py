@@ -195,6 +195,14 @@ def test_refine_extrusion_symmetry_and_step(ws):
         assert g["grid"]["shape"] == info["grid"] and g["refine"]["gain_pct"] > 0
     assert "step" in g["files"] and g["step"]["volume_m3"] > 0
     assert C.genesis_step(cid, g["run_id"])["path"].endswith("part.step")
+    # every download link the result names is served (a missing route fell through to the app page with 200)
+    from fastapi.testclient import TestClient
+    from novastudio.api import app
+    client = TestClient(app, base_url="http://127.0.0.1")
+    for kind, url in g["files"].items():
+        r = client.get(url)
+        assert r.status_code == 200 and not r.content.lstrip().startswith(b"<"), (kind, url)
+    assert client.get(g["files"]["step"]).content.startswith(b"ISO-10303-21")
     assert g["symmetry_hint"] is None                     # the plane is already used
 
 

@@ -126,7 +126,8 @@ def list_all() -> list[dict]:
             c = json.loads(f.read_text(encoding="utf-8"))
             tp = templates.TEMPLATES.get(c["template"], {})
             out.append({"case_id": c["case_id"], "template": c["template"], "title": c["title"], "revision": c["revision"],
-                        "physics": tp.get("physics"), "source_file": c["geometry"].get("name")})
+                        "physics": tp.get("physics"), "source_file": c["geometry"].get("name"),
+                        "source_sha256": c["geometry"].get("sha256")})      # CAD add-ons find their part's case
     return out
 
 
