@@ -408,6 +408,9 @@ def build(case: dict, m: dict, spec: dict, prog=lambda *a: None) -> tuple[gx.Gen
 
 # ------------------------------------------------------------------ refinement
 REFINE_MAX_CELLS = 400_000          # cells of the finer grid inside the part
+# and in its box: a thin-walled pipe elbow fills 20 % of its box; twice as fine (1.65M box cells) with two grids in
+# memory ran out of memory on a 16 GB computer
+REFINE_MAX_BOX = 1_200_000
 REFINE_ITERATIONS = 40
 
 
@@ -423,7 +426,7 @@ def refine(case, m, spec, g, r, prog, cancelled):
     on the same fine grid, at no more volume. Returns (Genesis, result) of the refined part or (None, None), and
     the comparison in r["refine"]."""
     n0 = int(g.active.sum())
-    fac = min(2.0, (REFINE_MAX_CELLS / n0) ** (1 / 3))
+    fac = min(2.0, (REFINE_MAX_CELLS / n0) ** (1 / 3), (REFINE_MAX_BOX / float(np.prod(g.shape))) ** (1 / 3))
     info = r["refine"] = {"factor": round(fac, 3), "accepted": False}
     if fac < 1.4:
         info["skipped"] = "grid_too_large"
@@ -433,19 +436,21 @@ def refine(case, m, spec, g, r, prog, cancelled):
     s2 = setup2["settings"]
     radius = min(gx.MAX_FILTER_CELLS, max(s2.filter_radius, g.s.filter_radius * g.h / f.h))
     gb, z0, part, target = gx.refine_problem(g, f, s2, band=max(3, int(math.ceil(radius)) + 1))
+    f_active, f_solid, f_shape, f_h = f.active, f.solid, f.shape, f.h
+    del f                                   # its multigrid is as large as the refined problem's
     s3 = gx.Settings(**{**s2.__dict__, "volume_fraction": target, "filter_radius": radius,
                         "iterations": REFINE_ITERATIONS, "beta_every": 10})
     gb.configure(s3)
     tol, gb.s.solver_tol = gb.s.solver_tol, 1e-8
     mm = gb.active & ~gb.void
     c_ref = _compliance(gb, np.where(mm, np.where(part, gb.E, gb.e_min), 0.0))      # the first part, fine grid
-    c_full = _compliance(gb, np.where(f.active, gb.E, 0.0))                          # all material, fine grid
+    c_full = _compliance(gb, np.where(f_active, gb.E, 0.0))                          # all material, fine grid
     gb.s.solver_tol = tol
     rf = gx.optimize_symmetric(gb, s3, progress=lambda key, frac, args: prog("genesis.refining", 0.6 + 0.3 * frac, args),
                                cancelled=cancelled, z0=z0, beta0=4.0)
-    vol_ref = float(part[f.active].mean())
-    vol = float(gb.solid_final[f.active].mean())
-    info.update(grid=list(f.shape), cell_m=f.h, cells_active=int(f.active.sum()), cells_design=int(gb.design.sum()),
+    vol_ref = float(part[f_active].mean())
+    vol = float(gb.solid_final[f_active].mean())
+    info.update(grid=list(f_shape), cell_m=f_h, cells_active=int(f_active.sum()), cells_design=int(gb.design.sum()),
                 objective_before=c_ref, objective_after=rf["objective_binary"], volume_before=vol_ref, volume_after=vol,
                 iterations=rf["iterations"], termination=rf["termination"], elapsed_s=time.time() - t0)
     bad_w = {"load_not_carried", "constraint_not_met", "non_design_region_detached"}
@@ -458,8 +463,8 @@ def refine(case, m, spec, g, r, prog, cancelled):
     info["accepted"] = True
     out = dict(rf)
     out["refine"] = info
-    out.update(objective_full=c_full, stiffness_kept=c_full / rf["objective_binary"], volume_fraction=float(gb.rho[f.active].mean()),
-               volume_fraction_binary=vol, cells_active=int(f.active.sum()),
+    out.update(objective_full=c_full, stiffness_kept=c_full / rf["objective_binary"], volume_fraction=float(gb.rho[f_active].mean()),
+               volume_fraction_binary=vol, cells_active=int(f_active.sum()),
                iterations=r["iterations"] + rf["iterations"], elapsed_s=r["elapsed_s"] + info["elapsed_s"],
                termination=r["termination"] if r["termination"] != "converged" else rf["termination"],
                history=r["history"] + [{**h, "iteration": r["iterations"] + h["iteration"], "stage": "refine"} for h in rf["history"]],
@@ -467,7 +472,7 @@ def refine(case, m, spec, g, r, prog, cancelled):
                        "stiffness_kept": r["stiffness_kept"], "volume_fraction_binary": r["volume_fraction_binary"]})
     out["warnings"] = [w for w in r["warnings"] if w.startswith("not_converged")] + \
                       [w for w in rf["warnings"] if not w.startswith("not_converged")]
-    out["user_keep"] = f.solid
+    out["user_keep"] = f_solid
     return gb, out
 
 

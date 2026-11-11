@@ -267,8 +267,12 @@ class Multigrid:
         last = self.levels[-1]
         A = last.assemble()
         free = np.nonzero(~last.dead)[0]
+        Af = A[free][:, free]
         self.cfree = free
-        self.factor = fe.spd_factor(A[free][:, free]) if len(free) else None
+        # a stale factorisation (kept while the coarse operator moved < 5-50 %) or a pyamg V-cycle instead of the
+        # direct solve both cost far more CG iterations than they saved (74k-cell cantilever, 20 steps: 221 CG
+        # iterations / 212 s direct; reused 1276-2303; AMG 2844-4583 / 826-1112 s)
+        self.factor = fe.spd_factor(Af) if len(free) else None
 
     def vcycle(self, r, l=0):
         lv = self.levels[l]
@@ -345,6 +349,9 @@ class Multigrid:
         if len(free) <= MAX_DIRECT_DOFS:
             x = np.zeros_like(b)
             x[free] = fe.spd_factor(lv.assemble()[free][:, free]).solve(b[free])
+            return x, maxiter
+        # close to the tolerance (the final 0/1 analysis asks 1e-8; a 74k-cell cantilever stopped at 1.8e-8): use it
+        if np.linalg.norm(r) <= max(1e3 * tol, 1e-6) * nb:
             return x, maxiter
         raise RuntimeError(f"Genesis solver did not converge (relative residual {np.linalg.norm(r) / nb:.1e})")
 
@@ -1347,8 +1354,25 @@ def refine_problem(coarse, fine, settings, band=3):
     near_solid = np.zeros(int(np.prod(fine.shape)), bool)
     near_solid[inside] = coarse.solid_final[c[0, inside], c[1, inside], c[2, inside]]
     near_solid = near_solid.reshape(fine.shape)
-    field = np.where(near_solid, np.maximum(field, 0.5 + 1e-3), field)
-    part = ((field >= 0.5) & fine.active) | fine.solid
+    # the same share of material as the coarse part: its kept layers at faces with conditions are one coarse cell
+    # thick (half of it outside the body), so cutting at 0.5 left an L bracket with 24.6 % instead of 31.7 % and the
+    # refinement aimed at that. The cut level is lowered until the shares match
+    m0 = coarse.active & ~coarse.void
+    want = float(coarse.solid_final[m0].mean())
+    cut = lambda lv: (((field >= lv) | near_solid) & fine.active) | fine.solid
+    lo_, hi_ = 0.05, 0.5
+    if cut(hi_)[fine.active].mean() < want:
+        for _ in range(25):
+            mid = 0.5 * (lo_ + hi_)
+            if cut(mid)[fine.active].mean() < want:
+                hi_ = mid
+            else:
+                lo_ = mid
+        level = lo_
+    else:
+        level = hi_
+    part = cut(level)
+    field = np.where(part, np.maximum(field, 0.5 + 1e-3), np.minimum(field, 0.5 - 1e-3))   # start design = that part
     d_in = ndimage.distance_transform_edt(part)          # distance to the nearest outside cell
     d_out = ndimage.distance_transform_edt(~part)
     near = np.where(part, d_in <= band, d_out <= band)
