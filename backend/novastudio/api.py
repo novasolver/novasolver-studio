@@ -306,8 +306,8 @@ async def genesis_surface(case_id: str, run_id: str | None = None, lang: str = "
 
 
 @app.get("/api/cases/{case_id}/genesis/part.stl")
-async def genesis_stl(case_id: str, run_id: str | None = None):
-    r = await call(C.genesis_stl, case_id, run_id)
+async def genesis_stl(case_id: str, run_id: str | None = None, smooth: bool = False):
+    r = await call(C.genesis_stl, case_id, run_id, smooth)
     return FileResponse(r["path"], media_type="model/stl", filename=r["filename"])
 
 

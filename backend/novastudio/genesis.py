@@ -1012,6 +1012,27 @@ def write_stl(path, P, F, name=b"NovaSolver Studio Genesis"):
         fh.write(name.ljust(80, b" ")[:80]); fh.write(struct.pack("<I", len(F))); fh.write(rec.tobytes())
 
 
+def smooth_surface(P, F, pinned=None, iters=30, lam=0.5, mu=-0.53):
+    """Taubin smoothing (lambda | mu): removes the cell-size steps of the iso-surface without the shrinking of plain
+    Laplacian smoothing. The connectivity is unchanged, so a closed, oriented surface stays closed and oriented.
+    pinned: vertices that do not move (mounting / loaded faces stay where the conditions are). 30 passes: the steps of
+    the 120k-cell cantilever were gone (12 left ridges, 60 looked the same as 30); its volume changed by 0.02 %."""
+    n = len(P)
+    if n == 0:
+        return P.copy()
+    e = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
+    A = sp.csr_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n))
+    A = ((A + A.T) > 0).astype(float)
+    deg = np.asarray(A.sum(axis=1)).ravel()
+    W = sp.diags(1.0 / np.maximum(deg, 1)) @ A              # umbrella operator: mean of the neighbours
+    free = np.ones(n, bool) if pinned is None else ~pinned
+    X = P.astype(float).copy()
+    for _ in range(iters):
+        for f in (lam, mu):
+            X[free] += f * (W @ X - X)[free]
+    return X
+
+
 def surface_checks(P, F):
     """Closed, consistently oriented, outward (positive enclosed volume) and manifold edges."""
     e = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])

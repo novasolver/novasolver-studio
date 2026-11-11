@@ -610,7 +610,10 @@
   "genesis.meta": "{n} 步 · {s} 秒",
   "genesis.stale": "此结果之后条件已更改，请重新运行。",
   "genesis.show": "显示优化后的形状",
-  "genesis.download": "保存 STL",
+  "genesis.download": "STL（网格）",
+  "genesis.downloadSmooth": "STL（平滑）",
+  "genesis.downloadSmoothHint": "抹平网格台阶的曲面，体积及约束、载荷面保持不变。适用于 3D 打印和铸造",
+  "genesis.downloadRawHint": "计算得到的原始形状（保留一个网格大小的台阶）",
   "genesis.kept": "以 {vol} % 的体积，保留原零件（全部为材料）刚度的 {pct} %。",
   "genesis.keptHeat": "以 {vol} % 的体积，保留原零件（全部为材料）导热能力的 {pct} %。",
   "genesis.running": "Genesis 正在生成形状"

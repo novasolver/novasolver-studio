@@ -230,7 +230,7 @@ export interface GenesisResult {
   surface: { triangles: number; closed: boolean; manifold_edges: boolean; oriented: boolean; volume_m3: number };
   settings: GenesisSettings;
   history: { i: number; objective: number | null; volume_fraction: number }[];
-  files: { stl: string };
+  files: { stl: string; stl_smooth?: string };
   note: string;
   stale: boolean;
 }

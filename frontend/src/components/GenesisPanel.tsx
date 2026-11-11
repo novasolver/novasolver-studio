@@ -135,9 +135,16 @@ function GenesisResultView() {
       {g.warnings.map((w) => (
         <p key={w.key} className="prose-ui mt-1 text-label text-orange">{w.message}</p>
       ))}
-      <a href={genesisStlUrl(cid, g.run_id)} className="mt-3 flex h-8 items-center justify-center gap-2 rounded-[6px] border border-line-strong px-3 text-body text-fg hover:bg-hover">
-        <Download size={14} strokeWidth={1.5} />{t("genesis.download")}
-      </a>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <a href={genesisStlUrl(cid, g.run_id, true)} title={t("genesis.downloadSmoothHint")}
+           className="flex h-8 min-w-0 items-center justify-center gap-2 rounded-[6px] border border-line-strong px-2 text-body text-fg hover:bg-hover">
+          <Download size={14} strokeWidth={1.5} className="shrink-0" /><span className="truncate">{t("genesis.downloadSmooth")}</span>
+        </a>
+        <a href={genesisStlUrl(cid, g.run_id)} title={t("genesis.downloadRawHint")}
+           className="flex h-8 min-w-0 items-center justify-center gap-2 rounded-[6px] border border-line-strong px-2 text-body text-fg hover:bg-hover">
+          <Download size={14} strokeWidth={1.5} className="shrink-0" /><span className="truncate">{t("genesis.download")}</span>
+        </a>
+      </div>
       <p className="prose-ui mt-2 text-label text-fg-3">{g.note}</p>
     </div>
   );

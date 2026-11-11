@@ -111,8 +111,8 @@ export function renderUrl(caseId: string, quantity: string): string {
   return withLang(`/api/cases/${encodeURIComponent(caseId)}/render.png?quantity=${encodeURIComponent(quantity)}`);
 }
 
-export function genesisStlUrl(caseId: string, runId: string): string {
-  return withLang(`/api/cases/${encodeURIComponent(caseId)}/genesis/part.stl?run_id=${encodeURIComponent(runId)}`);
+export function genesisStlUrl(caseId: string, runId: string, smooth = false): string {
+  return withLang(`/api/cases/${encodeURIComponent(caseId)}/genesis/part.stl?run_id=${encodeURIComponent(runId)}${smooth ? "&smooth=true" : ""}`);
 }
 
 export function exportUrl(caseId: string, format: string): string {

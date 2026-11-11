@@ -610,7 +610,10 @@
   "genesis.meta": "{n} steps · {s} s",
   "genesis.stale": "The case changed after this result. Run Genesis again.",
   "genesis.show": "Show the optimised shape",
-  "genesis.download": "Save STL",
+  "genesis.download": "STL (grid)",
+  "genesis.downloadSmooth": "STL (smooth)",
+  "genesis.downloadSmoothHint": "Grid steps smoothed out; the volume and the support / load faces stay. For 3D printing and casting",
+  "genesis.downloadRawHint": "The computed shape as it is (steps of one grid cell remain)",
   "genesis.kept": "At {vol} % of the volume, it keeps {pct} % of the stiffness of the full part.",
   "genesis.keptHeat": "At {vol} % of the volume, it keeps {pct} % of the heat conductance of the full part.",
   "genesis.running": "Genesis is generating the shape"

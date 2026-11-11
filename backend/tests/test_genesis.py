@@ -301,3 +301,27 @@ def test_input_validation():
         g.optimize(gx.Settings(volume_fraction=0.01))
     with pytest.raises(ValueError):
         gx.Genesis(g.shape, g.h, fixed=g.fixed, loads=np.zeros(g.ndof))
+
+
+def test_smooth_surface_keeps_the_part():
+    g = gx.cantilever(nx=24, ny=4, nz=12)
+    g.optimize(gx.Settings(volume_fraction=0.4, iterations=40))
+    P, F = g.surface()
+    pinned = np.zeros(len(P), bool)
+    pinned[P[:, 0] < g.origin[0] + 0.6 * g.h] = True            # the fixed end
+    S = gx.smooth_surface(P, F, pinned)
+    a, b = gx.surface_checks(P, F), gx.surface_checks(S, F)
+    assert b["closed"] and b["oriented"] and b["manifold_edges"] == a["manifold_edges"]
+    assert b["volume_m3"] == pytest.approx(a["volume_m3"], rel=0.03)
+    assert np.array_equal(S[pinned], P[pinned])
+    # the steps get smaller: the spread of the face normals of neighbouring triangles drops
+    def roughness(X):
+        n = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+        n /= np.linalg.norm(n, axis=1)[:, None]
+        e = np.sort(np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), axis=1)
+        tri = np.tile(np.arange(len(F)), 3)
+        o = np.lexsort((e[:, 1], e[:, 0]))
+        e, tri = e[o], tri[o]
+        same = np.all(e[1:] == e[:-1], axis=1)
+        return float(np.mean(1 - np.einsum("ij,ij->i", n[tri[1:][same]], n[tri[:-1][same]])))
+    assert roughness(S) < 0.7 * roughness(P)

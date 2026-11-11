@@ -746,7 +746,8 @@ def genesis_result(case_id: str, run_id: str | None = None, lang: str = "ja") ->
             "grid": g["setup"]["grid"], "cells_active": g["setup"]["cells_active"], "surface": g["surface"],
             "settings": g["spec"], "history": [{"i": h["iteration"], "objective": h["objective"] / h0 if h0 else None,
                                                "volume_fraction": h["volume_fraction"]} for h in g["history"]],
-            "files": {"stl": f"/api/cases/{case_id}/genesis/part.stl?run_id={jd.name}"},
+            "files": {"stl": f"/api/cases/{case_id}/genesis/part.stl?run_id={jd.name}",
+                      "stl_smooth": f"/api/cases/{case_id}/genesis/part.stl?run_id={jd.name}&smooth=true"},
             "note": t("genesis.note.verify", L), "stale": g["revision"] != store.load(case_id)["revision"]}
 
 
@@ -768,9 +769,30 @@ def genesis_surface(case_id: str, run_id: str | None = None, lang: str = "ja") -
             "unit": unit, "label": label, "run_id": jd.name}
 
 
-def genesis_stl(case_id: str, run_id: str | None = None) -> dict:
+def genesis_stl(case_id: str, run_id: str | None = None, smooth: bool = False) -> dict:
+    """part.stl as computed (the iso-surface, cell-size steps), or with smooth=True a Taubin-smoothed copy made on
+    first request (also for runs made before it existed). Faces next to kept regions (supports, loads) do not move."""
     jd = _genesis_dir(case_id, run_id)
-    return {"path": str(jd / "part.stl"), "filename": f"genesis_{case_id}_{jd.name}.stl"}
+    if not smooth:
+        return {"path": str(jd / "part.stl"), "filename": f"genesis_{case_id}_{jd.name}.stl"}
+    out = jd / "part_smooth.stl"
+    if not out.is_file():
+        import numpy as np
+        from scipy import ndimage
+        from . import genesis as gx
+        z = np.load(jd / "genesis.npz")
+        P, F = z["positions"].astype(float), z["indices"].astype(np.int64)
+        keep = ndimage.binary_dilation(z["keep"], iterations=1)
+        cell = np.clip(np.floor((P - z["origin"]) / float(z["h"])).astype(int), 0, np.array(keep.shape) - 1)
+        pinned = keep[cell[:, 0], cell[:, 1], cell[:, 2]]
+        S = gx.smooth_surface(P, F, pinned)
+        a, b = gx.surface_checks(P, F), gx.surface_checks(S, F)
+        if not (b["closed"] and b["oriented"] and b["volume_m3"] > 0 and abs(b["volume_m3"] / a["volume_m3"] - 1) < 0.03):
+            S = P                                    # smoothing would change the part: keep the computed surface
+        tmp = out.with_suffix(".tmp")
+        gx.write_stl(tmp, S, F)
+        tmp.replace(out)
+    return {"path": str(out), "filename": f"genesis_{case_id}_{jd.name}_smooth.stl"}
 
 
 def get_results(case_id: str, run_id: str | None = None, lang: str = "ja") -> dict:
