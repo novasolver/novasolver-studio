@@ -1,20 +1,22 @@
+<!-- mcp-name: io.github.novasolver/novasolver-studio -->
+
 # NovaSolver Studio
 
 **Free, local engineering simulation that your AI assistant can drive — and every answer is checked.**
 Structural FEM, heat and CFD (CalculiX, OpenFOAM® and a built-in quadratic-tet solver) on your own PC, with an MCP
 server so Claude or any MCP client can import your STEP/STL, set the loads, run, refine the mesh and verify the result.
 
-[日本語](README.ja.md) · [中文](README.zh.md) ·
+[日本語](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/README.ja.md) · [中文](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/README.zh.md) ·
 **[Try it in your browser (no install)](https://novasolver.jp/studio/demo/?lang=en)** ·
 [Download for Windows](https://github.com/novasolver/novasolver-studio/releases/latest) ·
 [novasolver.jp/studio](https://novasolver.jp/en/studio/)
 
-![An AI assistant sets up a gear tooth in Studio, solves it, refines the mesh three times and compares with a hand calculation](assets/readme/studio-demo.gif)
+![An AI assistant sets up a gear tooth in Studio, solves it, refines the mesh three times and compares with a hand calculation](https://raw.githubusercontent.com/novasolver/novasolver-studio/v0.7.6/assets/readme/studio-demo.gif)
 
 *One sentence to the AI → Studio sets up and solves the case → mesh refined three times (GCI 1.5 %) → compared
 with a hand calculation. Real app, real numbers.*
 
-![An AI designs a bracket in SolidCraft and analyses it in Studio, then refuses to call it a pass because the mesh check failed](assets/readme/design-loop.gif)
+![An AI designs a bracket in SolidCraft and analyses it in Studio, then refuses to call it a pass because the mesh check failed](https://raw.githubusercontent.com/novasolver/novasolver-studio/v0.7.6/assets/readme/design-loop.gif)
 
 *From one prompt, an AI modelled a bracket in SolidCraft and analysed three versions in Studio. It stopped without calling any of them a pass, because the mesh check had failed. [40 s video](https://novasolver.jp/studio/video/novasolver-studio-design-loop-en.mp4).*
 
@@ -28,7 +30,7 @@ with a hand calculation. Real app, real numbers.*
 - **Your models stay on your computer.** No account, no upload, no telemetry. The only network use is the optional
   update check and example download (offline mode turns those off), and a public test fails if any other code starts
   using the network. For confidential work with a cloud AI, **numbers-only mode** keeps even pictures of the part
-  away from the AI. See [docs/PRIVACY.md](docs/PRIVACY.md).
+  away from the AI. See [docs/PRIVACY.md](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/docs/PRIVACY.md).
 - **Real solvers, no licence fee.** CalculiX for structural/thermal, OpenFOAM® for flow and water cooling, a built-in
   tet10 FEM for answers in seconds. Japanese, English and Chinese UI.
 - **Typed MCP tools, no shell.** 35 tools (create/import, set conditions, mesh, run, convergence, verify, probe,
@@ -42,7 +44,7 @@ with a hand calculation. Real app, real numbers.*
 
 | | |
 |---|---|
-| ![Flow through a pipe elbow, solved with OpenFOAM](assets/readme/elbow-flow.webp) | ![Cantilever stress and deflection compared with beam theory](assets/readme/results-cantilever-en.webp) |
+| ![Flow through a pipe elbow, solved with OpenFOAM](https://raw.githubusercontent.com/novasolver/novasolver-studio/v0.7.6/assets/readme/elbow-flow.webp) | ![Cantilever stress and deflection compared with beam theory](https://raw.githubusercontent.com/novasolver/novasolver-studio/v0.7.6/assets/readme/results-cantilever-en.webp) |
 | Pipe elbow, OpenFOAM® (pressure drop) | Cantilever vs beam theory |
 
 ## Checked against known answers
@@ -58,7 +60,7 @@ mesh-convergence column is published with each release as `docs/VALIDATION.md`):
 | Water-cooled plate | heat balance | 0.03 % |
 | Lid-driven cavity | Ghia et al. | profile match (built-in and OpenFOAM®) |
 
-How often does it get through a part it has never seen? [docs/PART_TEST.md](docs/PART_TEST.md) counts 246 STEP files, including every one that failed and why. Does it tell you when your setup is wrong? [docs/SETUP_MISTAKES.md](docs/SETUP_MISTAKES.md) breaks correct setups in 34 ways, with the list fixed before the run, and shows what it said, misses included.
+How often does it get through a part it has never seen? [docs/PART_TEST.md](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/docs/PART_TEST.md) counts 246 STEP files, including every one that failed and why. Does it tell you when your setup is wrong? [docs/SETUP_MISTAKES.md](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/docs/SETUP_MISTAKES.md) breaks correct setups in 34 ways, with the list fixed before the run, and shows what it said, misses included.
 
 ## What it does / できること
 
@@ -72,8 +74,8 @@ How often does it get through a part it has never seen? [docs/PART_TEST.md](docs
 | Flow around a body | import | — | OpenFOAM® (snappyHexMesh + wall layers) | sphere drag vs Schiller–Naumann (+0.3%) |
 | Water cooling (conjugate heat transfer) | import (2+ bodies) | — | OpenFOAM® (chtMultiRegionSimpleFoam) | heat balance (0.03%) |
 
-Also: a [Blender add-on](integrations/blender/) (send the active object to Studio, PLA/PETG/ABS or metals),
-a [FreeCAD macro](integrations/freecad/) (send the selected part as STEP),
+Also: a [Blender add-on](https://github.com/novasolver/novasolver-studio/tree/v0.7.6/integrations/blender/) (send the active object to Studio, PLA/PETG/ABS or metals),
+a [FreeCAD macro](https://github.com/novasolver/novasolver-studio/tree/v0.7.6/integrations/freecad/) (send the selected part as STEP),
 a 3D-print strength check (safety factor for each print direction in PLA/PETG/ABS, layer lines included), ParaView VTU / CSV / printable HTML report export, and a Windows installer with `.nscase`
 file association.
 
@@ -85,7 +87,7 @@ AI assistants connect with `./NovaSolverStudio mcp`.
 
 ## Install with Python (macOS / Linux / Windows)
 
-After the first PyPI release, launch the GUI with `uvx novasolver-studio`, or install once with
+Launch the GUI with `uvx novasolver-studio`, or install once with
 `pipx install novasolver-studio` and run `novasolver-studio`. Python 3.10+ is required; Python 3.12 is tested in CI.
 Older Python versions use compatible NumPy/SciPy/Matplotlib/WebSocket releases. The built-in FEM needs no external
 solver. For an MCP client:
@@ -195,13 +197,13 @@ Hで選択した面を隠し、Alt+Hですべて表示。Ctrl+ドラッグで矩
 
 ## Documentation
 
-- Design: [`docs/DESIGN.md`](docs/DESIGN.md) · Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · Development notes: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)
+- Design: [`docs/DESIGN.md`](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/docs/DESIGN.md) · Roadmap: [`docs/ROADMAP.md`](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/docs/ROADMAP.md) · Development notes: [`docs/DEVELOPMENT.md`](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/docs/DEVELOPMENT.md)
 - Tests: `python -m pytest backend/tests -q`
 
 ## License
 
-GPL-3.0 — see [`LICENSE`](LICENSE). Programs called by Studio keep their own licenses — see
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+GPL-3.0 — see [`LICENSE`](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/LICENSE). Programs called by Studio keep their own licenses — see
+[`THIRD_PARTY_NOTICES.md`](https://github.com/novasolver/novasolver-studio/blob/v0.7.6/THIRD_PARTY_NOTICES.md).
 
 The license covers the code, not the name. If you distribute a modified version, please give it a different name and
 do not present it as NovaSolver Studio or NovaSolver Flash.

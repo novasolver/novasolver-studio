@@ -8,7 +8,7 @@
     "source": "github"
   },
   "websiteUrl": "https://novasolver.jp/en/studio/",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "packages": [
     {
       "registryType": "mcpb",
@@ -17,6 +17,22 @@
       "transport": {
         "type": "stdio"
       }
+    },
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "novasolver-studio",
+      "version": "0.7.6.post1",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
     }
   ]
 }
