@@ -138,6 +138,17 @@ Solvers are found automatically when installed (without them, the built-in previ
 [Releases](https://github.com/novasolver/novasolver-studio/releases) and open it — the app installs it as an extension.
 Also listed in the [MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.novasolver/novasolver-studio`.
 
+Client-specific setup guides / アプリ別の導入手順 / 客户端安装指南:
+
+| Client | Guide | Verification scope |
+| --- | --- | --- |
+| Claude Code | [Plugin installation](https://github.com/novasolver/novasolver-studio/tree/main/plugins/novasolver-studio) | Windows: plugin installation and a model-driven cantilever solve checked |
+| Gemini CLI | [Extension setup](https://github.com/novasolver/novasolver-studio/blob/main/docs/GEMINI_CLI.md) | Windows: isolated extension installation and MCP connection checked; no model-driven solve |
+| Codex | [Configuration and optional helper](https://github.com/novasolver/novasolver-studio/blob/main/docs/CODEX_MCP.md) | Configuration handling checked; no Codex model-driven solve |
+| Qwen Code | [中文・日本語・English guide](https://github.com/novasolver/novasolver-studio/blob/main/docs/QWEN_MCP.md) | Windows: MCP handshake checked; no model-driven solve |
+
+These are NovaSolver's setup guides, not claims of approval or listing in each provider's official directory.
+
 **With the downloaded zip:** point any MCP client at the exe.
 
 ```json
