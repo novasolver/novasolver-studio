@@ -1,6 +1,6 @@
 # NovaSolver Studio for Claude Code
 
-This plugin connects Claude Code to the published local Studio MCP server. It includes a `/novasolver-studio:simulate` workflow skill. Requires Python 3.10+ and `uvx` on PATH (installed with uv).
+This plugin connects Claude Code to the published local Studio MCP server. It includes a `/novasolver-studio:simulate` workflow skill. Requires Python 3.10+ and `uv` on PATH.
 
 ## Install from GitHub
 
@@ -25,7 +25,7 @@ In Claude Code, inspect `/mcp`, then try:
 
 > Create a coarse cantilever example, solve it, and report the result and reference-check status.
 
-The server package is pinned to `novasolver-studio==0.7.6.post1`. The first launch downloads the package and dependencies from PyPI. Simulation files use Studio's standard workspace; `NOVASTUDIO_WORKSPACE` can select an isolated test workspace before launching Claude.
+The server package is pinned to `novasolver-studio==0.7.6.post1`. Plugin 0.1.1 starts it with `uv run --locked` using the bundled project and `uv.lock`, which records package sources, versions and artifact hashes. The first launch downloads the locked packages from PyPI and creates a local virtual environment in the plugin folder; that folder must be writable. Simulation files use Studio's standard workspace; `NOVASTUDIO_WORKSPACE` can select an isolated test workspace before launching Claude.
 
 ## Marketplace preview
 
@@ -60,3 +60,5 @@ Additional direct MCP tests (the same pinned server, not additional Claude-clien
 The bracket study correctly remains unverified. A completed calculation is not sufficient evidence of mesh independence. Neither displacement study establishes peak-stress convergence or real-world safety.
 
 After publication, GitHub marketplace retrieval and installation were verified in a fresh, isolated Claude configuration on Windows. Other operating systems' plugin installation remains untested. CalculiX and OpenFOAM were unavailable in the plugin test environment, so no external-solver plugin result is claimed. Genesis is not in the pinned release.
+
+Plugin 0.1.1's locked-project launcher was additionally tested through direct MCP and actual Claude Code (Haiku): 35 tools, a new coarse cantilever solve, and its reference check passed, with no permission denials. This launcher test did not rerun the mesh study.
