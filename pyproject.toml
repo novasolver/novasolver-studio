@@ -12,6 +12,7 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{name = "NovaSolver", email = "info@novasolver.jp"}]
 dependencies = [
+    "tomli>=2; python_version < '3.11'",
     "numpy>=2.5.4; python_version >= '3.12'", "numpy>=2.2.6; python_version < '3.12'",
     "scipy>=1.18.1; python_version >= '3.12'", "scipy>=1.15.3; python_version < '3.12'",
     "pyamg>=5.3.0", "gmsh>=4.15.2",

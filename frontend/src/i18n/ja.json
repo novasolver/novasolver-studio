@@ -582,5 +582,15 @@
   "gate.reference": "参照解と一致",
   "gate.verified.tipTodo": "メッシュ収束の確認をまだ実行していません。メッシュの粗さによる誤差は未確認です。",
   "verify.gci": "GCI",
-  "gate.referenceCheck": "参照解との比較"
+  "gate.referenceCheck": "参照解との比較",
+  "codex.title": "Codex 連携",
+  "codex.path": "設定ファイル（絶対パス）",
+  "codex.preview": "状態をプレビュー",
+  "codex.apply": "Codex に Studio を追加",
+  "codex.busy": "確認中…",
+  "codex.previewRequired": "書き込む前にこのパスをプレビューしてください。",
+  "codex.ready": "追加可能：Studio の MCP テーブルを1つ追加します。",
+  "codex.configured": "Studio は設定済みです。既存のカスタム設定は保持されています。変更を読み込むには Codex を再起動してください。",
+  "codex.blocked": "更新できません。TOML、Studio 設定の競合、アクセス権、同時編集を確認して再プレビューしてください。",
+  "codex.note": "ボタンを押すと表示された MCP テーブルだけを追加します。既存ファイルは同じフォルダーに非公開のバックアップを作成します。認証・ネットワーク設定は変更しません。uvx が必要です。Codex が MCP を起動すると固定バージョンの Studio をダウンロードする場合があります。"
 }

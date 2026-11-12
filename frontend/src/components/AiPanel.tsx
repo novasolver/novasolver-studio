@@ -4,7 +4,9 @@ import { ui, useStore, useT } from "../state/store";
 import { api } from "../api/client";
 import { Button } from "./ui/Button";
 
-/** AI assistant panel (placeholder): explains how to connect an MCP client. */
+import { CodexSetup } from "./CodexSetup";
+
+/** AI assistant connections. */
 export function AiPanel() {
   const t = useT();
   const open = useStore((s) => s.ai);
@@ -61,6 +63,7 @@ export function AiPanel() {
       </header>
       <div className="prose-ui min-h-0 flex-1 overflow-y-auto p-4 text-body text-fg-2">
         <p className="text-fg">{t("ai.lead")}</p>
+        <CodexSetup />
         <p className="mt-3">{t('ai.selectionHint')}</p>
         <ol className="mt-4 flex flex-col gap-3">
           {["ai.step1", "ai.step2", "ai.step3"].map((k, i) => (

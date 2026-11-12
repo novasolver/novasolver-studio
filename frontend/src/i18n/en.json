@@ -582,5 +582,15 @@
   "gate.reference": "Matches reference",
   "gate.verified.tipTodo": "No mesh convergence check yet, so the error from the mesh size is unknown.",
   "verify.gci": "GCI",
-  "gate.referenceCheck": "Reference check"
+  "gate.referenceCheck": "Reference check",
+  "codex.title": "Codex integration",
+  "codex.path": "Config file (absolute path)",
+  "codex.preview": "Preview status",
+  "codex.apply": "Add Studio to Codex",
+  "codex.busy": "Checking…",
+  "codex.previewRequired": "Preview this path before writing.",
+  "codex.ready": "Ready: one Studio MCP table will be added.",
+  "codex.configured": "Studio is configured. Existing custom settings were preserved. Restart Codex to load changes.",
+  "codex.blocked": "Cannot update. Check TOML, conflicting Studio entries, permissions or concurrent edits, then preview again.",
+  "codex.note": "Only the displayed MCP table is added on button click. Existing files get a private adjacent backup. No authentication or network settings change. uvx must be installed; Codex may download the pinned Studio package when it starts MCP."
 }
