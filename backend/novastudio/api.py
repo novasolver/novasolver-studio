@@ -80,6 +80,19 @@ async def env(lang: str = "ja"):
     return await call(C.environment_check, lang)
 
 
+@app.get("/api/integrations/codex")
+async def codex_preview(path: str | None = None):
+    return await call(C.codex_integration, path)
+
+
+@app.post("/api/integrations/codex")
+async def codex_setup(body: dict = Body(...)):
+    path, revision = body.get("path"), body.get("revision")
+    if not isinstance(path, str) or not isinstance(revision, str):
+        return JSONResponse({"status": "blocked"}, status_code=400)
+    return await call(C.codex_integration, path, apply=True, revision=revision)
+
+
 @app.get("/api/templates")
 async def templates_(lang: str = "ja"):
     return await call(C.list_templates, lang)

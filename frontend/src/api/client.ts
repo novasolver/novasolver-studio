@@ -171,6 +171,9 @@ async function importArchive(file: File): Promise<CasePayload> {
 }
 
 export const api = {
+  codexPreview: (path?: string) => request<CodexSetup>("GET", "/api/integrations/codex" + (path ? "?path=" + encodeURIComponent(path) : "")),
+  codexSetup: (path: string, revision: string) => request<CodexSetup>("POST", "/api/integrations/codex", { path, revision }),
+
   update: (force = false, passive = false) =>
     mock ? Promise.resolve<UpdateInfo>({ current: "mock", available: false, kind: "dev" })
       : request<UpdateInfo>("GET", `/api/update?force=${force}&passive=${passive}`),
@@ -274,3 +277,5 @@ export function connectEvents(onMessage: (m: WsMessage) => void, onState?: (conn
     ws?.close();
   };
 }
+
+export type CodexSetup = { path: string; status: "ready" | "configured" | "blocked"; revision?: string; table: string };

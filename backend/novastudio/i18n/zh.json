@@ -695,7 +695,7 @@
   "genesis.card.max_disp": "最大位移",
   "genesis.field.vm": "等效应力（网格估计）",
   "genesis.field.temp": "温度",
-  "genesis.note.verify": "该形状是网格上的优化结果。使用前请导入 STL，并用常规分析（应力、CalculiX）确认。",
+  "genesis.note.verify": "显示的数值来自网格形状的分析，并非平滑 STL 或 STEP 的已验证结果。请重新导入输出形状，使用相同的材料、约束和载荷进行分析。",
   "genesis.warn.load_not_carried": "部分载荷没有作用在与支撑相连的材料上。请提高体积比或保留受载面。",
   "genesis.warn.heat_not_carried": "部分发热面（热流面）没有落在与散热端相连的材料上，这些面的温度无法由该形状表示。请提高体积比或保留发热面。",
   "genesis.warn.floating_material_removed": "已删除未与支撑相连的材料。",

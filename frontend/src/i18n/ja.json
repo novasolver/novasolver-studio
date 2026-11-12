@@ -618,11 +618,21 @@
   "genesis.show": "最適化した形を表示",
   "genesis.download": "STL（格子）",
   "genesis.downloadSmooth": "STL（滑らか）",
-  "genesis.downloadSmoothHint": "格子の段差をならした曲面。体積と、固定・荷重の面はそのまま。3D プリント・鋳造向け",
+  "genesis.downloadSmoothHint": "格子の段差をならした STL。固定・荷重部を保護し、体積変化が大きい場合は元の形状を保存します。平滑化後の性能は再解析で確認してください。",
   "genesis.downloadRawHint": "計算した形そのまま（格子1マス分の段差が残る）",
   "genesis.downloadStep": "STEP（角形・CAD用）",
   "genesis.downloadStepHint": "断面を直線の多角形にして押し出した立体。CADでスケッチと押し出しとして編集できる",
   "genesis.kept": "体積 {vol} % で、元の部品（すべて材料）の剛性の {pct} % を保ちます。",
   "genesis.keptHeat": "体積 {vol} % で、元の部品（すべて材料）の熱の逃げやすさの {pct} % を保ちます。",
-  "genesis.running": "Genesis で形をつくっています"
+  "genesis.running": "Genesis で形をつくっています",
+  "codex.title": "Codex 連携",
+  "codex.path": "設定ファイル（絶対パス）",
+  "codex.preview": "状態をプレビュー",
+  "codex.apply": "Codex に Studio を追加",
+  "codex.busy": "確認中…",
+  "codex.previewRequired": "書き込む前にこのパスをプレビューしてください。",
+  "codex.ready": "追加可能：Studio の MCP テーブルを1つ追加します。",
+  "codex.configured": "Studio は設定済みです。既存のカスタム設定は保持されています。変更を読み込むには Codex を再起動してください。",
+  "codex.blocked": "更新できません。TOML、Studio 設定の競合、アクセス権、同時編集を確認して再プレビューしてください。",
+  "codex.note": "ボタンを押すと表示された MCP テーブルだけを追加します。既存ファイルは同じフォルダーにバックアップします。認証情報を含む場合があるため共有しないでください。認証・ネットワーク設定は変更しません。uvx が必要です。Codex が MCP を起動すると固定バージョンの Studio をダウンロードする場合があります。"
 }

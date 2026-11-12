@@ -695,7 +695,7 @@
   "genesis.card.max_disp": "最大変位",
   "genesis.field.vm": "相当応力（格子での推定）",
   "genesis.field.temp": "温度",
-  "genesis.note.verify": "この形状は格子上の最適化結果です。使う前に STL を読み込み、通常の解析（応力・CalculiX）で確認してください。",
+  "genesis.note.verify": "表示値は格子上の形状の解析結果です。平滑化した STL や STEP の性能を保証するものではありません。出力した形状を読み込み、同じ材料・支持・荷重で再解析してください。",
   "genesis.warn.load_not_carried": "荷重の一部が、支持につながった材料に乗っていません。体積比を上げるか、荷重面を固定領域にしてください。",
   "genesis.warn.heat_not_carried": "発熱面（熱流束の面）の一部が、放熱先につながった材料に乗っていません。その面の温度は求めた形では表せていません。体積比を上げるか、発熱面を固定領域にしてください。",
   "genesis.warn.floating_material_removed": "支持につながらない材料を取り除きました。",

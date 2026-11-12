@@ -618,11 +618,21 @@
   "genesis.show": "显示优化后的形状",
   "genesis.download": "STL（网格）",
   "genesis.downloadSmooth": "STL（平滑）",
-  "genesis.downloadSmoothHint": "抹平网格台阶的曲面，体积及约束、载荷面保持不变。适用于 3D 打印和铸造",
+  "genesis.downloadSmoothHint": "平滑网格台阶的 STL，并保护约束和载荷区域。体积变化过大时保留原始表面。请重新分析导出的形状以确认其性能。",
   "genesis.downloadRawHint": "计算得到的原始形状（保留一个网格大小的台阶）",
   "genesis.downloadStep": "STEP（平面・用于 CAD）",
   "genesis.downloadStepHint": "将截面化为直线多边形后拉伸的实体，可在 CAD 中作为草图和拉伸编辑",
   "genesis.kept": "以 {vol} % 的体积，保留原零件（全部为材料）刚度的 {pct} %。",
   "genesis.keptHeat": "以 {vol} % 的体积，保留原零件（全部为材料）导热能力的 {pct} %。",
-  "genesis.running": "Genesis 正在生成形状"
+  "genesis.running": "Genesis 正在生成形状",
+  "codex.title": "Codex 集成",
+  "codex.path": "配置文件（绝对路径）",
+  "codex.preview": "预览状态",
+  "codex.apply": "将 Studio 添加到 Codex",
+  "codex.busy": "正在检查…",
+  "codex.previewRequired": "写入前请预览此路径。",
+  "codex.ready": "可以添加：将添加一个 Studio MCP 配置表。",
+  "codex.configured": "Studio 已配置。现有自定义设置已保留。请重启 Codex 以加载更改。",
+  "codex.blocked": "无法更新。请检查 TOML、Studio 配置冲突、权限或并发编辑，然后重新预览。",
+  "codex.note": "仅在点击按钮后添加所显示的 MCP 配置表。现有文件会在同一目录生成备份。备份可能包含凭据，请勿分享。不更改身份验证或网络设置。需要安装 uvx；Codex 启动 MCP 时可能下载固定版本的 Studio。"
 }

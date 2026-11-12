@@ -1,6 +1,8 @@
 """Promo image for US 6,469 (1849, A. Lincoln): patent drawing | Studio result | the numbers.
 Studio run (make_lincoln.py chamber, spar tops held, water 1.2 m deep on the bottom = 11.77 kPa): reaction 158.9 kN
 (hand calculation 159 kN), max von Mises 10.96 MPa at the spar joints, max displacement 8.7 mm."""
+import os
+import tempfile
 from pathlib import Path
 
 import fitz
@@ -8,8 +10,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = Path(__file__).parent
 RES = HERE.parent / "results"
-SHOT = Path(r"C:\Users\kiwat\AppData\Local\Temp\claude\E--03-------NovaSolver\a64cc5ca-4647-4f6a-a2cb-620501c231da"
-            r"\scratchpad\promo\out\p6_gui_ja.png")
+# Supply a private screenshot explicitly, or place it in this user's temporary directory.
+SHOT = Path(os.environ.get("NOVASTUDIO_LINCOLN_SCREENSHOT") or
+            Path(tempfile.gettempdir()) / "NovaSolverStudio" / "promo" / "p6_gui_ja.png")
 
 page = fitz.open(HERE / "US6469.pdf")[0]
 pix = page.get_pixmap(dpi=200)

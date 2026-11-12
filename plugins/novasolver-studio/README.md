@@ -13,6 +13,16 @@ claude plugin install novasolver-studio@novasolver
 
 Start a new Claude Code session, inspect `/mcp`, then ask it to create and solve a coarse cantilever example. This is NovaSolver's own GitHub marketplace, not a listing in Anthropic's official directory. Installation changes your Claude plugin settings; Studio case files stay in its local workspace.
 
+## Privacy policy and support
+
+- [Privacy policy and data handling](https://github.com/novasolver/novasolver-studio/blob/main/docs/PRIVACY.md)
+- [Support and bug reports](https://github.com/novasolver/novasolver-studio/issues)
+- Private support contact: [info@novasolver.jp](mailto:info@novasolver.jp)
+
+Simulation runs locally. When you use this plugin with Claude, tool responses (including requested images and analysis results) are shared with your AI provider. Initial installation downloads dependencies from PyPI. Read the privacy policy before using confidential engineering data.
+
+GitHub issues are public. Do not post credentials, personal information, confidential CAD files or unredacted logs. For private reports, use the support email instead; send a minimal description first, without sensitive attachments.
+
 ## Local preview
 
 From a checkout containing this plugin:

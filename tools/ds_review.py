@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 API = "https://api.deepseek.com/chat/completions"
 CHUNK = 48_000          # characters per request (~12k tokens of code; leaves room for the answer)
 WORKERS = 4
+DEFAULT_MODEL = "deepseek-flash"
 
 SCRUB = [
     (re.compile(r"sk-[A-Za-z0-9]{20,}"), "sk-REDACTED"),
@@ -57,9 +58,14 @@ def api_key() -> str:
 
 def ask(system: str, user: str, model: str, max_tokens: int = 8000) -> tuple[dict, dict]:
     """One JSON-mode call. Returns (parsed answer, usage). Raises on HTTP errors after three tries."""
-    body = json.dumps({"model": model, "temperature": 0, "max_tokens": max_tokens,
+    payload = {"model": model, "temperature": 0, "max_tokens": max_tokens,
                        "response_format": {"type": "json_object"},
-                       "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}).encode()
+                       "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+    # Flash enables thinking by default; keep the cheap first pass within its
+    # answer budget. Explicit reasoning-model overrides retain their behavior.
+    if model == "deepseek-flash":
+        payload["thinking"] = {"type": "disabled"}
+    body = json.dumps(payload).encode()
     for attempt in range(3):
         req = urllib.request.Request(API, body, {"Content-Type": "application/json",
                                                  "Authorization": "Bearer " + api_key()})
@@ -73,11 +79,14 @@ def ask(system: str, user: str, model: str, max_tokens: int = 8000) -> tuple[dic
                 raise RuntimeError(f"DeepSeek HTTP {code or e}") from None   # never echo the request (it has the key)
             time.sleep(5 * (attempt + 1))
     choice = doc["choices"][0]
-    text = choice["message"]["content"] or "{}"
+    text = choice["message"].get("content") or ""
     try:
         out = json.loads(text)
     except json.JSONDecodeError:
         out = {"findings": [], "error": "answer was not JSON"}
+    else:
+        if not isinstance(out, dict) or not isinstance(out.get("findings"), list):
+            out = {"findings": [], "error": "answer did not contain a findings list"}
     if choice.get("finish_reason") == "length":
         out["truncated"] = True
     return out, doc.get("usage", {})
@@ -234,7 +243,7 @@ def run(label: str, system: str, pieces: list[tuple[str, str]], model: str) -> P
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in ("diff", "files", "i18n"):
         sys.exit(__doc__)
-    model = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+    model = os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL)
     mode, args = sys.argv[1], sys.argv[2:]
     if mode == "diff":
         since = args[0] if args else sys.exit("diff needs a tag or commit")

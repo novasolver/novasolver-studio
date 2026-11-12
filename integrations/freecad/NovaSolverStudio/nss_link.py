@@ -70,10 +70,23 @@ def _quiet(args):
     return subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Studio API routes do not require redirects. Never follow one with a CAD upload or download.
+        raise urllib.error.HTTPError(req.full_url, code, "Studio redirects are disabled", headers, fp)
+
+
 def _request(port, path, data=None, method="GET", timeout=60):
+    if type(port) is not int or not 1024 <= port <= 65535:
+        raise ValueError("unexpected Studio port")
+    if (not isinstance(path, str) or not path.startswith("/") or path.startswith("//")
+            or any(ord(c) < 32 or ord(c) == 127 for c in path)):
+        raise ValueError("expected a local Studio API path")
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, method=method,
                                  headers={"Content-Type": "application/octet-stream"} if data is not None else {})
-    return urllib.request.urlopen(req, timeout=timeout)
+    # Ignore system/environment proxies as well as any process-global urllib opener supplied by the CAD host.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirects())
+    return opener.open(req, timeout=timeout)
 
 
 def _json(port, path, **kw):

@@ -34,3 +34,6 @@ web_demo/dist/
 validation/results/agent_eval/
 dataset/out/
 validation/results/ci.json
+
+# Private release diagnostics: case paths and local machine metadata
+validation/diagnostics/

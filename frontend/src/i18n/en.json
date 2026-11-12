@@ -618,11 +618,21 @@
   "genesis.show": "Show the optimised shape",
   "genesis.download": "STL (grid)",
   "genesis.downloadSmooth": "STL (smooth)",
-  "genesis.downloadSmoothHint": "Grid steps smoothed out; the volume and the support / load faces stay. For 3D printing and casting",
+  "genesis.downloadSmoothHint": "STL with grid steps smoothed, protecting support/load regions. If the volume changes too much, the original surface is saved. Reanalyse the exported shape to check its performance.",
   "genesis.downloadRawHint": "The computed shape as it is (steps of one grid cell remain)",
   "genesis.downloadStep": "STEP (flat faces, for CAD)",
   "genesis.downloadStepHint": "The section as straight-edged polygons, extruded: a solid CAD programs edit as a sketch and an extrusion",
   "genesis.kept": "At {vol} % of the volume, it keeps {pct} % of the stiffness of the full part.",
   "genesis.keptHeat": "At {vol} % of the volume, it keeps {pct} % of the heat conductance of the full part.",
-  "genesis.running": "Genesis is generating the shape"
+  "genesis.running": "Genesis is generating the shape",
+  "codex.title": "Codex integration",
+  "codex.path": "Config file (absolute path)",
+  "codex.preview": "Preview status",
+  "codex.apply": "Add Studio to Codex",
+  "codex.busy": "Checking…",
+  "codex.previewRequired": "Preview this path before writing.",
+  "codex.ready": "Ready: one Studio MCP table will be added.",
+  "codex.configured": "Studio is configured. Existing custom settings were preserved. Restart Codex to load changes.",
+  "codex.blocked": "Cannot update. Check TOML, conflicting Studio entries, permissions or concurrent edits, then preview again.",
+  "codex.note": "Only the displayed MCP table is added on button click. Existing files get an adjacent backup. Do not share backups: they may contain credentials. No authentication or network settings change. uvx must be installed; Codex may download the pinned Studio package when it starts MCP."
 }

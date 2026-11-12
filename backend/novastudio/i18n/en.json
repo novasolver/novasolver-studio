@@ -695,7 +695,7 @@
   "genesis.card.max_disp": "Max displacement",
   "genesis.field.vm": "Von Mises stress (grid estimate)",
   "genesis.field.temp": "Temperature",
-  "genesis.note.verify": "This shape is the optimum on a grid. Import the STL and check it with a normal analysis (stress, CalculiX) before use.",
+  "genesis.note.verify": "The displayed values describe the grid-based shape, not a verified result for the smoothed STL or STEP. Reimport the exported shape and analyse it with the same material, supports and loads.",
   "genesis.warn.load_not_carried": "Part of the load does not sit on material connected to a support. Raise the volume fraction or keep the loaded faces.",
   "genesis.warn.heat_not_carried": "Part of the heated (heat-flux) faces does not sit on material connected to the heat sink, so their temperature is not represented by this shape. Raise the volume fraction or keep the heated faces.",
   "genesis.warn.floating_material_removed": "Material not connected to a support was removed.",

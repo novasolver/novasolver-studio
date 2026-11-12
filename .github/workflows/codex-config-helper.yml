@@ -1,0 +1,25 @@
+name: Codex configuration helper
+on:
+  push:
+    paths:
+      - 'tools/configure_codex_mcp.py'
+      - 'tools/test_configure_codex_mcp.py'
+      - 'backend/novastudio/codex_mcp.py'
+      - '.github/workflows/codex-config-helper.yml'
+  pull_request:
+    paths:
+      - 'tools/configure_codex_mcp.py'
+      - 'tools/test_configure_codex_mcp.py'
+      - 'backend/novastudio/codex_mcp.py'
+      - '.github/workflows/codex-config-helper.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python tools/test_configure_codex_mcp.py

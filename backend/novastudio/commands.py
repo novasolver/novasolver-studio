@@ -975,3 +975,19 @@ def error_payload(e: StudioError, lang: str) -> dict:
     if "current" in e.kw:
         out["current_revision"] = e.kw["current"]
     return out
+
+
+def codex_integration(path: str | None = None, *, apply: bool = False, revision: str | None = None) -> dict:
+    """GUI-only explicit setup; never exposed as an MCP tool. Errors must not leak TOML."""
+    from . import codex_mcp
+    target = Path(path).expanduser() if path else Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "config.toml"
+    try:
+        if not target.is_absolute() or target.name != "config.toml":
+            raise ValueError("An absolute config.toml path is required")
+        if apply:
+            if not path or not revision:
+                raise ValueError("Preview is required")
+            codex_mcp.configure(target, apply=True, expected=revision)
+        return codex_mcp.preview(target)
+    except (ValueError, OSError):
+        return {"path": str(target), "status": "blocked", "table": codex_mcp.TABLE}
