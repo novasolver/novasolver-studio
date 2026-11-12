@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "novasolver-studio": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "novasolver-studio==0.7.6.post1",
+        "novasolver-studio",
+        "mcp"
+      ]
+    }
+  }
+}

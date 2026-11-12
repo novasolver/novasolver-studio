@@ -1,0 +1,15 @@
+{
+  "name": "novasolver",
+  "owner": {
+    "name": "NovaSolver",
+    "email": "info@novasolver.jp"
+  },
+  "plugins": [
+    {
+      "name": "novasolver-studio",
+      "source": "./plugins/novasolver-studio",
+      "description": "Run local engineering simulations through NovaSolver Studio and report verification limits."
+    }
+  ],
+  "description": "Local engineering simulation tools and workflows from NovaSolver."
+}
