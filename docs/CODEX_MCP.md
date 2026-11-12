@@ -76,6 +76,12 @@ Codex CLI・Python 3.10以上・`uv` が必要です。既存の `novasolver-stu
 
 ## Validation scope — 2026-11-13
 
-Codex accepted the stdio command and arguments through temporary command-line overrides (`mcp get --json`); no personal configuration was changed. The pinned Studio server has separately passed direct MCP and reference-solve checks. A Codex-model-driven simulation, GUI integration button and official directory listing are not yet validated or implemented by this guide.
+Codex CLI 0.147.0 on Windows completed a model-driven workflow through temporary command-line MCP overrides: list templates → create a new coarse cantilever → run preview → retrieve results. All four Studio tool calls completed successfully. The persisted solver result confirms numerical convergence and a reference-deflection error of approximately −0.84%, within the example's 3% tolerance. The assistant distinguished the reference check from an untested mesh study and passed on the fixed-support stress warning.
+
+The test used a synthetic workspace and a five-tool Studio allowlist; existing personal configuration was not edited. An unrelated pre-existing configuration warning appeared but did not prevent the workflow. No mesh-convergence study, real design validation, macOS/Linux client test, GUI integration button or official directory approval is claimed.
+
+Windows の Codex 実機から、新しい片持ち梁の作成・解析・結果取得まで確認しました。参照値との照合は合格しましたが、メッシュ収束や実物の安全性の検証ではありません。個人設定は変更していません。
+
+已在 Windows 的 Codex 中完成新建悬臂梁、求解和结果读取。参考值校验通过，但未验证网格收敛或实际设计安全，也没有修改个人配置。
 
 Official MCP configuration reference: https://learn.chatgpt.com/docs/extend/mcp?surface=cli
