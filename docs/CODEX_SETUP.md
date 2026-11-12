@@ -1,5 +1,9 @@
 # Codex setup in Studio
 
+This button is available in source builds from commit `229c8e4` onward. It is not
+included in the published 0.7.6 installers or 0.7.6.post1 PyPI package. For those
+releases, use the [manual Codex setup guide](CODEX_MCP.md).
+
 Open the AI panel and use **Codex integration**. Studio previews the current
 `CODEX_HOME/config.toml` (or `~/.codex/config.toml`). You can enter another absolute
 `config.toml` path and preview it. Reading status does not create files.
