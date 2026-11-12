@@ -21,6 +21,8 @@ EXAMPLES_BASE = 'https://github.com/novasolver/novasolver-studio/releases/downlo
 # the same files on novasolver.jp: GitHub is slow or blocked in mainland China. The index's sha256 checks either copy.
 EXAMPLES_MIRROR = 'https://novasolver.jp/dl/studio/examples/v{version}/'
 RELEASE_PAGE = 'https://github.com/novasolver/novasolver-studio/releases/tag/v{version}'
+# Packaging-only releases reuse published assets; keep cache keys on the full package version.
+_PUBLISHED_VERSIONS = {'0.7.6.post1': '0.7.6'}
 INDEX = 'examples.json'
 TIMEOUT = 10
 _NAME = re.compile(r'^[a-z0-9-]{1,60}$')
@@ -29,7 +31,8 @@ _NAME = re.compile(r'^[a-z0-9-]{1,60}$')
 def base_urls() -> list[str]:
     """Where to fetch from, the host that answered last time first."""
     env = os.environ.get('NOVASTUDIO_EXAMPLES_URL')
-    urls = [env] if env else [EXAMPLES_BASE.format(version=__version__), EXAMPLES_MIRROR.format(version=__version__)]
+    version = _PUBLISHED_VERSIONS.get(__version__, __version__)
+    urls = [env] if env else [EXAMPLES_BASE.format(version=version), EXAMPLES_MIRROR.format(version=version)]
     urls = [u if u.endswith('/') else u + '/' for u in urls]
     try:
         last = (data_dir() / 'examples' / 'last_host.txt').read_text(encoding='utf-8').strip()
@@ -43,7 +46,7 @@ def base_url() -> str:
 
 
 def release_page() -> str:
-    return RELEASE_PAGE.format(version=__version__)
+    return RELEASE_PAGE.format(version=_PUBLISHED_VERSIONS.get(__version__, __version__))
 
 
 def cache_dir() -> Path:
