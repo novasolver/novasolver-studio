@@ -1,0 +1,12 @@
+{
+  "name": "novasolver-studio",
+  "version": "0.1.0",
+  "description": "Local engineering simulation with explicit convergence and reference checks.",
+  "contextFileName": "GEMINI.md",
+  "mcpServers": {
+    "novasolver-studio": {
+      "command": "uv",
+      "args": ["run", "--locked", "--project", "${extensionPath}/plugins/novasolver-studio", "novasolver-studio", "mcp"]
+    }
+  }
+}
