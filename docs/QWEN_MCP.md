@@ -47,6 +47,12 @@ For manual setup, merge only this server entry into the existing `mcpServers` ob
 
 Qwen Code **0.27.2**, Node **24.15.0**, Windows, an isolated `QWEN_HOME`, and the pinned command above: `qwen mcp list` reported **Connected** after dependencies were prepared. The test used an explicit isolated workspace/cache in the server's `env`; existing personal settings were not changed. The initial cold connection timed out. Qwen emitted a Node-version warning, but the connection check succeeded.
 
-This establishes an MCP handshake only. A Qwen model-driven solve, tool permission flow, macOS/Linux, and mainland-China package retrieval have **not** been tested. This guide is not an official catalog listing. 接続確認のみで、Qwenモデルからの解析操作は未検証です。仅验证连接，尚未验证 Qwen 模型发起的求解流程。
+An additional **Qwen Code + DeepSeek Flash** run completed a real workflow: template listing → new coarse cantilever → preview solve → result retrieval. All four Studio tool calls succeeded, with no permission denials. The local result file independently confirms `ran=true`, `converged=true`, `verified=true`, `verified_by=reference`; no mesh-convergence study was run. The assistant reported the fixed-support stress-singularity warning and did not claim the design was safe.
+
+This test used a synthetic case, a dedicated workspace, a five-tool Studio allowlist and credentials supplied only through the process environment. It did not change personal client settings. DeepSeek was the model provider **inside Qwen Code**; this is not a test of an Alibaba Qwen model or its OAuth plan. macOS/Linux and mainland-China package retrieval remain untested. This guide is not an official catalog listing.
+
+Qwen Code を DeepSeek Flash に接続した実機テストでは、片持ち梁の作成・解析・結果取得まで成功しました。参照値との照合が通った結果であり、メッシュ収束や設計の安全性を確認したものではありません。Alibaba の Qwen モデルでの解析は未検証です。
+
+Qwen Code 使用 DeepSeek Flash 的实际测试已完成悬臂梁创建、求解和结果读取。参考值校验通过，但没有执行网格收敛研究，也不代表设计安全。尚未测试阿里巴巴 Qwen 模型。
 
 [Official Qwen MCP documentation](https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/)
