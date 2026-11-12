@@ -1,6 +1,17 @@
 # NovaSolver Studio for Claude Code
 
-This development plugin connects Claude Code to the published local Studio MCP server. It includes a `/novasolver-studio:simulate` workflow skill. Requires Python 3.10+ and `uvx` on PATH (installed with uv).
+This plugin connects Claude Code to the published local Studio MCP server. It includes a `/novasolver-studio:simulate` workflow skill. Requires Python 3.10+ and `uvx` on PATH (installed with uv).
+
+## Install from GitHub
+
+Run in your terminal:
+
+```sh
+claude plugin marketplace add https://github.com/novasolver/novasolver-studio.git
+claude plugin install novasolver-studio@novasolver
+```
+
+Start a new Claude Code session, inspect `/mcp`, then ask it to create and solve a coarse cantilever example. This is NovaSolver's own GitHub marketplace, not a listing in Anthropic's official directory. Installation changes your Claude plugin settings; Studio case files stay in its local workspace.
 
 ## Local preview
 
@@ -25,7 +36,7 @@ claude plugin marketplace add .
 claude plugin install novasolver-studio@novasolver
 ```
 
-These commands change Claude's plugin settings. They are optional; use `--plugin-dir` to preview without persistent installation. Repository-wide GitHub installation is not advertised until the marketplace is merged to the default branch and tested.
+These commands change Claude's plugin settings. They are optional; use `--plugin-dir` to preview without persistent installation.
 
 ## Scope and verification
 
@@ -48,4 +59,4 @@ Additional direct MCP tests (the same pinned server, not additional Claude-clien
 
 The bracket study correctly remains unverified. A completed calculation is not sufficient evidence of mesh independence. Neither displacement study establishes peak-stress convergence or real-world safety.
 
-Persistent marketplace installation and other operating systems remain untested. CalculiX and OpenFOAM were unavailable, so no external-solver result is claimed. Genesis is not in the pinned release.
+After publication, GitHub marketplace retrieval and installation were verified in a fresh, isolated Claude configuration on Windows. Other operating systems' plugin installation remains untested. CalculiX and OpenFOAM were unavailable in the plugin test environment, so no external-solver plugin result is claimed. Genesis is not in the pinned release.
