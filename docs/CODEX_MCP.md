@@ -12,6 +12,18 @@ codex mcp add novasolver-studio -- uvx novasolver-studio==0.7.6.post1 mcp
 
 Restart Codex and inspect `/mcp`. Configuration listing alone does not prove a live connection. The first run downloads dependencies; allow that installation to finish before expecting the server to connect.
 
+### Optional configuration helper (Python 3.11+)
+
+From a repository checkout, you can validate a proposed addition without changing files:
+
+```sh
+python tools/configure_codex_mcp.py --config ~/.codex/config.toml
+```
+
+To apply it, repeat with `--apply`. The helper appends only the Studio table, preserves other settings and creates a private backup beside an existing config. A conflicting Studio entry or invalid TOML stops the update. It does not print your existing configuration or install dependencies. Keep backups private because they can contain existing credentials. Existing Studio configuration, including a disabled entry, is left unchanged.
+
+Close Codex and other editors of this config before applying: the helper's lock coordinates its own processes, not other applications. After an interrupted run, a `config.toml.novasolver.lock` may remain; remove only that lock after confirming no helper process is running. A failed update may leave a recovery backup. Windows access rules and their inheritance protection are copied before existing data is written; encrypted Windows files are refused. Unix replacements retain the existing permission mode.
+
 Alternatively, merge this one table into `~/.codex/config.toml`, preserving all existing settings. Do not add a duplicate table:
 
 ```toml
