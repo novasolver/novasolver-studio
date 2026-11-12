@@ -5,12 +5,21 @@
 Requires Gemini CLI, Python 3.10+ and `uv` on PATH. Install this repository's extension:
 
 ```sh
-gemini extensions install https://github.com/novasolver/novasolver-studio
+gemini extensions install https://github.com/novasolver/novasolver-studio --ref main
 ```
 
-Review the requested access before accepting. Restart Gemini CLI, inspect `/extensions list` and `/mcp`, and try:
+Review the requested access before accepting. Restart Gemini CLI and inspect `/extensions list` and `/mcp`.
 
-> Create a new coarse cantilever example, solve it, and report the displacement, units and reference-check status. Do not modify an existing case.
+Use `--ref main`: older Studio application releases do not contain the extension manifest. If Gemini's GitHub downloader fails, use a regular Git clone and install that local checkout:
+
+```sh
+git clone --depth 1 --branch main https://github.com/novasolver/novasolver-studio.git
+gemini extensions install ./novasolver-studio
+```
+
+For this local-copy installation, update the checkout with `git -C novasolver-studio pull --ff-only` and reinstall from the same folder when you want an update. Do not disable TLS certificate verification to resolve download errors.
+
+Then try: "Create a new coarse cantilever example, solve it, and report the displacement, units and reference-check status. Do not modify an existing case."
 
 The extension uses the existing locked Studio 0.7.6.post1 launcher. The first run downloads packages from PyPI and needs write access to the extension directory. It does not require a NovaSolver account. Gemini authentication is separate. It does not change your existing MCP configuration; an existing server named `novasolver-studio` in Gemini settings takes precedence.
 
@@ -41,7 +50,9 @@ Gemini CLI、Python 3.10以上、PATH上の `uv` が必要です。上のコマ�
 - Windows: Gemini CLI 0.68.0 installed and enabled the extension in an isolated profile using a local copy of its manifest, context and locked launcher files.
 - Gemini CLI `mcp list` reported Connected after dependency preparation. Earlier cold-start checks reported Disconnected; first-run readiness is not instantaneous.
 - Direct MCP invocation using this manifest's launcher: 35 tools; new coarse cantilever solved; numerical convergence and reference verification passed.
-- A Gemini model has not performed the simulation in this test. macOS/Linux installation and public GitHub installation have not yet been tested. This is not a claim of official Gemini directory listing.
+- Public-source retrieval through regular `git clone` and local extension installation passed. Direct GitHub installation in Gemini CLI failed on this PC because its Git subprocess could not find its CA bundle; the documented clone-and-install route avoids that failure without disabling TLS verification.
+- The public-source installation also reported Connected in Gemini CLI after dependency initialization.
+- A Gemini model has not performed the simulation in this test. macOS/Linux installation has not yet been tested. This is not a claim of official Gemini directory listing.
 
 Format reference: https://geminicli.com/docs/extensions/reference/
 Support: https://github.com/novasolver/novasolver-studio/issues (public; do not include confidential data). Private contact: info@novasolver.jp.
