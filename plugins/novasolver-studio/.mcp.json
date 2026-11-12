@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "novasolver-studio": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--locked",
+        "--project",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "novasolver-studio",
+        "mcp"
+      ]
+    }
+  }
+}
