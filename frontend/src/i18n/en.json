@@ -592,5 +592,5 @@
   "codex.ready": "Ready: one Studio MCP table will be added.",
   "codex.configured": "Studio is configured. Existing custom settings were preserved. Restart Codex to load changes.",
   "codex.blocked": "Cannot update. Check TOML, conflicting Studio entries, permissions or concurrent edits, then preview again.",
-  "codex.note": "Only the displayed MCP table is added on button click. Existing files get a private adjacent backup. No authentication or network settings change. uvx must be installed; Codex may download the pinned Studio package when it starts MCP."
+  "codex.note": "Only the displayed MCP table is added on button click. Existing files get an adjacent backup. Do not share backups: they may contain credentials. No authentication or network settings change. uvx must be installed; Codex may download the pinned Studio package when it starts MCP."
 }

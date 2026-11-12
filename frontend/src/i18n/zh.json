@@ -592,5 +592,5 @@
   "codex.ready": "可以添加：将添加一个 Studio MCP 配置表。",
   "codex.configured": "Studio 已配置。现有自定义设置已保留。请重启 Codex 以加载更改。",
   "codex.blocked": "无法更新。请检查 TOML、Studio 配置冲突、权限或并发编辑，然后重新预览。",
-  "codex.note": "仅在点击按钮后添加所显示的 MCP 配置表。现有文件会在同一目录生成私密备份。不更改身份验证或网络设置。需要安装 uvx；Codex 启动 MCP 时可能下载固定版本的 Studio。"
+  "codex.note": "仅在点击按钮后添加所显示的 MCP 配置表。现有文件会在同一目录生成备份。备份可能包含凭据，请勿分享。不更改身份验证或网络设置。需要安装 uvx；Codex 启动 MCP 时可能下载固定版本的 Studio。"
 }
