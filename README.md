@@ -31,7 +31,7 @@ with a hand calculation. Real app, real numbers.*
   away from the AI. See [docs/PRIVACY.md](docs/PRIVACY.md).
 - **Real solvers, no licence fee.** CalculiX for structural/thermal, OpenFOAM® for flow and water cooling, a built-in
   tet10 FEM for answers in seconds. Japanese, English and Chinese UI.
-- **Typed MCP tools, no shell.** 35 tools (create/import, set conditions, mesh, run, convergence, verify, probe,
+- **Typed MCP tools, no shell.** 37 tools (create/import, set conditions, mesh, run, convergence, verify, probe,
   sweep, render). The AI fills a case schema; Studio writes the solver input. Your AI's edits appear live in the
   window, and you can undo them.
 - **NovaSolver Flash: build an instant model of your own case.** `build_surrogate` solves about 60 variants of a case in the background (loads, materials, template dimensions; a Gaussian process, checked on points held out of the fit). `surrogate_predict` then answers in milliseconds with an error bar for the interpolation, and refuses outside the ranges. An imported CAD shape has no dimensions to vary yet.
@@ -39,6 +39,11 @@ with a hand calculation. Real app, real numbers.*
   deflection, including for dimensions never solved, from a Gaussian process fitted to 1,396 solved points. No mesh, no
   solve. It gives the error bar and refuses outside the solved ranges. On 224 new solves it had never seen, 287 of 288
   answers landed inside the bar. [See the data](https://novasolver.jp/en/studio/verified/).
+- **NovaSolver Genesis: keep only the shape you need (0.8).** Topology optimisation on the part itself: with its
+  supports and loads, the stiffest shape for the volume you choose (for heat, the coolest shape for its sources and
+  sinks). 3D-print overhang, extrusion and symmetry constraints; the result is a closed STL, and an extruded part is
+  also written as a flat-faced STEP. Example: a cantilever on 40,000 cells at 30 % volume keeps 62 % of the full
+  part's stiffness. MCP: `run_genesis`, `genesis_result`.
 
 | | |
 |---|---|
@@ -73,7 +78,7 @@ How often does it get through a part it has never seen? [docs/PART_TEST.md](docs
 | Water cooling (conjugate heat transfer) | import (2+ bodies) | — | OpenFOAM® (chtMultiRegionSimpleFoam) | heat balance (0.03%) |
 
 Also: a [Blender add-on](integrations/blender/) (send the active object to Studio, PLA/PETG/ABS or metals),
-a [FreeCAD macro](integrations/freecad/) (send the selected part as STEP),
+a [FreeCAD workbench](integrations/freecad/) (send the part as STEP, bring the Genesis result back into the document),
 a 3D-print strength check (safety factor for each print direction in PLA/PETG/ABS, layer lines included), ParaView VTU / CSV / printable HTML report export, and a Windows installer with `.nscase`
 file association.
 
