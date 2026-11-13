@@ -22,7 +22,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "novasolver-studio",
-      "version": "0.8.0",
+      "version": "0.8.0.post1",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

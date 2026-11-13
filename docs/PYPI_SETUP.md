@@ -14,16 +14,19 @@ PyPI trusted publishing is configured and Studio 0.8.0 is published. The steps b
    to the same contents, then run `python tools/check_registry_metadata.py` before publishing.
    The registry workflow also checks this to prevent a release from dropping the PyPI launcher.
 
-Registry metadata revision `0.8.1-registry.1` refers to the existing **Studio 0.8.0** packages;
+Registry metadata revision `0.8.1-registry.1` refers to **Studio 0.8.0**, with Python metadata post-release `0.8.0.post1`;
 it is not a new application release. Registry 0.8.0 was already published without the PyPI entry
 and is immutable. A prerelease of the next patch sorts after 0.8.0 and before a future 0.8.1.
 The proposed registry update is blocked until the referenced PyPI package description contains
 the ownership marker: the published 0.8.0 description currently lacks it. The source README
 already contains the marker, but changing GitHub does not change an existing PyPI description.
 A metadata-corrected Python post-release is required; retain the 0.8.0 Windows MCPB.
+The candidate post-release is `0.8.0.post1`. Its publishing workflow compares all packaged
+application/resource bytes, dependencies and launchers with the public 0.8.0 wheel, allowing
+only the version module to change. It must pass before the PyPI publishing job can start.
 Do not dispatch Registry publication until `python tools/check_registry_metadata.py --published`
-passes for the chosen package version. The post-release and its version alignment are not
-implemented by this metadata-only change.
+passes for the chosen package version. A successful build is not evidence of PyPI publication;
+check the public PyPI description and version before publishing Registry metadata.
 See the [registry versioning rules](https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/versioning.mdx).
 
 Local release check: install the `dev` extra, run `npm ci` in `frontend`, then

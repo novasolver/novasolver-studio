@@ -17,6 +17,7 @@ def check(root):
     if not match:
         raise ValueError("Studio version not found")
     version = match.group(1)
+    bundle_version = re.sub(r'\.post\d+$', '', version)
     packages = data["packages"]
     pypi = [p for p in packages if p["registryType"] == "pypi"]
     bundles = [p for p in packages if p["registryType"] == "mcpb"]
@@ -34,7 +35,7 @@ def check(root):
             raise ValueError(f"Invalid PyPI {key}")
     bundle = bundles[0]
     expected_url = ("https://github.com/novasolver/novasolver-studio/releases/download/"
-                    f"v{version}/novasolver-studio-{version}-win64.mcpb")
+                    f"v{bundle_version}/novasolver-studio-{bundle_version}-win64.mcpb")
     if bundle.get("identifier") != expected_url:
         raise ValueError("MCPB release does not match Studio version")
     if not re.fullmatch(r"[0-9a-f]{64}", bundle.get("fileSha256", "")):
