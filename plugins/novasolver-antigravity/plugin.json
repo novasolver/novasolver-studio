@@ -1,0 +1,18 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "novasolver-studio",
+  "displayName": "NovaSolver Studio",
+  "version": "0.1.0",
+  "description": "Import CAD, run local structural and thermal simulations, and explain numerical checks. Explore topology optimization with explicit limits.",
+  "logo": "assets/logo.png",
+  "suggestedPrompts": [
+    "Create and solve a coarse cantilever example; report units, convergence and the reference check.",
+    "Inspect my CAD model and help me choose material, supports and loads before solving.",
+    "Explain which checks are still needed before using my simulation result in a design."
+  ],
+  "author": {"name": "NovaSolver", "url": "https://novasolver.jp/en/studio/"},
+  "homepage": "https://novasolver.jp/en/studio/",
+  "repository": "https://github.com/novasolver/novasolver-studio",
+  "license": "GPL-3.0-or-later",
+  "keywords": ["engineering", "cae", "simulation", "fem", "thermal", "cad", "topology-optimization"]
+}

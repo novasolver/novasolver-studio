@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "studio": {
+      "command": "uvx",
+      "args": ["novasolver-studio==0.8.0.post1", "mcp"],
+      "env": {"NOVASTUDIO_WORKSPACE": "${PLUGIN_DATA}/cases"},
+      "timeoutSeconds": 600
+    }
+  }
+}
