@@ -15,11 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Check both distribution entries
+        run: python3 tools/check_registry_metadata.py --published
+
       - name: Check the bundle hash in server.json
         run: |
           set -euo pipefail
-          url=$(jq -r '.packages[0].identifier' server.json)
-          want=$(jq -r '.packages[0].fileSha256' server.json)
+          url=$(jq -r '.packages[] | select(.registryType == "mcpb") | .identifier' server.json)
+          want=$(jq -r '.packages[] | select(.registryType == "mcpb") | .fileSha256' server.json)
           curl --fail --location --silent --show-error --output bundle.mcpb "$url"
           got=$(sha256sum bundle.mcpb | cut -d' ' -f1)
           echo "want $want"; echo "got  $got"
