@@ -291,16 +291,75 @@ def test_server_frontend_fallback(monkeypatch, tmp_path, bundled):
         assert client.get("/assets/app.js").text == "// asset"
 
 
-def test_platform_literal_audit():
-    root = Path(config.__file__).parent
-    allowed = json.loads(Path(__file__).with_name("platform_literal_allowlist.json").read_text(encoding="utf-8"))
-    found = set()
+def _platform_audit_sources(root: Path, integrations: Path) -> dict[str, str]:
+    """Audit canonical add-ons without staging; reject divergent/incomplete build copies when present."""
+    canonical = {f"integrations/{p.relative_to(integrations).as_posix()}": p.read_text(encoding="utf-8")
+                 for p in integrations.rglob("*.py")}
+    assert canonical, "canonical integration sources are missing"
+    sources, staged = {}, set()
     for file in root.rglob("*.py"):
-        if file.name == "osdirs.py":
-            continue
-        for line, text in enumerate(file.read_text(encoding="utf-8").splitlines(), 1):
+        name = file.relative_to(root).as_posix()
+        text = file.read_text(encoding="utf-8")
+        if name.startswith("integrations/"):
+            assert name in canonical, f"unexpected staged integration: {name}"
+            assert text == canonical[name], f"staged integration differs from canonical source: {name}"
+            staged.add(name)
+        if name != "osdirs.py":
+            sources[name] = text
+    if (root / "integrations").is_dir():
+        assert staged == set(canonical), f"missing staged integrations: {sorted(set(canonical) - staged)}"
+    sources.update(canonical)
+    return sources
+
+
+def _assert_platform_literals(sources: dict[str, str], allowed: dict[str, str]) -> None:
+    found = set()
+    for name, source in sources.items():
+        for line, text in enumerate(source.splitlines(), 1):
             if re.search(r'\.exe["\']|LOCALAPPDATA', text):
-                key = f"{file.relative_to(root).as_posix()}:{line}"
+                key = f"{name}:{line}"
                 assert allowed.get(key), f"unguarded platform literal: {key}: {text}"
                 found.add(key)
-    assert found == set(allowed), "update stale allow-list line numbers"
+    assert found == set(allowed), f"update stale allow-list line numbers: {sorted(set(allowed) - found)}"
+
+
+def test_platform_literal_audit():
+    root = Path(config.__file__).parent
+    integrations = Path(__file__).resolve().parents[2] / "integrations"
+    allowed = json.loads(Path(__file__).with_name("platform_literal_allowlist.json").read_text(encoding="utf-8"))
+    _assert_platform_literals(_platform_audit_sources(root, integrations), allowed)
+
+
+@pytest.mark.parametrize("staging", ["absent", "matching", "changed", "missing", "extra"])
+def test_platform_audit_integration_staging(tmp_path, staging):
+    root, integrations = tmp_path / "package", tmp_path / "integrations"
+    root.mkdir()
+    integrations.mkdir()
+    source = 'candidate = "Studio.exe"\n'
+    (integrations / "link.py").write_text(source, encoding="utf-8")
+    if staging != "absent":
+        staged = root / "integrations"
+        staged.mkdir()
+        if staging != "missing":
+            (staged / "link.py").write_text(source if staging != "changed" else source + "# stale copy\n",
+                                            encoding="utf-8")
+        if staging == "extra":
+            (staged / "unexpected.py").write_text("# obsolete copy\n", encoding="utf-8")
+    if staging in ("changed", "missing", "extra"):
+        with pytest.raises(AssertionError, match={"changed": "differs from canonical", "missing": "missing staged",
+                                                 "extra": "unexpected staged"}[staging]):
+            _platform_audit_sources(root, integrations)
+    else:
+        sources = _platform_audit_sources(root, integrations)
+        assert sources == {"integrations/link.py": source}
+        _assert_platform_literals(sources, {"integrations/link.py:1": "Reviewed executable candidate"})
+
+
+@pytest.mark.parametrize("allowed, message", [
+    ({}, "unguarded platform literal"),
+    ({"link.py:1": ""}, "unguarded platform literal"),
+    ({"link.py:1": "Reviewed", "removed.py:1": "Stale"}, "stale allow-list"),
+])
+def test_platform_audit_rejects_unreviewed_or_stale_entries(allowed, message):
+    with pytest.raises(AssertionError, match=message):
+        _assert_platform_literals({"link.py": 'candidate = "Studio.exe"\n'}, allowed)

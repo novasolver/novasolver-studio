@@ -153,6 +153,9 @@ def write_step(g, path, tol_cells=0.5):
     gmsh.initialize(["", "-nopopup"])
     try:
         gmsh.option.setNumber("General.Terminal", 0)
+        # Coordinates below are millimetres. OCCT retains its internal length unit
+        # after finalize(), so a previous SI import must not rescale this export.
+        gmsh.option.setString("Geometry.OCCTargetUnit", "MM")
         gmsh.model.add("genesis")
         occ = gmsh.model.occ
 

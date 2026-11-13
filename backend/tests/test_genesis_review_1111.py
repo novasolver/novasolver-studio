@@ -89,6 +89,37 @@ def test_step_with_a_hole_is_checked_by_reading_it_back(tmp_path, monkeypatch, a
     assert info["polygons"] == 1 and info["volume_m3"] == pytest.approx(240e-9, rel=1e-6)
 
 
+def test_step_units_after_a_metre_import(tmp_path, monkeypatch):
+    """OCCT retains its internal length unit across gmsh.finalize(); a preceding SI import must not scale export."""
+    import gmsh
+    shape = (10, 4, 10)
+    solid = np.ones(shape, bool)
+    g = NS(s=NS(extrusion=1), active=solid, solid_final=solid, origin=np.zeros(3), h=1e-3)
+    monkeypatch.setattr(gs.gx, "surface_field", lambda g: g.solid_final.astype(float))
+    seed = tmp_path / "seed.step"
+    first = gs.write_step(g, seed)
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.option.setString("Geometry.OCCTargetUnit", "M")
+        gmsh.model.occ.importShapes(str(seed))
+        gmsh.model.occ.synchronize()
+    finally:
+        gmsh.finalize()
+    second = gs.write_step(g, tmp_path / "after-si-import.step")
+    assert second["volume_m3"] == pytest.approx(first["volume_m3"], rel=1e-9)
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.option.setString("Geometry.OCCTargetUnit", "M")
+        gmsh.model.occ.importShapes(str(tmp_path / "after-si-import.step"))
+        gmsh.model.occ.synchronize()
+        volume = sum(gmsh.model.occ.getMass(d, t) for d, t in gmsh.model.getEntities(3))
+        assert volume == pytest.approx(second["volume_m3"], rel=1e-6)
+    finally:
+        gmsh.finalize()
+
+
 def test_step_keeps_a_thin_bridge(tmp_path):
     """Second opinion 2026-11-12: two blocks joined by a one-cell bridge of density 0.4, cut at 0.35. The STL kept the
     bridge, the STEP section (old field, level 0.53) came out as two separate polygons."""

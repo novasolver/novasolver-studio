@@ -1,11 +1,11 @@
 {
-  "addons.py:163": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
-  "addons.py:164": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
   "addons.py:165": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
-  "addons.py:58": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
-  "addons.py:59": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
+  "addons.py:166": "FreeCAD per-user install search: LOCALAPPDATA presence check inside the sys.platform == win32 branch.",
+  "addons.py:167": "FreeCAD executable candidates inside both the win32 branch and LOCALAPPDATA presence check; filtered with is_file.",
   "addons.py:60": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
   "addons.py:61": "Windows-only Blender/FreeCAD install locations, inside the sys.platform == win32 branch of the program search.",
+  "addons.py:62": "Blender per-user install search: LOCALAPPDATA presence check inside the sys.platform == win32 branch.",
+  "addons.py:63": "Blender executable candidates inside both the win32 branch and LOCALAPPDATA presence check; filtered with is_file.",
   "config.py:184": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
   "config.py:226": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
   "config.py:244": "Windows-only solver discovery or command, guarded by sys.platform == win32.",
@@ -18,5 +18,15 @@
   "integrations/blender/novasolver_studio/__init__.py:41": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio.",
   "integrations/blender/novasolver_studio/__init__.py:70": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio.",
   "integrations/blender/novasolver_studio/__init__.py:71": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio.",
-  "integrations/blender/novasolver_studio/__init__.py:74": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio."
+  "integrations/blender/novasolver_studio/__init__.py:74": "The Blender add-on runs inside Blender and cannot import osdirs; it repeats the same rule to find Studio.",
+  "integrations/freecad/NovaSolverStudio/nss_link.py:35": "Explicit LOCALAPPDATA override, also supported on POSIX by osdirs.data_dir; otherwise selects macOS/XDG locations.",
+  "integrations/freecad/NovaSolverStudio/nss_link.py:36": "Reads LOCALAPPDATA only after its presence check; CAD host cannot import the Studio package.",
+  "integrations/freecad/NovaSolverStudio/nss_link.py:57": "Optional installer lookup guarded by LOCALAPPDATA presence; the resulting executable must pass is_file.",
+  "integrations/freecad/NovaSolverStudio/nss_link.py:58": "Installer executable is a candidate only when LOCALAPPDATA is set and is_file succeeds; otherwise falls back to PATH.",
+  "integrations/freecad/NovaSolverStudio/nss_link.py:61": "Availability-only shutil.which probe for Windows executable, with the POSIX novasolver-studio command as fallback; no execution here.",
+  "integrations/fusion/NovaSolverStudio/nss_link.py:35": "Explicit LOCALAPPDATA override, also supported on POSIX by osdirs.data_dir; otherwise selects macOS/XDG locations.",
+  "integrations/fusion/NovaSolverStudio/nss_link.py:36": "Reads LOCALAPPDATA only after its presence check; CAD host cannot import the Studio package.",
+  "integrations/fusion/NovaSolverStudio/nss_link.py:57": "Optional installer lookup guarded by LOCALAPPDATA presence; the resulting executable must pass is_file.",
+  "integrations/fusion/NovaSolverStudio/nss_link.py:58": "Installer executable is a candidate only when LOCALAPPDATA is set and is_file succeeds; otherwise falls back to PATH.",
+  "integrations/fusion/NovaSolverStudio/nss_link.py:61": "Availability-only shutil.which probe for Windows executable, with the POSIX novasolver-studio command as fallback; no execution here."
 }

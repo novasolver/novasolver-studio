@@ -19,6 +19,8 @@ def plate_with_hole(path, two_bodies=False):
     gmsh.initialize()
     try:
         gmsh.option.setNumber('General.Terminal', 0)
+        # Fixture coordinates are millimetres, regardless of earlier OCCT imports.
+        gmsh.option.setString('Geometry.OCCTargetUnit', 'MM')
         box = gmsh.model.occ.addBox(0, 0, 0, 40, 20, 10)
         hole = gmsh.model.occ.addCylinder(20, 10, -1, 0, 0, 12, 4)
         gmsh.model.occ.cut([(3, box)], [(3, hole)])
