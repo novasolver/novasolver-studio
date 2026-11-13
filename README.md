@@ -1,5 +1,7 @@
 # NovaSolver Studio
 
+<!-- mcp-name: io.github.novasolver/novasolver-studio -->
+
 **Free, local engineering simulation that your AI assistant can drive — and every answer is checked.**
 Structural FEM, heat and CFD (CalculiX, OpenFOAM® and a built-in quadratic-tet solver) on your own PC, with an MCP
 server so Claude or any MCP client can import your STEP/STL, set the loads, run, refine the mesh and verify the result.
@@ -40,10 +42,11 @@ with a hand calculation. Real app, real numbers.*
   solve. It gives the error bar and refuses outside the solved ranges. On 224 new solves it had never seen, 287 of 288
   answers landed inside the bar. [See the data](https://novasolver.jp/en/studio/verified/).
 - **NovaSolver Genesis: keep only the shape you need (0.8).** Topology optimisation on the part itself: with its
-  supports and loads, the stiffest shape for the volume you choose (for heat, the coolest shape for its sources and
+  supports and loads, it seeks a higher-stiffness shape for the volume you choose (for heat, a lower-temperature layout for its sources and
   sinks). 3D-print overhang, extrusion and symmetry constraints; the result is a closed STL, and an extruded part is
   also written as a flat-faced STEP. Example: a cantilever on 40,000 cells at 30 % volume keeps 62 % of the full
   part's stiffness. MCP: `run_genesis`, `genesis_result`.
+  Exported and smoothed shapes need their own analysis; see the [0.8.0 reanalysis results and limits](docs/GENESIS_080_VALIDATION.md).
 
 | | |
 |---|---|
