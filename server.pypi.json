@@ -8,23 +8,31 @@
     "source": "github"
   },
   "websiteUrl": "https://novasolver.jp/en/studio/",
-  "version": "0.4.1",
+  "version": "0.8.1-registry.1",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/novasolver/novasolver-studio/releases/download/v0.4.0/novasolver-studio-0.4.0-win64.mcpb",
-      "fileSha256": "c016594719949e72211600a4c8e74f564940a67eec12c6f6003d134e04722817",
+      "identifier": "https://github.com/novasolver/novasolver-studio/releases/download/v0.8.0/novasolver-studio-0.8.0-win64.mcpb",
+      "fileSha256": "cf06f88a92d2117892ae0cb1e5fed5b1823bc75165e884c90f57821a16411e41",
       "transport": {
         "type": "stdio"
       }
     },
     {
       "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
       "identifier": "novasolver-studio",
-      "version": "0.4.1",
+      "version": "0.8.0",
+      "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
-      }
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
     }
   ]
 }
