@@ -214,6 +214,7 @@ Hで選択した面を隠し、Alt+Hですべて表示。Ctrl+ドラッグで矩
 
 ## Documentation
 
+- Tried Studio? [Share a short experience](https://github.com/novasolver/novasolver-studio/issues/new?template=usage-feedback.yml) or [report a problem](https://github.com/novasolver/novasolver-studio/issues/new?template=bug-report.yml). English, 日本語 and 中文 welcome. Posts and GitHub profiles are public; omit personal details and confidential models/results.
 - Design: [`docs/DESIGN.md`](https://github.com/novasolver/novasolver-studio/blob/main/docs/DESIGN.md) · Roadmap: [`docs/ROADMAP.md`](https://github.com/novasolver/novasolver-studio/blob/main/docs/ROADMAP.md) · Development notes: [`docs/DEVELOPMENT.md`](https://github.com/novasolver/novasolver-studio/blob/main/docs/DEVELOPMENT.md)
 - Tests: `python -m pytest backend/tests -q`
 

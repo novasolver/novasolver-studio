@@ -3,6 +3,10 @@
 Bug reports, test parts, benchmarks, translations and code are all welcome. Open an issue or a discussion first for
 anything large, so that nobody builds the same thing twice.
 
+Tried Studio? [Share a short experience](https://github.com/novasolver/novasolver-studio/issues/new?template=usage-feedback.yml)
+or [report a problem](https://github.com/novasolver/novasolver-studio/issues/new?template=bug-report.yml).
+English, 日本語 and 中文 are welcome. These are public issues; please omit personal information and confidential models/results.
+
 ## Get it running
 
 ```bash

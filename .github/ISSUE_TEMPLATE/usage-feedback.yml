@@ -1,0 +1,39 @@
+name: "Usage feedback / 利用の感想 / 使用感想"
+description: "What did you try, and would you use Studio again? 一言の感想でも歓迎します。歡迎簡短分享。"
+title: "[Feedback] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English, 日本語, 中文 are welcome. A sentence or two is enough; the dropdown and version are optional.
+        **This issue and your GitHub profile are public.** Do not include personal/contact details, private file paths, credentials or confidential CAD/results. No model upload is needed.
+
+        日本語でもどうぞ。**投稿とGitHubプロフィールは公開されます。** 個人情報・連絡先・非公開のファイルパス・認証情報・業務のCADや解析結果は記載しないでください。ファイル添付は不要です。
+
+        歡迎使用中文。**內容與GitHub個人檔案會公開。** 請勿提供個人聯絡資訊、私人檔案路徑、憑證或機密CAD／分析結果。不需要上傳模型。
+  - type: textarea
+    id: experience
+    attributes:
+      label: "Your experience / 試したこと・困ったこと / 嘗試與困難"
+      description: "What were you trying to do? What helped or got in the way? 一言で構いません。簡短即可。"
+    validations:
+      required: true
+  - type: dropdown
+    id: use-stage
+    attributes:
+      label: "Use so far (optional) / 利用状況（任意） / 使用情況（選填）"
+      options:
+        - "Not started / まだ使えていない / 尚未開始"
+        - "First use only / 初回のみ / 僅首次使用"
+        - "Used again within 7 days / 7日以内に再利用 / 7天內再次使用"
+        - "Used again 7+ days after first use / 初回から7日以上後にも利用 / 首次使用7天後仍有使用"
+        - "Stopped using / 使用をやめた / 已停止使用"
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: "Version or browser demo (optional) / バージョン等（任意） / 版本（選填）"
+      placeholder: "0.8.0 on Windows / browser demo / MCP"
+    validations:
+      required: false

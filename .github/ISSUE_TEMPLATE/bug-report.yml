@@ -1,0 +1,25 @@
+name: "Bug report / 不具合 / 問題回報"
+description: "Report a specific problem. 不具合を短く報告できます。歡迎回報具體問題。"
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English, 日本語, 中文 are welcome. This issue and your GitHub profile are public.
+        投稿とプロフィールは公開されます。內容與個人檔案會公開。
+        Do not include personal details, private file paths, credentials or confidential models/results. No file upload is required.
+        個人情報・秘密情報・業務のCADや結果は添付しないでください。請勿提供個資、憑證或機密模型與結果。
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Problem / 起きたこと / 發生的問題"
+      description: "What did you try, what happened, and what did you expect? 操作と期待した結果を書いてください。請描述操作與預期結果。"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: "Version and platform (optional) / 版・環境（任意） / 版本與環境（選填）"
+      placeholder: "Studio 0.8.0 / Windows / GUI or MCP"
+    validations:
+      required: false
