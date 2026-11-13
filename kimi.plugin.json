@@ -1,0 +1,24 @@
+{
+  "name": "novasolver-studio",
+  "version": "0.1.0",
+  "description": "Local engineering simulation with CAD import, structural and thermal analysis, convergence checks and reference comparisons.",
+  "author": {"name": "NovaSolver", "email": "info@novasolver.jp"},
+  "homepage": "https://novasolver.jp/en/studio/",
+  "license": "GPL-3.0-or-later",
+  "keywords": ["engineering", "simulation", "FEM", "CAE", "MCP"],
+  "skills": "./plugins/novasolver-antigravity/skills/",
+  "interface": {
+    "displayName": "NovaSolver Studio",
+    "shortDescription": "Run engineering simulations locally and inspect verification evidence.",
+    "developerName": "NovaSolver",
+    "websiteURL": "https://novasolver.jp/en/studio/"
+  },
+  "mcpServers": {
+    "studio": {
+      "command": "uvx",
+      "args": ["novasolver-studio==0.8.0.post1", "mcp"],
+      "startupTimeoutMs": 120000,
+      "toolTimeoutMs": 600000
+    }
+  }
+}
