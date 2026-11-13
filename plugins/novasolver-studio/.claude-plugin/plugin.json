@@ -1,12 +1,16 @@
 {
   "name": "novasolver-studio",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Run local engineering simulations through NovaSolver Studio and report verification limits.",
   "author": {
     "name": "NovaSolver",
     "email": "info@novasolver.jp"
   },
   "homepage": "https://novasolver.jp/en/studio/",
+  "documentationUrl": "https://github.com/novasolver/novasolver-studio/blob/main/plugins/novasolver-studio/README.md",
+  "supportUrl": "https://github.com/novasolver/novasolver-studio/issues",
+  "privacyPolicyUrl": "https://github.com/novasolver/novasolver-studio/blob/main/docs/PRIVACY.md",
+  "icon": "./assets/logo.png",
   "repository": "https://github.com/novasolver/novasolver-studio",
   "license": "GPL-3.0-or-later"
 }
