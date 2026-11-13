@@ -11,16 +11,18 @@ from pathlib import Path
 import tempfile
 import uuid
 
+from . import __version__
+
 try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
 SERVER = 'novasolver-studio'
-ARGS = ['novasolver-studio==0.7.6.post1', 'mcp']
-TABLE = '''[mcp_servers.novasolver-studio]
+ARGS = [f'novasolver-studio=={__version__}', 'mcp']
+TABLE = f'''[mcp_servers.novasolver-studio]
 command = "uvx"
-args = ["novasolver-studio==0.7.6.post1", "mcp"]
+args = ["{ARGS[0]}", "mcp"]
 startup_timeout_sec = 120
 tool_timeout_sec = 120
 '''

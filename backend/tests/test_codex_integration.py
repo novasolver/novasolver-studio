@@ -1,9 +1,11 @@
 """All configuration access is confined to synthetic temporary files."""
+import importlib.util
 import json
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+import novastudio
 from novastudio import codex_mcp, commands
 from novastudio.api import app
 
@@ -26,6 +28,35 @@ def test_preview_and_explicit_apply(config_path):
     assert config_path.read_text() == codex_mcp.TABLE
     assert client.post("/api/integrations/codex", json=result).json()["status"] == "configured"
     assert not list(config_path.parent.glob("*.novasolver-backup-*"))
+
+
+@pytest.mark.parametrize("version", [novastudio.__version__, "9.8.7"])
+def test_generated_recipe_tracks_packaged_version(config_path, monkeypatch, version):
+    # Load as a fresh packaged module to catch a stale literal at the next version bump too.
+    monkeypatch.setattr(novastudio, "__version__", version)
+    spec = importlib.util.spec_from_file_location("novastudio._test_codex_recipe", codex_mcp.__file__)
+    writer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(writer)
+    preview = writer.preview(config_path)
+    recipe = writer.tomllib.loads(preview["table"])["mcp_servers"]["novasolver-studio"]
+    assert recipe == {"command": "uvx", "args": [f"novasolver-studio=={version}", "mcp"],
+                      "startup_timeout_sec": 120, "tool_timeout_sec": 120}
+    assert not config_path.parent.exists()
+    writer.configure(config_path, apply=True, expected=preview["revision"])
+    assert writer.tomllib.loads(config_path.read_text())["mcp_servers"]["novasolver-studio"] == recipe
+    assert writer.preview(config_path)["status"] == "configured"
+
+
+def test_previous_release_pin_is_preserved_as_conflict(config_path):
+    config_path.parent.mkdir()
+    original = b'[mcp_servers.novasolver-studio]\ncommand="uvx"\nargs=["novasolver-studio==0.7.6.post1", "mcp"]\n'
+    config_path.write_bytes(original)
+    preview = commands.codex_integration()
+    assert preview["status"] == "blocked"
+    assert commands.codex_integration(str(config_path), apply=True,
+                                      revision=codex_mcp.revision(True, original))["status"] == "blocked"
+    assert config_path.read_bytes() == original
+    assert list(config_path.parent.iterdir()) == [config_path]
 
 
 def test_stale_preview_refuses_write(config_path):

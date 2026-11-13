@@ -179,11 +179,19 @@ def genesis(port, case_id, lang="en"):
 
 def pick_file(result):
     """(kind, url): the STEP of an extruded part (flat faces, millimetres), else the smoothed STL (metres)."""
+    from urllib.parse import urlsplit
+    case_id = result.get("case_id", "")
+    if not isinstance(case_id, str) or not CASE_ID.fullmatch(case_id):
+        raise ValueError("unexpected case id")
     files = result.get("files") or {}
     for kind in ("step", "stl_smooth", "stl"):
         url = files.get(kind)
         if url:
-            if not url.startswith(f"/api/cases/{result['case_id']}/genesis/"):
+            if not isinstance(url, str):
+                raise ValueError("unexpected file link")
+            parsed = urlsplit(url)
+            filename = "part.step" if kind == "step" else "part.stl"
+            if parsed.scheme or parsed.netloc or parsed.fragment or parsed.path != f"/api/cases/{case_id}/genesis/{filename}":
                 raise ValueError("unexpected file link")
             return kind, url
     raise ValueError("the result has no file")
@@ -195,7 +203,8 @@ def download(port, url, dest):
     tmp = dest.with_suffix(dest.suffix + ".part")
     with _request(port, url, timeout=300) as r, open(tmp, "wb") as f:
         shutil.copyfileobj(r, f)
-    head = tmp.read_bytes()[:16]
+    with tmp.open("rb") as stream:
+        head = stream.read(16)
     if head.lstrip().startswith(b"<"):       # an older Studio without this route answers with its app page
         tmp.unlink()
         raise RuntimeError("Studio did not send the file; update NovaSolver Studio")

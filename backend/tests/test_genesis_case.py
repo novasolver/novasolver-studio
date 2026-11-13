@@ -1,5 +1,6 @@
 """Genesis on Studio cases: face conditions become grid conditions, the job runs like any other, and the analysis
 results of the case are not replaced by a Genesis run."""
+import json
 import time
 
 import numpy as np
@@ -177,8 +178,7 @@ def test_genesis_job_shows_the_step_not_a_time_left():
 
 
 def test_refine_extrusion_symmetry_and_step(ws):
-    """The whole chain on a case: half model (y is a mirror plane of the cantilever), extrusion along y, the
-    finishing pass on a finer grid, and the STEP of the prism."""
+    """The case produces a mirrored y prism, a finishing pass and STEP, regardless of half-model eligibility."""
     cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
     g = wait_genesis(C.run_genesis(cid, {"cells": 6000, "iterations": 40, "extrusion": "y", "symmetry": ["y"], "refine": True},
                                    wait_s=600, lang="en"))
@@ -186,9 +186,14 @@ def test_refine_extrusion_symmetry_and_step(ws):
     assert not any(w["key"] in ("load_not_carried", "constraint_not_met") for w in g["warnings"])
     assert g["refine"] is not None and g["refine"]["message"]
     jd = C._genesis_dir(cid, g["run_id"])
-    import json
     res = json.loads((jd / "genesis.json").read_text(encoding="utf-8"))["result"]
-    assert res.get("half_model") == [1]
+    # Gmsh face-to-grid loads need not be exact mirrors. An accepted refinement also replaces the coarse result.
+    # Full/half numerical equivalence is required separately by test_half_model_gives_the_whole_design.
+    assert res.get("half_model") in (None, [1])
+    with np.load(jd / "genesis.npz") as saved:
+        solid, active = saved["solid"], saved["active"]
+        assert solid.any() and np.array_equal(solid, np.flip(solid, axis=1))
+        assert np.array_equal(solid, np.broadcast_to(solid.any(axis=1, keepdims=True), solid.shape) & active)
     info = res["refine"]
     if info["accepted"]:
         assert info["objective_after"] < info["objective_before"] and info["volume_after"] <= info["volume_before"] + 0.015
@@ -206,8 +211,48 @@ def test_refine_extrusion_symmetry_and_step(ws):
     assert g["symmetry_hint"] is None                     # the plane is already used
 
 
-def test_symmetry_hint_when_the_plane_is_not_used(ws):
+def test_symmetry_hint_matches_mapped_problem(ws):
+    from novastudio import genesis as gx
+    from novastudio.i18n import t
+
     cid = C.create_case("cantilever", {}, "en")["case"]["case_id"]
     g = wait_genesis(C.run_genesis(cid, {"cells": 4000, "iterations": 12}, wait_s=300, lang="en"))
-    assert g["symmetry_hint"] and "Y" in g["symmetry_hint"]
+    jd = C._genesis_dir(cid, g["run_id"])
+    saved = json.loads((jd / "genesis.json").read_text(encoding="utf-8"))
+    request = json.loads((jd / "request.json").read_text(encoding="utf-8"))
+    # Rebuild from this run's actual mesh and case snapshot, not a new platform-dependent mesh.
+    with np.load(jd / "mesh.npz") as mesh:
+        mapped, setup = GC.build(request["case"], dict(mesh), saved["spec"])
+    eligible = [axis for axis, index in GC.AXES.items()
+                if index not in setup["settings"].symmetry and gx.mirror_symmetric(mapped, index)]
+    assert saved["setup"]["symmetric_unused"] == eligible
+    expected = t("genesis.hint.symmetry", "en", axes=", ".join(axis.upper() for axis in eligible)) if eligible else None
+    assert g["symmetry_hint"] == expected
     assert "step" not in g["files"] and g["refine"] is None
+
+
+@pytest.mark.parametrize("unused, overhang, axes", [
+    (["y"], None, "Y"),
+    (["x", "y"], None, "X, Y"),
+    ([], None, None),
+    (["y"], "+z", None),
+])
+def test_symmetry_hint_from_saved_result(ws, unused, overhang, axes):
+    """Presentation of recorded eligibility is deterministic and does not depend on a Gmsh triangulation."""
+    from novastudio.i18n import t
+
+    case = C.create_case("cantilever", {}, "en")["case"]
+    cid = case["case_id"]
+    jd = store.case_dir(cid) / "run" / "r_20261113_120000_abcd"
+    jd.mkdir(parents=True)
+    saved = {
+        "physics": "elastic", "revision": case["revision"], "spec": {"overhang": overhang},
+        "setup": {"symmetric_unused": unused, "grid": {}, "cells_active": 0},
+        "surface": {}, "history": [],
+        "result": {"volume_fraction_binary": 0.35, "min_member_m": 0.004, "warnings": [],
+                   "objective_binary": 1.0, "max_displacement_m": 0.001, "termination": "converged",
+                   "iterations": 1, "elapsed_s": 0.0},
+    }
+    (jd / "genesis.json").write_text(json.dumps(saved), encoding="utf-8")
+    result = C.genesis_result(cid, jd.name, "en")
+    assert result["symmetry_hint"] == (t("genesis.hint.symmetry", "en", axes=axes) if axes else None)

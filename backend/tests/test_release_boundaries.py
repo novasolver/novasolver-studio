@@ -131,6 +131,26 @@ def test_cad_transport_rejects_invalid_address_before_transport(monkeypatch, nam
     assert not seen
 
 
+@pytest.mark.parametrize("name", sorted(audit.CAD_LINKS))
+@pytest.mark.parametrize("suffix", ["../../admin", "%2e%2e/admin", "part.step/../admin", "part.stl", "part.step#outside"])
+def test_cad_download_link_rejects_wrong_route(name, suffix):
+    cid = "c_20261113_100000_abcd"
+    with pytest.raises(ValueError):
+        load_link(name)["pick_file"]({"case_id": cid, "files": {"step": f"/api/cases/{cid}/genesis/{suffix}"}})
+
+
+@pytest.mark.parametrize("name", sorted(audit.CAD_LINKS))
+@pytest.mark.parametrize("kind,filename,query", [
+    ("step", "part.step", "?run_id=r_20261113_100001_abcd"),
+    ("stl_smooth", "part.stl", "?run_id=r_20261113_100001_abcd&smooth=true"),
+    ("stl", "part.stl", ""),
+])
+def test_cad_download_link_preserves_supported_queries(name, kind, filename, query):
+    cid = "c_20261113_100000_abcd"
+    url = f"/api/cases/{cid}/genesis/{filename}{query}"
+    assert load_link(name)["pick_file"]({"case_id": cid, "files": {kind: url}}) == (kind, url)
+
+
 def test_cad_link_copies_are_identical():
     paths = [audit.ROOT / name for name in sorted(audit.CAD_LINKS)]
     assert paths[0].read_bytes() == paths[1].read_bytes()

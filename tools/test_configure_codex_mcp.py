@@ -1,5 +1,7 @@
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import tomllib
 import unittest
@@ -7,9 +9,29 @@ import unittest
 spec = importlib.util.spec_from_file_location('configure_codex_mcp', Path(__file__).with_name('configure_codex_mcp.py'))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+from novastudio import __version__
 
 
 class ConfigTests(unittest.TestCase):
+    def test_cli_smoke_uses_current_package_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'new' / 'config.toml'
+            command = [sys.executable, '-B', str(Path(__file__).with_name('configure_codex_mcp.py')),
+                       '--config', str(path)]
+            dry = subprocess.run(command, capture_output=True, text=True, timeout=20)
+            self.assertEqual(dry.returncode, 0, dry.stderr)
+            self.assertFalse(path.parent.exists())
+            applied = subprocess.run([*command, '--apply'], capture_output=True, text=True, timeout=20)
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+            original = path.read_bytes()
+            recipe = tomllib.loads(original.decode())['mcp_servers']['novasolver-studio']
+            self.assertEqual(recipe['command'], 'uvx')
+            self.assertEqual(recipe['args'], [f'novasolver-studio=={__version__}', 'mcp'])
+            again = subprocess.run([*command, '--apply'], capture_output=True, text=True, timeout=20)
+            self.assertEqual(again.returncode, 0, again.stderr)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(list(path.parent.iterdir()), [path])
+
     def test_preserves_unrelated_bytes_and_unicode(self):
         before = '\ufeff# 日本語\r\n[mcp_servers.other]\r\ncommand="other"\r\n'.encode('utf-8')
         after = module.plan(before)

@@ -4,25 +4,31 @@
 
 先安装 Qwen Code、Python 3.10 以上和 uv。在启动 Qwen Code 的终端执行 `uvx --version`，确认能够找到命令。首次运行需要从 PyPI 下载依赖。
 
+以下示例固定为 Studio 0.8.0（包含 Genesis），必须等此版本发布到 PyPI 后才能运行；只有源码或 GitHub 发布包还不够。
+
 先检查 `qwen mcp list`。如果已经有 `novasolver-studio`，请检查现有配置，不要覆盖。否则可以注册：
 
 ```sh
-qwen mcp add --scope user --transport stdio novasolver-studio uvx novasolver-studio==0.7.6.post1 mcp
+qwen mcp add --scope user --transport stdio novasolver-studio uvx novasolver-studio==0.8.0 mcp
 ```
 
 这会修改 Qwen 的用户配置。也可以把下方 JSON 中的服务器条目合并到现有 `~/.qwen/settings.json` 的 `mcpServers`，保留其他设置。不要用示例覆盖整个文件。
 
-安装依赖后再执行 `qwen mcp list`。0.27.2 的连接检查有 10 秒期限；第一次下载可能显示超时。可先运行 `uvx novasolver-studio==0.7.6.post1 --help` 完成依赖准备，再重试。不要关闭 TLS 校验或放宽工具权限来解决下载问题。
+安装依赖后再执行 `qwen mcp list`。0.27.2 的连接检查有 10 秒期限；第一次下载可能显示超时。可先运行 `uvx novasolver-studio==0.8.0 --help` 完成依赖准备，再重试。不要关闭 TLS 校验或放宽工具权限来解决下载问题。
 
 ## 日本語
 
 Qwen Code、Python 3.10 以上、uv が必要です。Qwen を起動するターミナルで `uvx --version` を確認してください。上の登録コマンドはユーザー設定を変更するため、先に `qwen mcp list` で既存の Studio 登録を確認し、重複させないでください。
+
+例は Genesis を含む Studio 0.8.0 に固定しています。同じバージョンが PyPI に公開されている必要があり、ソースや GitHub の配布物だけでは実行できません。
 
 手動設定では下のサーバー項目だけを既存の `mcpServers` に統合します。設定ファイル全体を上書きしないでください。初回の依存ダウンロードが接続確認の10秒を超える場合は、上の `--help` コマンドで準備を済ませてから再確認します。
 
 ## English
 
 Install Qwen Code, Python 3.10+ and uv. Confirm `uvx --version` in the terminal used to launch Qwen. Check `qwen mcp list` before running the registration command above; do not replace an existing Studio entry. Registration changes user settings.
+
+These examples pin Studio 0.8.0, including Genesis. That exact version must be published on PyPI first; a source checkout or GitHub release alone is insufficient.
 
 For manual setup, merge only this server entry into the existing `mcpServers` object in `~/.qwen/settings.json`. Preserve other settings. Qwen Code 0.27.2's connection probe has a 10-second limit; prepare the dependencies with the `--help` command above if the initial download exceeds it, then retry.
 
@@ -31,7 +37,7 @@ For manual setup, merge only this server entry into the existing `mcpServers` ob
   "mcpServers": {
     "novasolver-studio": {
       "command": "uvx",
-      "args": ["novasolver-studio==0.7.6.post1", "mcp"]
+      "args": ["novasolver-studio==0.8.0", "mcp"]
     }
   }
 ```
@@ -45,7 +51,7 @@ For manual setup, merge only this server entry into the existing `mcpServers` ob
 
 ## Verification scope — 2026-11-13
 
-Qwen Code **0.27.2**, Node **24.15.0**, Windows, an isolated `QWEN_HOME`, and the pinned command above: `qwen mcp list` reported **Connected** after dependencies were prepared. The test used an explicit isolated workspace/cache in the server's `env`; existing personal settings were not changed. The initial cold connection timed out. Qwen emitted a Node-version warning, but the connection check succeeded.
+This historical verification used **novasolver-studio==0.7.6.post1**, not the 0.8.0 examples now shown above; it does not validate the new PyPI release or Genesis. With Qwen Code **0.27.2**, Node **24.15.0**, Windows and an isolated `QWEN_HOME`, `qwen mcp list` reported **Connected** after dependencies were prepared. The test used an explicit isolated workspace/cache in the server's `env`; existing personal settings were not changed. The initial cold connection timed out. Qwen emitted a Node-version warning, but the connection check succeeded.
 
 An additional **Qwen Code + DeepSeek Flash** run completed a real workflow: template listing → new coarse cantilever → preview solve → result retrieval. All four Studio tool calls succeeded, with no permission denials. The local result file independently confirms `ran=true`, `converged=true`, `verified=true`, `verified_by=reference`; no mesh-convergence study was run. The assistant reported the fixed-support stress-singularity warning and did not claim the design was safe.
 

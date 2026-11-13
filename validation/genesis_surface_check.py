@@ -38,7 +38,9 @@ def main():
         record.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf8")
     def wait(r):
         if r.get("done"):
-            return r
+            if r["job"]["state"] != "done":
+                raise RuntimeError(r["job"])
+            return {**r, "job_id": r["job"]["job_id"]}
         jid = r.get("job_id") or r["job"]["job_id"]
         deadline = time.monotonic() + 7200
         while time.monotonic() < deadline:
@@ -99,13 +101,10 @@ def main():
             C.update_case(ic, c["revision"], {"mesh.size": level}, "en")
             print("Solve", level, kind, flush=True)
             r = wait(C.run_simulation(ic, "preview", wait_s=1, lang="en"))
-            result = r.get("results") or C.get_results(ic, lang="en")
+            result = r.get("results") or C.get_results(ic, r["job_id"], lang="en")
             rows[kind] = {"gates": result.get("gates"), "cards": result.get("cards")}
             # Record exactly what is evaluated, including loads and residual checks from the solver output.
-            jd = store.case_dir(ic) / "run"
-            runs = [p for p in jd.glob("r_*") if (p / "results.json").exists()]
-            latest = max(runs, key=lambda p: p.stat().st_mtime)
-            rows[kind]["run_id"] = latest.name
+            rows[kind]["run_id"] = r["job_id"]
             save()
     from novastudio import fem_tet10 as fe
     from novastudio.run_worker import structural_loads

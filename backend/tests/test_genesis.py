@@ -377,3 +377,25 @@ def test_half_model_needs_symmetric_loads():
     L[:, np.nonzero(L[0, :, 2])[0][0], 1] = 1e-3          # a sideways push on one node
     g.loads = L.reshape(len(g.loads), -1)
     assert gx.mirror_half(g, 1, gx.Settings()) is None
+
+
+def test_asymmetric_loads_fall_back_to_full_model_without_changing_forces():
+    """The same resultant does not imply mirrored nodal loads; fallback must solve the actual full problem."""
+    settings = gx.Settings(symmetry=(1,), iterations=8)
+    full, fallback = gx.cantilever(12, 4, 6), gx.cantilever(12, 4, 6)
+    original_total = full.loads.reshape(-1, 3).sum(axis=0)
+    for problem in (full, fallback):
+        forces = problem.loads.reshape(-1, 3)
+        loaded = np.flatnonzero(forces[:, 2])
+        forces[loaded[0], 2] += 0.01
+        forces[loaded[-1], 2] -= 0.01
+        assert np.allclose(forces.sum(axis=0), original_total, rtol=1e-12, atol=1e-12)
+        assert not gx.mirror_symmetric(problem, 1)
+    applied = fallback.loads.copy()
+    reference = full.optimize(settings)
+    result = gx.optimize_symmetric(fallback, settings)
+    assert result.get("half_model") is None
+    assert np.array_equal(fallback.loads, applied)
+    assert np.array_equal(full.solid_final, fallback.solid_final)
+    for key in ("objective", "objective_binary", "objective_full", "max_displacement_m", "volume_fraction_binary"):
+        assert np.isclose(reference[key], result[key], rtol=1e-5), key
