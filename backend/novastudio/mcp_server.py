@@ -139,7 +139,9 @@ def _faces_text(faces: list[dict], boundaries: dict | None = None) -> str:
 
 @mcp.tool(annotations=RO)
 async def environment_check(language: Lang = "ja") -> CallToolResult:
-    """List the solver engines available on this computer and how to install missing ones."""
+    """List the solver engines available on this computer, how to install the missing ones, and the command an MCP
+    client needs to start this same installation. Call it at the start of a session, and again after the person
+    installs an engine: a case whose physics needs a missing engine cannot run. It changes nothing."""
     r, e = await _call(C.environment_check, language, language)
     if e:
         return e
@@ -149,7 +151,10 @@ async def environment_check(language: Lang = "ja") -> CallToolResult:
 
 @mcp.tool(annotations=RO)
 async def list_templates(language: Lang = "ja") -> CallToolResult:
-    """List case templates (each has a reference solution for verification)."""
+    """List the case templates create_case accepts: the id to pass, the title and the physics. Each template has a
+    reference solution, so a case built from one can reach the third gate through verify_case. `runnable_now` is
+    false when the engine that physics needs is not installed - environment_check says how to install it. For cases
+    that are already solved, use list_examples instead."""
     r, e = await _call(C.list_templates, language, language)
     if e:
         return e
@@ -160,7 +165,9 @@ async def list_templates(language: Lang = "ja") -> CallToolResult:
 
 @mcp.tool(annotations=RO)
 async def list_cases() -> CallToolResult:
-    """List existing cases (newest first)."""
+    """List the cases in this workspace, newest first, each with the case_id that every other tool takes. Call it to
+    continue earlier work instead of creating a duplicate case, or to find the id of a case the person made in the
+    GUI. It takes no arguments and changes nothing; the full list is in the structured result."""
     r, e = await _call(C.list_cases, "en")
     if e:
         return e
@@ -208,7 +215,9 @@ async def export_case(case_id: str, include_results: bool = True, language: Lang
 
 @mcp.tool(annotations=WRITE)
 async def import_case(path: str, language: Lang = "ja") -> CallToolResult:
-    """Open a .nscase file on this computer as a new case; a result inside it opens as the current result."""
+    """Open a .nscase file already on this computer as a new case; a result stored inside it opens as the current
+    result. `path` is a local file path, not a URL - for the published examples use open_example. Returns the new
+    case_id and revision. Pass any import_warnings on to the person: they say what this version could not keep."""
     r, e = await _call(C.import_case, language, path, None, language)
     if e:
         return e
@@ -346,7 +355,9 @@ async def validate_case(case_id: str, language: Lang = "ja") -> CallToolResult:
 
 @mcp.tool(annotations=WRITE)
 async def undo_change(case_id: str, redo: bool = False, language: Lang = 'ja') -> CallToolResult:
-    """Undo the latest change by anyone (person or AI), and tell what was undone. redo=True reapplies it."""
+    """Undo the latest change to a case by anyone - the person in the GUI or the AI - and report what was undone.
+    redo=True reapplies it. Use this when the person rejects an edit you just made, instead of writing the old
+    values back by hand, so that the case history stays right. It moves one revision at a time."""
     r, e = await _call(C.case_payload, language, case_id, language)
     if e:
         return e
@@ -376,7 +387,10 @@ async def get_gui_selection(language: Lang = 'ja') -> CallToolResult:
 
 @mcp.tool(annotations=WRITE)
 async def generate_mesh(case_id: str, size: Literal["coarse", "normal", "fine"] | None = None, language: Lang = "ja") -> CallToolResult:
-    """Generate the mesh now (run_simulation also meshes automatically when needed). Returns node/element counts and quality."""
+    """Mesh the case now and report the node and element counts, the element type and the mesh quality.
+    run_simulation meshes by itself when it needs to, so call this only to look at the mesh before committing to a
+    long solve, or to change `size`: coarse is quick and rough, fine costs much more time and memory. For the mesh
+    convergence that the third gate wants, use check_convergence instead of meshing by hand."""
     r, e = await _call(C.generate_mesh, language, case_id, size, language, source='ai')
     if e:
         return e
@@ -536,7 +550,9 @@ async def genesis_result(case_id: str, run_id: str | None = None, language: Lang
 
 @mcp.tool(annotations=DESTRUCTIVE)
 async def stop_job(job_id: str, language: Lang = "ja") -> CallToolResult:
-    """Stop a running job."""
+    """Stop a running solver job. Ask the person first: the run then produces no result and the time already spent
+    is lost. Returns the job state afterwards. job_status tells you whether a job is still running; one that has
+    already finished does not need stopping."""
     r, e = await _call(C.stop_job, language, job_id, language)
     return e or _ok(f"{r['state']}", r)
 
@@ -802,7 +818,10 @@ async def control_surrogate(study_id: str, action: Literal["stop", "resume", "de
 
 @mcp.tool(annotations=RO)
 async def compare_runs(case_ids: list[str], language: Lang = "ja") -> CallToolResult:
-    """Side-by-side parameters, gates and key numbers of several cases (e.g. a parameter study)."""
+    """Put several cases side by side: each one's parameters with units, its three gates and the key numbers of its
+    latest result. Pass the case_ids to compare, for example the clones of a parameter study. A case that has not
+    been solved yet comes back with gates = null instead of failing the call. The text is shortened; read the
+    structured result for the whole table."""
     r, e = await _call(C.compare_runs, language, case_ids, language)
     if e:
         return e
@@ -811,7 +830,9 @@ async def compare_runs(case_ids: list[str], language: Lang = "ja") -> CallToolRe
 
 @mcp.tool(annotations=DESTRUCTIVE)
 async def delete_case(case_id: str, confirm: str, language: Lang = "ja") -> CallToolResult:
-    """Delete a case and all its runs. Ask the user first. `confirm` must equal the case_id."""
+    """Delete a case and every run belonging to it. Ask the person first and name the case you mean: this cannot be
+    undone, and undo_change does not bring a deleted case back. `confirm` must equal the case_id, which is there to
+    stop an accidental call. Returns how many bytes were freed."""
     r, e = await _call(C.delete_case, language, case_id, confirm, language)
     return e or _ok(f"Deleted {case_id} ({r['bytes_freed']} bytes)", r)
 
