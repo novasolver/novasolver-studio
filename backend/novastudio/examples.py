@@ -22,7 +22,9 @@ EXAMPLES_BASE = 'https://github.com/novasolver/novasolver-studio/releases/downlo
 EXAMPLES_MIRROR = 'https://novasolver.jp/dl/studio/examples/v{version}/'
 RELEASE_PAGE = 'https://github.com/novasolver/novasolver-studio/releases/tag/v{version}'
 # Packaging-only releases reuse published assets; keep cache keys on the full package version.
-_PUBLISHED_VERSIONS = {'0.7.6.post1': '0.7.6'}
+# A PyPI .postN release has no GitHub tag of its own, so every one of them needs an entry here or
+# the examples 404 for everyone who installed it. test_examples.py fails when one is missing.
+_PUBLISHED_VERSIONS = {'0.7.6.post1': '0.7.6', '0.8.0.post1': '0.8.0'}
 INDEX = 'examples.json'
 TIMEOUT = 10
 _NAME = re.compile(r'^[a-z0-9-]{1,60}$')
